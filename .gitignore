@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.log
+.env
+.env.local
+server/.env
+server/dist/
+server/generated/
+*.pem
+.DS_Store
+.vscode/
+*.tsbuildinfo

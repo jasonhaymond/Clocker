@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  jobs         Job[]
+  shifts       Shift[]
+}
+
+model Job {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  colorHex       String    @default("#2563eb")
+  hourlyRateCents Int?
+  archived       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  shifts         Shift[]
+
+  @@index([userId, updatedAt])
+}
+
+model Shift {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  clockIn   DateTime
+  clockOut  DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  breaks    Break[]
+
+  @@index([userId, updatedAt])
+  @@index([jobId])
+}
+
+model Break {
+  id        String    @id @default(uuid())
+  shiftId   String
+  shift     Shift     @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  start     DateTime
+  end       DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([shiftId, updatedAt])
+}

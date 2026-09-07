@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clocker
+      POSTGRES_PASSWORD: clocker
+      POSTGRES_DB: clocker
+    ports:
+      - "5433:5432"
+    volumes:
+      - clocker-postgres:/var/lib/postgresql/data
+
+volumes:
+  clocker-postgres:
