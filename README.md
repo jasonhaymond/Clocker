@@ -22,32 +22,73 @@ small Fastify + PostgreSQL server for cross-device sync.
 ```
 app/       Expo app (screens, local DB, sync client, auth)
 server/    Fastify API + Prisma schema/migrations
+scripts/   setup.mjs / update.mjs — dev environment bootstrap and update
 docker-compose.yml   Local Postgres for development
 ```
 
 ## Getting started
 
-### 1. Server
+### First-time setup
 
 ```bash
-cp server/.env.example server/.env   # edit JWT_SECRET for anything beyond local dev
-docker compose up -d                 # starts Postgres on localhost:5433
-npm run db:migrate                   # applies Prisma migrations
-npm run dev:server                   # starts the API on http://localhost:3001
+npm run setup
 ```
 
-### 2. App
+This installs dependencies for both workspaces, creates `server/.env` with a freshly
+generated `JWT_SECRET` (if it doesn't already exist), starts Postgres via Docker, and
+applies migrations. It's safe to re-run — every step is skipped or a no-op if it's already
+done. If Docker isn't available it skips starting Postgres and tells you what to do
+instead (point `DATABASE_URL` in `server/.env` at your own instance).
 
-The app needs to know where your server is. Android emulator can't reach `localhost`
-directly — use `10.0.2.2`; a physical device needs your machine's LAN IP.
+### Staying up to date
+
+```bash
+npm run update
+```
+
+Pulls the latest commits (only if your working tree is clean — otherwise it tells you to
+commit or stash first and stops, rather than risk overwriting anything), reinstalls
+dependencies, and applies any new migrations.
+
+### Running it
+
+```bash
+npm run dev:server   # starts the API on http://localhost:3001
+npm run dev:app      # starts Expo — press i/a, or scan the QR code with Expo Go
+```
+
+The app needs to know where your server is, via `EXPO_PUBLIC_API_URL` (defaults to
+`http://localhost:3001`). Android emulator can't reach `localhost` directly — use
+`10.0.2.2`; a physical device needs your machine's LAN IP:
+
+```bash
+cd app && EXPO_PUBLIC_API_URL=http://192.168.1.20:3001 npm run start
+```
+
+### Over-the-air app updates
+
+The app checks for OTA updates (via `expo-updates`) on launch and when it comes back to
+the foreground, and the Settings screen shows the current version, lets you check
+manually, and prompts to restart once an update has downloaded. This only does anything
+in a build published through EAS Update — Expo Go and local dev builds always show
+"Updates aren't available in this build."
+
+One-time setup (needs a free Expo account):
+
+```bash
+npm i -g eas-cli
+cd app
+eas login
+eas update:configure   # links this app to an EAS project and fills in app.json
+```
+
+Then, whenever you want to ship a JS-only change (no native code changes) without an app
+store release:
 
 ```bash
 cd app
-EXPO_PUBLIC_API_URL=http://localhost:3001 npm run start
+eas update --branch production --message "Describe the change"
 ```
-
-Then press `i` (iOS simulator), `a` (Android emulator), or scan the QR code with Expo Go
-on a physical device.
 
 ## Features
 
@@ -59,6 +100,8 @@ on a physical device.
   shared via the OS share sheet (iOS/Android)
 - Offline-first: every action works with no network; a manual "Sync Now" plus automatic
   background sync push changes and pull updates from other devices
+- Over-the-air JS updates via `expo-updates` (once `eas update:configure` is run once),
+  with a Settings screen banner/button to check for and apply them
 
 ## Notes for future work
 

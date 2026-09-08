@@ -6,6 +6,8 @@
     "server"
   ],
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "update": "node scripts/update.mjs",
     "dev:server": "npm run dev --workspace=server",
     "dev:app": "npm run start --workspace=app",
     "db:generate": "npm run db:generate --workspace=server",

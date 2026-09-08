@@ -10,6 +10,7 @@ import { JobsScreen } from "../screens/JobsScreen";
 import { LoginScreen } from "../screens/LoginScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { synchronize } from "../sync/sync";
+import { checkForUpdate } from "../updates/updates";
 
 const Tab = createBottomTabNavigator();
 
@@ -18,9 +19,13 @@ const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 function AppTabs() {
   useEffect(() => {
     synchronize().catch(() => {});
+    checkForUpdate().catch(() => {});
     const interval = setInterval(() => synchronize().catch(() => {}), SYNC_INTERVAL_MS);
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") synchronize().catch(() => {});
+      if (state === "active") {
+        synchronize().catch(() => {});
+        checkForUpdate().catch(() => {});
+      }
     });
     return () => {
       clearInterval(interval);
