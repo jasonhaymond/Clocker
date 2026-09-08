@@ -1,16 +1,39 @@
 import React, { useCallback, useState } from "react";
 import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { createJob, deleteJob, listJobs, setJobArchived } from "../db/database";
+import { createJob, deleteJob, listJobs, listRateTiers, listRateVersionsForTier, setJobArchived } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import type { Job } from "../types";
+import { JobDetailModal } from "./JobDetailModal";
 
 const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+
+function JobRatePreview({ jobId }: { jobId: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    listRateTiers(jobId, false).then(async (tiers) => {
+      const defaultTier = tiers.find((t) => t.isDefault) ?? tiers[0];
+      if (!defaultTier) return setLabel(null);
+      const versions = await listRateVersionsForTier(defaultTier.id);
+      const now = Date.now();
+      const active = versions
+        .filter((v) => new Date(v.effectiveFrom).getTime() <= now)
+        .sort((a, b) => new Date(b.effectiveFrom).getTime() - new Date(a.effectiveFrom).getTime())[0];
+      setLabel(active ? `$${(active.hourlyRateCents / 100).toFixed(2)}/hr` : null);
+    });
+  }, [jobId]);
+  useDbRefresh(load);
+
+  if (!label) return null;
+  return <Text style={styles.jobRate}>{label}</Text>;
+}
 
 export function JobsScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
 
   const load = useCallback(() => {
     listJobs(true).then(setJobs);
@@ -19,8 +42,8 @@ export function JobsScreen() {
 
   async function addJob() {
     if (!name.trim()) return;
-    const hourlyRateCents = rate.trim() ? Math.round(parseFloat(rate) * 100) : null;
-    await createJob({ name: name.trim(), colorHex: color, hourlyRateCents });
+    const initialHourlyRateCents = rate.trim() ? Math.round(parseFloat(rate) * 100) : null;
+    await createJob({ name: name.trim(), colorHex: color, initialHourlyRateCents });
     setName("");
     setRate("");
   }
@@ -64,13 +87,11 @@ export function JobsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <View style={styles.jobRow}>
+          <TouchableOpacity style={styles.jobRow} onPress={() => setEditingJob(item)}>
             <View style={[styles.dot, { backgroundColor: item.colorHex }]} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.jobName, item.archived && styles.archivedText]}>{item.name}</Text>
-              {item.hourlyRateCents != null && (
-                <Text style={styles.jobRate}>${(item.hourlyRateCents / 100).toFixed(2)}/hr</Text>
-              )}
+              <JobRatePreview jobId={item.id} />
             </View>
             <TouchableOpacity onPress={() => setJobArchived(item.id, !item.archived)} style={styles.rowAction}>
               <Text style={styles.rowActionText}>{item.archived ? "Unarchive" : "Archive"}</Text>
@@ -78,10 +99,12 @@ export function JobsScreen() {
             <TouchableOpacity onPress={() => confirmDelete(item)} style={styles.rowAction}>
               <Text style={[styles.rowActionText, styles.deleteText]}>Delete</Text>
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={styles.empty}>No jobs yet. Add your first one above.</Text>}
       />
+
+      {editingJob && <JobDetailModal job={editingJob} onClose={() => setEditingJob(null)} />}
     </View>
   );
 }

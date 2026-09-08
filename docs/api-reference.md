@@ -62,18 +62,30 @@ are client-generated UUIDs (see [`data-model.md`](./data-model.md)).
 ```jsonc
 {
   "jobs": [
-    { "id": "<uuid>", "name": "Coffee Shop", "colorHex": "#2563eb",
-      "hourlyRateCents": 1800, "archived": false }   // hourlyRateCents/archived optional
+    { "id": "<uuid>", "name": "Coffee Shop", "colorHex": "#2563eb", "archived": false,
+      "overtimeMultiplier": 1.5, "overtimeWeeklyThresholdHours": 40 }
+      // archived/overtimeMultiplier/overtimeWeeklyThresholdHours all optional
+  ],
+  "rateTiers": [
+    { "id": "<uuid>", "jobId": "<uuid>", "name": "Standard",
+      "isDefault": true, "archived": false }   // isDefault/archived optional
+  ],
+  "rateVersions": [
+    { "id": "<uuid>", "tierId": "<uuid>", "hourlyRateCents": 1800,
+      "effectiveFrom": "2026-09-01T00:00:00.000Z" }
   ],
   "shifts": [
-    { "id": "<uuid>", "jobId": "<uuid>", "clockIn": "2026-09-07T13:00:00.000Z",
-      "clockOut": "2026-09-07T17:30:00.000Z", "notes": null }   // clockOut/notes optional
+    { "id": "<uuid>", "jobId": "<uuid>", "rateTierId": null, "clockIn": "2026-09-07T13:00:00.000Z",
+      "clockOut": "2026-09-07T17:30:00.000Z", "notes": null }
+      // rateTierId/clockOut/notes optional — rateTierId omitted or null means "the job's default tier"
   ],
   "breaks": [
     { "id": "<uuid>", "shiftId": "<uuid>", "start": "2026-09-07T15:00:00.000Z",
       "end": "2026-09-07T15:15:00.000Z" }   // end optional
   ],
   "deletedJobIds": ["<uuid>"],
+  "deletedRateTierIds": ["<uuid>"],
+  "deletedRateVersionIds": ["<uuid>"],
   "deletedShiftIds": ["<uuid>"],
   "deletedBreakIds": ["<uuid>"]
 }
@@ -84,11 +96,14 @@ ISO-8601 strings (`zod`'s `.datetime()`, which requires the `Z`/offset suffix).
 
 This endpoint **upserts by id** (create if the id doesn't already belong to this user,
 otherwise update) and never trusts a client-supplied `updatedAt`/`deletedAt` — the server
-sets `updatedAt` itself on every write, and the three `deleted*Ids` arrays are the only way
-to soft-delete a row (setting its `deletedAt`). A `jobId`/`shiftId` that doesn't resolve to
-a row owned by the caller is silently dropped rather than erroring (see
+sets `updatedAt` itself on every write, and the five `deleted*Ids` arrays are the only way
+to soft-delete a row (setting its `deletedAt`). A reference that doesn't resolve to a row
+owned by the caller (a job's tier, a tier's job, a shift's job or tier, a break's shift) is
+silently dropped rather than erroring (see
 [ownership checks](./sync-protocol.md#ownership-checks)) — a push is never rejected
-outright for one bad reference among many valid ones.
+outright for one bad reference among many valid ones. The five upsert arrays are also
+**applied in the order shown above** — see
+[why ordering matters](./sync-protocol.md#push) in the sync protocol doc.
 
 ```json
 → 200 { "serverTimestamp": "2026-09-07T23:52:47.097Z" }
@@ -112,14 +127,18 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
 ```json
 → 200 {
   "serverTimestamp": "2026-09-07T23:52:47.366Z",
-  "jobs":   [ { "id": "...", "userId": "...", "name": "...", "colorHex": "...",
-                "hourlyRateCents": 1800, "archived": false,
-                "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
-  "shifts": [ { "id": "...", "userId": "...", "jobId": "...", "clockIn": "...",
-                "clockOut": null, "notes": null,
-                "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
-  "breaks": [ { "id": "...", "shiftId": "...", "start": "...", "end": null,
-                "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
+  "jobs":         [ { "id": "...", "userId": "...", "name": "...", "colorHex": "...",
+                      "archived": false, "overtimeMultiplier": null, "overtimeWeeklyThresholdHours": null,
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "rateTiers":    [ { "id": "...", "jobId": "...", "name": "Standard", "isDefault": true, "archived": false,
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "rateVersions": [ { "id": "...", "tierId": "...", "hourlyRateCents": 1800, "effectiveFrom": "...",
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "shifts":       [ { "id": "...", "userId": "...", "jobId": "...", "rateTierId": null, "clockIn": "...",
+                      "clockOut": null, "notes": null,
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "breaks":       [ { "id": "...", "shiftId": "...", "start": "...", "end": null,
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
 }
 → 400 { "error": {...} }   // malformed `since`
 → 401 { "error": "..." }
@@ -142,10 +161,10 @@ curl -s -X POST http://localhost:3001/auth/register \
 
 TOKEN="<paste the token from above>"
 
-# push a job
+# push a job, its default rate tier, and that tier's rate
 curl -s -X POST http://localhost:3001/sync/push \
   -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
-  -d '{"jobs":[{"id":"11111111-1111-1111-1111-111111111111","name":"Coffee Shop","colorHex":"#2563eb","hourlyRateCents":1800,"archived":false}],"shifts":[],"breaks":[],"deletedJobIds":[],"deletedShiftIds":[],"deletedBreakIds":[]}'
+  -d '{"jobs":[{"id":"11111111-1111-1111-1111-111111111111","name":"Coffee Shop","colorHex":"#2563eb","archived":false}],"rateTiers":[{"id":"22222222-2222-2222-2222-222222222222","jobId":"11111111-1111-1111-1111-111111111111","name":"Standard","isDefault":true}],"rateVersions":[{"id":"33333333-3333-3333-3333-333333333333","tierId":"22222222-2222-2222-2222-222222222222","hourlyRateCents":1800,"effectiveFrom":"2026-09-01T00:00:00.000Z"}],"shifts":[],"breaks":[],"deletedJobIds":[],"deletedRateTierIds":[],"deletedRateVersionIds":[],"deletedShiftIds":[],"deletedBreakIds":[]}'
 
 # pull everything back
 curl -s http://localhost:3001/sync/pull -H "Authorization: Bearer $TOKEN"

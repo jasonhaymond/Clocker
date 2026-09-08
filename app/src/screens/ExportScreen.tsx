@@ -1,11 +1,13 @@
 import { File, Paths } from "expo-file-system";
+import * as MailComposer from "expo-mail-composer";
 import * as Sharing from "expo-sharing";
-import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { listBreaksForShifts, listJobs, listShiftsInRange } from "../db/database";
-import { addDays, formatDuration, startOfDay, startOfMonth, startOfWeek, workedMillis } from "../lib/time";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { listBreaksForShifts, listJobs, listRateTiersForJobs, listRateVersionsForTiers, listShiftsInRange } from "../db/database";
+import { buildCsv, buildEmailHtml, groupShiftsByJob } from "../lib/exportFormat";
+import { addDays, formatDuration, startOfDay, startOfMonth, startOfWeek } from "../lib/time";
 import { useDbRefresh } from "../lib/useDbRefresh";
-import type { Job, Shift } from "../types";
+import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
 
 type RangeKey = "thisWeek" | "lastWeek" | "thisMonth" | "last90";
 
@@ -16,29 +18,31 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: "last90", label: "Last 90 Days" },
 ];
 
-function rangeFor(key: RangeKey): { start: Date; end: Date } {
+function rangeFor(key: RangeKey): { start: Date; end: Date; label: string } {
   const today = new Date();
   switch (key) {
     case "thisWeek": {
       const start = startOfWeek(today);
-      return { start, end: addDays(start, 7) };
+      return { start, end: addDays(start, 7), label: `Week of ${start.toLocaleDateString()}` };
     }
     case "lastWeek": {
       const start = addDays(startOfWeek(today), -7);
-      return { start, end: addDays(start, 7) };
+      return { start, end: addDays(start, 7), label: `Week of ${start.toLocaleDateString()}` };
     }
     case "thisMonth": {
       const start = startOfMonth(today);
       const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-      return { start, end };
+      return { start, end, label: start.toLocaleDateString([], { month: "long", year: "numeric" }) };
     }
-    case "last90":
-      return { start: addDays(startOfDay(today), -90), end: addDays(startOfDay(today), 1) };
+    case "last90": {
+      const start = addDays(startOfDay(today), -90);
+      return { start, end: addDays(startOfDay(today), 1), label: "Last 90 days" };
+    }
   }
 }
 
-function csvEscape(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+function defaultSubject(rangeLabel: string, jobName: string | null): string {
+  return jobName ? `${jobName} Hours — ${rangeLabel}` : `Hours — ${rangeLabel}`;
 }
 
 export function ExportScreen() {
@@ -46,7 +50,17 @@ export function ExportScreen() {
   const [jobId, setJobId] = useState<string | "all">("all");
   const [rangeKey, setRangeKey] = useState<RangeKey>("thisWeek");
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [breaksByShift, setBreaksByShift] = useState<Record<string, { start: string; end: string | null }[]>>({});
+  const [breaksByShift, setBreaksByShift] = useState<Record<string, Break[]>>({});
+  const [tiers, setTiers] = useState<RateTier[]>([]);
+  const [versions, setVersions] = useState<RateVersion[]>([]);
+
+  const [recipients, setRecipients] = useState("");
+  const [subject, setSubject] = useState("");
+  const [subjectEdited, setSubjectEdited] = useState(false);
+  const [includeEarnings, setIncludeEarnings] = useState(true);
+  const [includeComments, setIncludeComments] = useState(true);
+  const [includeTimes, setIncludeTimes] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const load = useCallback(() => {
     listJobs(true).then(setJobs);
@@ -60,56 +74,45 @@ export function ExportScreen() {
       listShiftsInRange(range.start.toISOString(), range.end.toISOString(), jobId === "all" ? undefined : jobId).then(
         async (rows) => {
           setShifts(rows);
-          const breaks = await listBreaksForShifts(rows.map((r) => r.id));
-          const grouped: Record<string, { start: string; end: string | null }[]> = {};
-          for (const b of breaks) (grouped[b.shiftId] ??= []).push({ start: b.start, end: b.end });
+          const jobIds = Array.from(new Set(rows.map((r) => r.jobId)));
+          const [breaks, jobTiers] = await Promise.all([
+            listBreaksForShifts(rows.map((r) => r.id)),
+            listRateTiersForJobs(jobIds),
+          ]);
+          const grouped: Record<string, Break[]> = {};
+          for (const b of breaks) (grouped[b.shiftId] ??= []).push(b);
           setBreaksByShift(grouped);
+          setTiers(jobTiers);
+          setVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
         },
       );
     }, [range, jobId]),
   );
 
   const jobsById = useMemo(() => Object.fromEntries(jobs.map((j) => [j.id, j])), [jobs]);
-  const totalMs = shifts.reduce((sum, s) => sum + workedMillis(s, (breaksByShift[s.id] ?? []) as any), 0);
+  const { groups, payByShiftId } = useMemo(
+    () => groupShiftsByJob({ shifts, jobsById, tiers, versions, breaksByShift }),
+    [shifts, jobsById, tiers, versions, breaksByShift],
+  );
+  const totalHours = groups.reduce((sum, g) => sum + g.totalHours, 0);
+
+  useEffect(() => {
+    if (subjectEdited) return;
+    const jobName = jobId === "all" ? null : jobsById[jobId]?.name ?? null;
+    setSubject(defaultSubject(range.label, jobName));
+  }, [range, jobId, jobsById, subjectEdited]);
 
   async function exportCsv() {
     if (shifts.length === 0) {
       Alert.alert("Nothing to export", "There are no shifts in this range.");
       return;
     }
-
-    const header = ["Job", "Clock In", "Clock Out", "Break (hrs)", "Worked (hrs)", "Rate", "Pay", "Notes"];
-    const rows = [...shifts]
-      .sort((a, b) => (a.clockIn < b.clockIn ? -1 : 1))
-      .map((shift) => {
-        const job = jobsById[shift.jobId];
-        const breaks = (breaksByShift[shift.id] ?? []) as any;
-        const breakHrs = breaks.reduce((sum: number, b: any) => {
-          const end = b.end ? new Date(b.end).getTime() : Date.now();
-          return sum + (end - new Date(b.start).getTime());
-        }, 0) / 3_600_000;
-        const workedHrs = workedMillis(shift, breaks) / 3_600_000;
-        const rate = job?.hourlyRateCents != null ? job.hourlyRateCents / 100 : null;
-        return [
-          job?.name ?? "Deleted job",
-          new Date(shift.clockIn).toLocaleString(),
-          shift.clockOut ? new Date(shift.clockOut).toLocaleString() : "",
-          breakHrs.toFixed(2),
-          workedHrs.toFixed(2),
-          rate != null ? rate.toFixed(2) : "",
-          rate != null ? (rate * workedHrs).toFixed(2) : "",
-          shift.notes ?? "",
-        ];
-      });
-
-    const csv = [header, ...rows].map((cols) => cols.map((c) => csvEscape(String(c))).join(",")).join("\n");
-
     if (Platform.OS === "web") {
       Alert.alert("Not supported", "CSV export is available on iOS and Android. Use the mobile app to export.");
       return;
     }
-
     try {
+      const csv = buildCsv(groups, payByShiftId, breaksByShift);
       const file = new File(Paths.cache, `clocker-export-${Date.now()}.csv`);
       file.create();
       file.write(csv);
@@ -120,6 +123,43 @@ export function ExportScreen() {
       }
     } catch (e: any) {
       Alert.alert("Export failed", e?.message ?? "Unknown error");
+    }
+  }
+
+  async function sendEmail() {
+    if (shifts.length === 0) {
+      Alert.alert("Nothing to export", "There are no shifts in this range.");
+      return;
+    }
+    const recipientList = recipients
+      .split(/[,\s]+/)
+      .map((r) => r.trim())
+      .filter(Boolean);
+
+    setSendingEmail(true);
+    try {
+      const available = await MailComposer.isAvailableAsync();
+      if (!available) {
+        Alert.alert("No email app found", "Set up a Mail app on this device, or use Export CSV instead.");
+        return;
+      }
+      const html = buildEmailHtml({
+        groups,
+        payByShiftId,
+        breaksByShift,
+        rangeLabel: range.label,
+        options: { includeEarnings, includeComments, includeTimes },
+      });
+      await MailComposer.composeAsync({
+        recipients: recipientList,
+        subject,
+        body: html,
+        isHtml: true,
+      });
+    } catch (e: any) {
+      Alert.alert("Couldn't open email draft", e?.message ?? "Unknown error");
+    } finally {
+      setSendingEmail(false);
     }
   }
 
@@ -148,18 +188,56 @@ export function ExportScreen() {
 
       <View style={styles.summary}>
         <Text style={styles.summaryLabel}>{shifts.length} shift{shifts.length === 1 ? "" : "s"}</Text>
-        <Text style={styles.summaryValue}>{formatDuration(totalMs)}</Text>
+        <Text style={styles.summaryValue}>{formatDuration(totalHours * 3_600_000)}</Text>
       </View>
 
       <TouchableOpacity style={styles.exportButton} onPress={exportCsv}>
         <Text style={styles.exportButtonText}>Export CSV</Text>
+      </TouchableOpacity>
+
+      <View style={styles.divider} />
+
+      <Text style={styles.sectionLabel}>Email as a draft</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Email to (comma-separated)"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={recipients}
+        onChangeText={setRecipients}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Subject"
+        value={subject}
+        onChangeText={(v) => {
+          setSubject(v);
+          setSubjectEdited(true);
+        }}
+      />
+
+      <View style={styles.optionRow}>
+        <Text style={styles.optionLabel}>Include earnings</Text>
+        <Switch value={includeEarnings} onValueChange={setIncludeEarnings} />
+      </View>
+      <View style={styles.optionRow}>
+        <Text style={styles.optionLabel}>Include comments</Text>
+        <Switch value={includeComments} onValueChange={setIncludeComments} />
+      </View>
+      <View style={styles.optionRow}>
+        <Text style={styles.optionLabel}>Include start/end times</Text>
+        <Switch value={includeTimes} onValueChange={setIncludeTimes} />
+      </View>
+
+      <TouchableOpacity style={[styles.exportButton, styles.emailButton]} onPress={sendEmail} disabled={sendingEmail}>
+        {sendingEmail ? <ActivityIndicator color="#fff" /> : <Text style={styles.exportButtonText}>Create Email Draft</Text>}
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
+  container: { padding: 20, paddingBottom: 60 },
   sectionLabel: { fontWeight: "600", color: "#444", marginBottom: 8, marginTop: 12 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
@@ -171,4 +249,9 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 32, fontWeight: "700", marginTop: 4 },
   exportButton: { backgroundColor: "#16a34a", borderRadius: 12, padding: 16, alignItems: "center" },
   exportButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  emailButton: { backgroundColor: "#2563eb", marginTop: 16 },
+  divider: { height: 1, backgroundColor: "#eee", marginTop: 32 },
+  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 12, marginBottom: 10, backgroundColor: "#fff" },
+  optionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
+  optionLabel: { fontSize: 15, color: "#333" },
 });

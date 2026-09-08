@@ -8,6 +8,7 @@ web-build/
 *.log
 .env
 .env.local
+.env.prod
 server/.env
 server/dist/
 server/generated/

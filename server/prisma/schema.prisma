@@ -17,37 +17,83 @@ model User {
 }
 
 model Job {
-  id             String    @id @default(uuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name           String
-  colorHex       String    @default("#2563eb")
-  hourlyRateCents Int?
-  archived       Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
-  shifts         Shift[]
+  id                          String     @id @default(uuid())
+  userId                      String
+  user                        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                        String
+  colorHex                    String     @default("#2563eb")
+  archived                    Boolean    @default(false)
+  // Overtime is calculated per ISO week (Mon-Sun) across all of this job's shifts that
+  // week. Null multiplier/threshold means overtime is disabled for this job. See
+  // docs/sync-protocol.md and app/src/lib/pay.ts for the exact allocation rule.
+  overtimeMultiplier          Float?
+  overtimeWeeklyThresholdHours Float?
+  createdAt                   DateTime   @default(now())
+  updatedAt                   DateTime   @updatedAt
+  deletedAt                   DateTime?
+  shifts                      Shift[]
+  rateTiers                   RateTier[]
 
   @@index([userId, updatedAt])
 }
 
+// A named rate under a job (most jobs have exactly one, called "Standard"). Exists so a
+// job can have more than one rate (e.g. "Standard" vs "Holiday") and so a shift can record
+// which one it was worked under.
+model RateTier {
+  id         String        @id @default(uuid())
+  jobId      String
+  job        Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  name       String
+  isDefault  Boolean       @default(false)
+  archived   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+  versions   RateVersion[]
+  shifts     Shift[]
+
+  @@index([jobId, updatedAt])
+}
+
+// A rate tier's value, effective from a point in time. Changing a tier's rate creates a
+// new version rather than editing the old one, so a past shift's pay is always computed
+// from the version that was active when it happened, not whatever the rate is today.
+model RateVersion {
+  id              String    @id @default(uuid())
+  tierId          String
+  tier            RateTier  @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  hourlyRateCents Int
+  effectiveFrom   DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@index([tierId, effectiveFrom])
+}
+
 model Shift {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobId     String
-  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  clockIn   DateTime
-  clockOut  DateTime?
-  notes     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-  breaks    Break[]
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId      String
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  // Which of the job's rate tiers this shift was worked under. Null means "the job's
+  // default tier at export time" rather than freezing in a specific tier id, so a shift
+  // clocked before any tiers existed still resolves sensibly.
+  rateTierId String?
+  rateTier   RateTier?  @relation(fields: [rateTierId], references: [id], onDelete: SetNull)
+  clockIn    DateTime
+  clockOut   DateTime?
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+  breaks     Break[]
 
   @@index([userId, updatedAt])
   @@index([jobId])
+  @@index([rateTierId])
 }
 
 model Break {

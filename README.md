@@ -26,16 +26,18 @@ complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.
 | [Sync Protocol](./docs/sync-protocol.md) | The outbox, conflict resolution, ownership checks |
 | [API Reference](./docs/api-reference.md) | Every endpoint, with a curl smoke test |
 | [Development Guide](./docs/development.md) | Setup/update scripts, env vars, known issues |
-| [Deployment](./docs/deployment.md) | What's needed before this leaves `localhost` |
+| [Deployment](./docs/deployment.md) | Default Caddy + Docker Compose stack, env vars, security gaps to close |
 
 ## Project layout
 
 ```
 app/       Expo app (screens, local DB, sync client, auth)
-server/    Fastify API + Prisma schema/migrations
+server/    Fastify API + Prisma schema/migrations, Dockerfile
 scripts/   setup.mjs / update.mjs — dev environment bootstrap and update
 docs/      Detailed documentation (see table above)
-docker-compose.yml   Local Postgres for development
+docker-compose.yml        Local Postgres for development
+docker-compose.prod.yml   Postgres + server + Caddy for production (see docs/deployment.md)
+Caddyfile                 Reverse proxy config for the production stack
 ```
 
 ## Getting started
@@ -104,12 +106,22 @@ eas update --branch production --message "Describe the change"
 
 ## Features
 
-- Multiple jobs, each with a name, color, and optional hourly rate
-- Clock in / clock out, with a live-updating elapsed timer
+- Multiple jobs, each with a name, color, and one or more named pay rates ("Standard",
+  "Holiday", ...) — see [rate history, tiers, and overtime](./docs/data-model.md#rate-history-tiers-and-overtime)
+- Rate changes are versioned: editing a job's rate today never changes what a past shift
+  is calculated to have paid
+- Optional per-job weekly overtime (a threshold + multiplier), applied automatically when
+  calculating pay
+- Clock in / clock out, with a live-updating elapsed timer; a rate-tier picker appears
+  automatically only for jobs that actually have more than one tier
 - Breaks (start/end), excluded from worked-hours totals
-- History grouped by day, with per-day and per-shift totals
+- Per-shift notes/comments, added or edited from the History screen
+- History grouped by day, with per-day and per-shift totals and computed pay
 - CSV export by date range (this week / last week / this month / last 90 days) and job,
   shared via the OS share sheet (iOS/Android)
+- Export as a clean, formatted HTML email draft (recipients, subject, and
+  earnings/comments/times toggles), opened in your device's mail app for you to review
+  and send — see `app/src/lib/exportFormat.ts`
 - Offline-first: every action works with no network; a manual "Sync Now" plus automatic
   background sync push changes and pull updates from other devices
 - Over-the-air JS updates via `expo-updates` (once `eas update:configure` is run once),
@@ -118,7 +130,11 @@ eas update --branch production --message "Describe the change"
 ## Notes for future work
 
 - Editing a shift's clock-in/clock-out time from the History screen isn't wired up yet
-  (delete + re-create is the current workaround).
-- Export is iOS/Android only for now (`expo-sharing` has no web support).
+  (delete + re-create is the current workaround; notes/comments are editable, though).
+- Export is iOS/Android only for now (`expo-sharing`/`expo-mail-composer` have no web
+  support), and HTML email formatting is "not working perfectly on Android" per
+  `expo-mail-composer`'s own docs — richest on iOS Mail and most desktop clients.
+- Overtime is calculated only over the shifts in whatever date range you export — pass a
+  full calendar week (e.g. "This Week") for an exactly correct weekly overtime total.
 - The JWT has a 180-day expiry and there's no refresh flow — fine for a personal app,
   worth revisiting if this ever gets multi-user.

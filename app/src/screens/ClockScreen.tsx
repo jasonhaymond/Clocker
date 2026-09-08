@@ -1,14 +1,27 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { clockIn, clockOut, endBreak, getJob, getOpenBreak, getOpenShift, listBreaksForShift, listJobs, startBreak } from "../db/database";
+import {
+  clockIn,
+  clockOut,
+  endBreak,
+  getJob,
+  getOpenBreak,
+  getOpenShift,
+  listBreaksForShift,
+  listJobs,
+  listRateTiers,
+  startBreak,
+} from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { formatDuration, workedMillis } from "../lib/time";
 import { synchronize } from "../sync/sync";
-import type { Break, Job, Shift } from "../types";
+import type { Break, Job, RateTier, Shift } from "../types";
 
 export function ClockScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [tiers, setTiers] = useState<RateTier[]>([]);
+  const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [openShift, setOpenShift] = useState<Shift | null>(null);
   const [openShiftJob, setOpenShiftJob] = useState<Job | null>(null);
   const [openBreak, setOpenBreak] = useState<Break | null>(null);
@@ -37,6 +50,18 @@ export function ClockScreen() {
     if (!selectedJobId && jobs.length > 0) setSelectedJobId(jobs[0].id);
   }, [jobs, selectedJobId]);
 
+  useEffect(() => {
+    if (!selectedJobId) {
+      setTiers([]);
+      setSelectedTierId(null);
+      return;
+    }
+    listRateTiers(selectedJobId, false).then((jobTiers) => {
+      setTiers(jobTiers);
+      setSelectedTierId(jobTiers.find((t) => t.isDefault)?.id ?? jobTiers[0]?.id ?? null);
+    });
+  }, [selectedJobId]);
+
   // Re-render every 30s so the elapsed timer stays live while a shift or break is open.
   useEffect(() => {
     if (!openShift) return;
@@ -46,7 +71,10 @@ export function ClockScreen() {
 
   async function handleClockIn() {
     if (!selectedJobId) return;
-    await clockIn(selectedJobId);
+    // Passing null when there's only one tier defers resolution to "the job's default
+    // tier" at pay-calculation time, rather than freezing in a specific tier id.
+    const tierId = tiers.length > 1 ? selectedTierId : null;
+    await clockIn(selectedJobId, tierId);
     synchronize().catch(() => {});
   }
 
@@ -106,6 +134,23 @@ export function ClockScreen() {
         {jobs.length === 0 && <Text style={styles.empty}>Add a job in the Jobs tab first.</Text>}
       </View>
 
+      {tiers.length > 1 && (
+        <>
+          <Text style={styles.label}>Which rate?</Text>
+          <View style={styles.jobPicker}>
+            {tiers.map((tier) => (
+              <TouchableOpacity
+                key={tier.id}
+                style={[styles.tierOption, selectedTierId === tier.id && styles.tierOptionSelected]}
+                onPress={() => setSelectedTierId(tier.id)}
+              >
+                <Text style={[styles.jobOptionText, selectedTierId === tier.id && styles.jobOptionTextSelected]}>{tier.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+
       <TouchableOpacity style={[styles.bigButton, styles.clockInButton]} onPress={handleClockIn} disabled={!selectedJobId}>
         <Text style={styles.bigButtonText}>Clock In</Text>
       </TouchableOpacity>
@@ -125,6 +170,8 @@ const styles = StyleSheet.create({
   jobOption: { borderWidth: 2, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   jobOptionText: { fontWeight: "600" },
   jobOptionTextSelected: { color: "#fff" },
+  tierOption: { borderWidth: 2, borderColor: "#999", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  tierOptionSelected: { backgroundColor: "#111", borderColor: "#111" },
   bigButton: { width: "100%", borderRadius: 14, padding: 20, alignItems: "center", marginTop: 12 },
   bigButtonText: { color: "#fff", fontSize: 18, fontWeight: "700" },
   clockInButton: { backgroundColor: "#16a34a" },

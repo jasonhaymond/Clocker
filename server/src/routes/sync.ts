@@ -3,23 +3,41 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../lib/auth.js";
 
-// Sync protocol: the client keeps a local SQLite mirror of jobs/shifts/breaks and a
-// `lastSyncedAt` cursor. `push` upserts (by client-generated uuid) whatever the client
-// changed since the last sync and soft-deletes whatever it removed. `pull` returns every
-// row (including tombstones) whose `updatedAt` is newer than `since`, which the client
-// then merges into its local mirror. Conflicts resolve last-write-wins on `updatedAt`.
+// Sync protocol: the client keeps a local SQLite mirror of jobs/rateTiers/rateVersions/
+// shifts/breaks and a `lastSyncedAt` cursor. `push` upserts (by client-generated uuid)
+// whatever the client changed since the last sync and soft-deletes whatever it removed.
+// `pull` returns every row (including tombstones) whose `updatedAt` is newer than `since`,
+// which the client then merges into its local mirror. Conflicts resolve last-write-wins
+// on `updatedAt`. See docs/sync-protocol.md for the full writeup.
 
 const jobInput = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   colorHex: z.string(),
-  hourlyRateCents: z.number().int().nullable().optional(),
   archived: z.boolean().optional(),
+  overtimeMultiplier: z.number().positive().nullable().optional(),
+  overtimeWeeklyThresholdHours: z.number().positive().nullable().optional(),
+});
+
+const rateTierInput = z.object({
+  id: z.string().uuid(),
+  jobId: z.string().uuid(),
+  name: z.string().min(1),
+  isDefault: z.boolean().optional(),
+  archived: z.boolean().optional(),
+});
+
+const rateVersionInput = z.object({
+  id: z.string().uuid(),
+  tierId: z.string().uuid(),
+  hourlyRateCents: z.number().int(),
+  effectiveFrom: z.string().datetime(),
 });
 
 const shiftInput = z.object({
   id: z.string().uuid(),
   jobId: z.string().uuid(),
+  rateTierId: z.string().uuid().nullable().optional(),
   clockIn: z.string().datetime(),
   clockOut: z.string().datetime().nullable().optional(),
   notes: z.string().nullable().optional(),
@@ -34,9 +52,13 @@ const breakInput = z.object({
 
 const pushSchema = z.object({
   jobs: z.array(jobInput).default([]),
+  rateTiers: z.array(rateTierInput).default([]),
+  rateVersions: z.array(rateVersionInput).default([]),
   shifts: z.array(shiftInput).default([]),
   breaks: z.array(breakInput).default([]),
   deletedJobIds: z.array(z.string().uuid()).default([]),
+  deletedRateTierIds: z.array(z.string().uuid()).default([]),
+  deletedRateVersionIds: z.array(z.string().uuid()).default([]),
   deletedShiftIds: z.array(z.string().uuid()).default([]),
   deletedBreakIds: z.array(z.string().uuid()).default([]),
 });
@@ -51,11 +73,42 @@ async function upsertOwnedJob(userId: string, data: z.infer<typeof jobInput>) {
   }
 }
 
+async function upsertOwnedRateTier(userId: string, data: z.infer<typeof rateTierInput>) {
+  const { id, jobId, ...fields } = data;
+  const job = await prisma.job.findFirst({ where: { id: jobId, userId } });
+  if (!job) return; // silently drop tiers referencing a job we don't own
+  const updated = await prisma.rateTier.updateMany({ where: { id, job: { userId } }, data: fields });
+  if (updated.count === 0) {
+    await prisma.rateTier.create({ data: { id, jobId, ...fields } });
+  }
+}
+
+async function upsertOwnedRateVersion(userId: string, data: z.infer<typeof rateVersionInput>) {
+  const { id, tierId, hourlyRateCents, effectiveFrom } = data;
+  const tier = await prisma.rateTier.findFirst({ where: { id: tierId, job: { userId } } });
+  if (!tier) return; // silently drop versions referencing a tier we don't own
+  const fields = { tierId, hourlyRateCents, effectiveFrom: new Date(effectiveFrom) };
+  const updated = await prisma.rateVersion.updateMany({ where: { id, tier: { job: { userId } } }, data: fields });
+  if (updated.count === 0) {
+    await prisma.rateVersion.create({ data: { id, ...fields } });
+  }
+}
+
 async function upsertOwnedShift(userId: string, data: z.infer<typeof shiftInput>) {
-  const { id, jobId, clockIn, clockOut, notes } = data;
+  const { id, jobId, rateTierId, clockIn, clockOut, notes } = data;
   const job = await prisma.job.findFirst({ where: { id: jobId, userId } });
   if (!job) return; // silently drop shifts referencing a job we don't own
-  const fields = { jobId, clockIn: new Date(clockIn), clockOut: clockOut ? new Date(clockOut) : null, notes: notes ?? null };
+  if (rateTierId) {
+    const tier = await prisma.rateTier.findFirst({ where: { id: rateTierId, jobId } });
+    if (!tier) return; // silently drop shifts referencing a tier that isn't this job's
+  }
+  const fields = {
+    jobId,
+    rateTierId: rateTierId ?? null,
+    clockIn: new Date(clockIn),
+    clockOut: clockOut ? new Date(clockOut) : null,
+    notes: notes ?? null,
+  };
   const updated = await prisma.shift.updateMany({ where: { id, userId }, data: fields });
   if (updated.count === 0) {
     await prisma.shift.create({ data: { id, userId, ...fields } });
@@ -85,14 +138,41 @@ export async function syncRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
     const userId = request.userId as string;
-    const { jobs, shifts, breaks, deletedJobIds, deletedShiftIds, deletedBreakIds } = parsed.data;
+    const {
+      jobs,
+      rateTiers,
+      rateVersions,
+      shifts,
+      breaks,
+      deletedJobIds,
+      deletedRateTierIds,
+      deletedRateVersionIds,
+      deletedShiftIds,
+      deletedBreakIds,
+    } = parsed.data;
 
+    // Order matters: jobs before tiers before versions before shifts before breaks, so
+    // each upsert's ownership check finds its parent already written this same push.
     for (const job of jobs) await upsertOwnedJob(userId, job);
+    for (const tier of rateTiers) await upsertOwnedRateTier(userId, tier);
+    for (const version of rateVersions) await upsertOwnedRateVersion(userId, version);
     for (const shift of shifts) await upsertOwnedShift(userId, shift);
     for (const brk of breaks) await upsertOwnedBreak(userId, brk);
 
     if (deletedJobIds.length) {
       await prisma.job.updateMany({ where: { id: { in: deletedJobIds }, userId }, data: { deletedAt: new Date() } });
+    }
+    if (deletedRateTierIds.length) {
+      await prisma.rateTier.updateMany({
+        where: { id: { in: deletedRateTierIds }, job: { userId } },
+        data: { deletedAt: new Date() },
+      });
+    }
+    if (deletedRateVersionIds.length) {
+      await prisma.rateVersion.updateMany({
+        where: { id: { in: deletedRateVersionIds }, tier: { job: { userId } } },
+        data: { deletedAt: new Date() },
+      });
     }
     if (deletedShiftIds.length) {
       await prisma.shift.updateMany({ where: { id: { in: deletedShiftIds }, userId }, data: { deletedAt: new Date() } });
@@ -116,12 +196,14 @@ export async function syncRoutes(app: FastifyInstance) {
     const since = query.data.since ? new Date(query.data.since) : new Date(0);
     const serverTimestamp = new Date();
 
-    const [jobs, shifts, breaks] = await Promise.all([
+    const [jobs, rateTiers, rateVersions, shifts, breaks] = await Promise.all([
       prisma.job.findMany({ where: { userId, updatedAt: { gt: since } } }),
+      prisma.rateTier.findMany({ where: { job: { userId }, updatedAt: { gt: since } } }),
+      prisma.rateVersion.findMany({ where: { tier: { job: { userId } }, updatedAt: { gt: since } } }),
       prisma.shift.findMany({ where: { userId, updatedAt: { gt: since } } }),
       prisma.break.findMany({ where: { shift: { userId }, updatedAt: { gt: since } } }),
     ]);
 
-    return reply.send({ serverTimestamp: serverTimestamp.toISOString(), jobs, shifts, breaks });
+    return reply.send({ serverTimestamp: serverTimestamp.toISOString(), jobs, rateTiers, rateVersions, shifts, breaks });
   });
 }

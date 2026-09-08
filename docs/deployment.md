@@ -7,12 +7,51 @@ existing pipeline.
 ## Server
 
 The server is a stateless Fastify process (`server/src/index.ts`) plus a Postgres
-database — deploy it anywhere that runs a Node process and gives you a Postgres instance:
-a single VPS with Docker Compose (extending the existing `docker-compose.yml` with the
-server itself), or a platform-as-a-service (Fly.io, Railway, Render) with a managed
-Postgres add-on. None of the code assumes a specific host.
+database — deploy it anywhere that runs a Node process and gives you a Postgres instance.
+None of the code assumes a specific host; two paths are documented below, but a
+platform-as-a-service (Fly.io, Railway, Render) with a managed Postgres add-on works too.
 
-### Build & run
+### Reverse proxy: Caddy (default)
+
+The repo ships a complete, ready-to-run production stack: Postgres + the Fastify server +
+[Caddy](https://caddyserver.com) as a reverse proxy in front of it. Caddy's whole reason
+for being here is that it gets you HTTPS with **zero manual certificate work** — point a
+domain at your server and it obtains and renews a Let's Encrypt certificate automatically.
+
+Files involved:
+
+- **`Caddyfile`** — the proxy config. One real line: forward everything to the `server`
+  container on port 3001. The hostname comes from the `DOMAIN` environment variable.
+- **`server/Dockerfile`** — multi-stage build (installs, `prisma generate`, `tsc`), and
+  runs `prisma migrate deploy` before starting on every container start (idempotent — a
+  no-op once the database is current, so restarts never re-run migrations destructively).
+- **`docker-compose.prod.yml`** — wires up all three containers: Postgres (no host port
+  published — only the `server` container can reach it), `server` (built from the
+  Dockerfile), and `caddy` (the only container exposed, on 80/443).
+- **`.env.prod.example`** — copy to `.env.prod` and fill in `POSTGRES_PASSWORD`,
+  `JWT_SECRET`, and `DOMAIN`.
+
+```bash
+cp .env.prod.example .env.prod   # fill in POSTGRES_PASSWORD, JWT_SECRET, DOMAIN
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+Before running this: point your domain's DNS A/AAAA record at the server's public IP, and
+make sure ports 80 and 443 are open to the internet (Caddy needs port 80 for the ACME
+HTTP-01 challenge, even though the app is only ever served over HTTPS). Point the app at
+it via `EXPO_PUBLIC_API_URL=https://your-domain`.
+
+`DOMAIN` defaults to `localhost` if you leave `.env.prod`'s value empty and just want to
+smoke-test the compose stack locally first — Caddy then serves over HTTPS using its own
+internal (self-signed, not Let's Encrypt) CA, which your phone/browser won't trust by
+default, but confirms the containers wire up correctly before pointing a real domain at
+them.
+
+### Build & run without Docker
+
+If you'd rather run the server directly (e.g. on a platform-as-a-service that builds Node
+apps for you), skip the Dockerfile/Caddy stack and put your own TLS termination in front
+(the platform's load balancer, typically) instead:
 
 ```bash
 npm --workspace=server run build   # tsc -> server/dist
@@ -28,15 +67,23 @@ authoring schema changes, is not safe to run unattended).
 ### Required environment variables
 
 Set these for real — see [`development.md`](./development.md#environment-variables) for
-what they're for; the concern here is specifically *not* using the local-dev defaults:
+what they're for; the concern here is specifically *not* using the local-dev defaults.
+Using the Caddy/Docker Compose path above, these go in `.env.prod`; running the server
+directly, set them however your host expects (platform env vars, a secret manager, etc).
 
-- **`DATABASE_URL`** — your production Postgres, not the Docker Compose one.
+- **`DATABASE_URL`** (direct-run path only — the Compose stack builds this for you from
+  `POSTGRES_PASSWORD`) — your production Postgres, not the local dev one.
+- **`POSTGRES_PASSWORD`** (Compose path only) — a strong password for the production
+  Postgres container.
 - **`JWT_SECRET`** — a long random value that is **not** the one `npm run setup` generated
   on your laptop. Treat it like any other credential (secret manager / platform env vars,
   never committed). Rotating it invalidates every currently-issued token — every signed-in
   device would need to sign in again.
-- **`PORT`** — the code falls back to `3000` if unset (`server/src/index.ts`); set it
-  explicitly so it matches whatever your host expects.
+- **`PORT`** (direct-run path only) — the code falls back to `3000` if unset
+  (`server/src/index.ts`); set it explicitly so it matches whatever your host expects. The
+  Compose stack always sets this to `3001` for you.
+- **`DOMAIN`** (Compose path only) — your server's real hostname, so Caddy knows what to
+  request a certificate for.
 
 ### Before this is reachable from outside your machine
 
@@ -49,12 +96,13 @@ trusted host" and does **not** currently have:
   (`server/src/index.ts`) if a web client is ever added.
 - **Rate limiting** on `/auth/login` or `/auth/register` — nothing currently prevents a
   brute-force credential-stuffing attempt against those endpoints.
-- **HTTPS termination** — Fastify listens on plain HTTP; put it behind a reverse proxy or
-  platform load balancer that terminates TLS before this goes anywhere untrusted (a JWT
-  sent over plain HTTP is trivially interceptable).
 - **A refresh-token flow** — tokens are long-lived (180 days, see
   [`api-reference.md`](./api-reference.md#authentication)) with no revocation mechanism
   short of rotating `JWT_SECRET` (which logs out every device at once, not just one).
+
+HTTPS termination itself **is** handled by default if you use the Caddy stack above; it's
+only a gap if you run the server directly and skip putting anything in front of it (Fastify
+itself listens on plain HTTP — a JWT sent over that is trivially interceptable).
 
 None of this matters for local development against `localhost`/your own LAN — it starts
 mattering the moment the server is reachable from the open internet.

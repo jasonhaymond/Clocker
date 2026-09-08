@@ -56,6 +56,29 @@ last-write-wins is an acceptable trade for the simplicity of not needing operati
 transforms or CRDTs. See [`sync-protocol.md`](./sync-protocol.md#conflict-resolution) for
 exactly how "last write" is determined.
 
+## Why rate is versioned history, not a flat number on Job
+
+Early on, `Job.hourlyRateCents` was a single flat field. It was replaced with `RateTier` +
+`RateVersion` (see [`data-model.md`](./data-model.md#rate-history-tiers-and-overtime)) for
+three reasons that turned out to be one underlying requirement: **a rate change today must
+never retroactively change what a past shift is calculated to have paid.**
+
+- A flat field can't represent "this job pays differently for holiday hours" without
+  either a second `Job` row (duplicating the job in every list/picker) or an ad-hoc
+  encoding — `RateTier` gives that a real, named place to live.
+- A flat field edited in place loses the old value the moment you change it — there's no
+  way to answer "what did this shift actually pay, per the rate at the time" after a
+  raise. `RateVersion.effectiveFrom` keeps every value that was ever active and when.
+- Overtime (`Job.overtimeMultiplier` / `overtimeWeeklyThresholdHours`) reads the resolved
+  rate the same way regular hours do — it's a multiplier applied at calculation time
+  (`app/src/lib/pay.ts`), not a separate stored rate, so it inherits rate history for free.
+
+The cost is real: a job's pay now requires a join (job → tier → version) instead of a
+column read, and the Clock screen has to ask which tier a shift is worked under whenever a
+job has more than one. That's judged worth it because the alternative — a number that
+silently redefines history when you change it — is the kind of bug a personal finance/pay
+app can't afford to have.
+
 ## Why a custom Fastify server instead of a BaaS
 
 This was a deliberate choice (over Supabase/Firebase) to keep the whole stack — client,

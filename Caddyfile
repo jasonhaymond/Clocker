@@ -1,0 +1,19 @@
+{
+	# Uncomment to get ACME certificate/renewal logs while first setting this up:
+	# debug
+}
+
+# Set DOMAIN to your real hostname in .env.prod before deploying (see docs/deployment.md).
+# Defaults to localhost so `docker compose -f docker-compose.prod.yml up` also works
+# untouched for a quick local smoke test (Caddy uses its internal CA for localhost,
+# not a real Let's Encrypt certificate).
+{$DOMAIN:localhost} {
+	reverse_proxy server:3001
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}
