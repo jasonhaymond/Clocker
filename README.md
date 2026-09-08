@@ -14,8 +14,19 @@ small Fastify + PostgreSQL server for cross-device sync.
   (on launch, every 5 minutes, on app foreground, and after local edits).
 - **Sync** (`app/src/sync/sync.ts`): push whatever's in the outbox, then pull anything
   newer than the last-seen server timestamp and merge it into the local mirror. Conflicts
-  resolve last-write-wins by `updatedAt`. See the comment at the top of
-  `server/src/routes/sync.ts` for the full protocol.
+  resolve last-write-wins by `updatedAt`.
+
+For the full picture — why it's built this way, the exact data model on both sides, the
+complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.md)**:
+
+| | |
+|---|---|
+| [Architecture](./docs/architecture.md) | Design principles and the reasoning behind them |
+| [Data Model](./docs/data-model.md) | Every table/field, Postgres and SQLite |
+| [Sync Protocol](./docs/sync-protocol.md) | The outbox, conflict resolution, ownership checks |
+| [API Reference](./docs/api-reference.md) | Every endpoint, with a curl smoke test |
+| [Development Guide](./docs/development.md) | Setup/update scripts, env vars, known issues |
+| [Deployment](./docs/deployment.md) | What's needed before this leaves `localhost` |
 
 ## Project layout
 
@@ -23,6 +34,7 @@ small Fastify + PostgreSQL server for cross-device sync.
 app/       Expo app (screens, local DB, sync client, auth)
 server/    Fastify API + Prisma schema/migrations
 scripts/   setup.mjs / update.mjs — dev environment bootstrap and update
+docs/      Detailed documentation (see table above)
 docker-compose.yml   Local Postgres for development
 ```
 
