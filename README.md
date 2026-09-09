@@ -144,11 +144,17 @@ eas update --branch production --message "Describe the change"
   and send — see `app/src/lib/exportFormat.ts`. Uses `expo-mail-composer`, which opens
   whatever mail app is set as the device's default (Gmail, Outlook, iOS Mail, ...) — it's
   not tied to any one provider.
-- **Timesheets tab**: shifts grouped by recurring pay period (weekly/biweekly/monthly,
-  configurable) and by job, with per-entry notes shown when enabled. A "Submit Timesheet"
-  button emails the current period to one or more saved **Managers** (name + email,
-  managed from the tab's settings) as CSV, formatted plain text, or both — independent of
-  the Export tab's own CSV/HTML-draft flow, which is unchanged.
+- **Timesheets tab**: pick a job, then see its shifts grouped into that job's own
+  recurring pay period (weekly/biweekly/monthly — each job configures its own period,
+  format, and recipients independently, from that job's settings), with per-entry notes
+  shown when enabled. A "Submit Timesheet" button emails the current period to that job's
+  assigned **Managers** (a global name+email address book, assigned per job) as CSV,
+  formatted plain text, or both — independent of the Export tab's own CSV/HTML-draft flow,
+  which is unchanged.
+- **Optional per-job time entry rounding**: round each shift's clock-in/out to the
+  nearest 5/10/15/20/30/60/120 minutes (up, down, or nearest) before computing hours and
+  pay — like a physical timeclock. The actual recorded punch times are never changed,
+  only what's used for History totals, Export, and Timesheets.
 - Offline-first: every action works with no network; a manual "Sync Now" plus automatic
   background sync push changes and pull updates from other devices
 - Over-the-air JS updates via `expo-updates` (once `eas update:configure` is run once),

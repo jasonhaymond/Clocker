@@ -100,9 +100,38 @@ CREATE TABLE IF NOT EXISTS managers (
 );
 `;
 
-export const SCHEMA_VERSION = 3;
+// Version 4 — per-job timesheet period + submission settings, per-job time entry
+// rounding, and the job<->manager assignment (which managers a job's timesheets get
+// submitted to). '2026-01-05' is an arbitrary Monday, just so existing jobs get a
+// deterministic biweekly anchor rather than an untested edge case; a job that actually
+// uses biweekly periods can change it from the Timesheet Settings modal.
+const V4_JOB_TIMESHEET_SQL = `
+ALTER TABLE jobs ADD COLUMN timesheet_period_type TEXT NOT NULL DEFAULT 'weekly';
+ALTER TABLE jobs ADD COLUMN timesheet_week_start_day INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jobs ADD COLUMN timesheet_biweekly_anchor TEXT NOT NULL DEFAULT '2026-01-05T00:00:00.000Z';
+ALTER TABLE jobs ADD COLUMN timesheet_monthly_start_day INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jobs ADD COLUMN timesheet_format TEXT NOT NULL DEFAULT 'both';
+ALTER TABLE jobs ADD COLUMN timesheet_include_earnings INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jobs ADD COLUMN timesheet_include_notes INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jobs ADD COLUMN timesheet_include_times INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jobs ADD COLUMN rounding_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN rounding_mode TEXT NOT NULL DEFAULT 'nearest';
+ALTER TABLE jobs ADD COLUMN rounding_increment_minutes INTEGER NOT NULL DEFAULT 15;
+
+CREATE TABLE IF NOT EXISTS job_managers (
+  id TEXT PRIMARY KEY NOT NULL,
+  job_id TEXT NOT NULL,
+  manager_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_managers_job_id ON job_managers (job_id);
+`;
+
+export const SCHEMA_VERSION = 4;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
 // EXISTS), index 1 is version 2, and so on.
-export const MIGRATIONS: string[] = [BASELINE_SQL, V2_RATE_TIERS_SQL, V3_MANAGERS_SQL];
+export const MIGRATIONS: string[] = [BASELINE_SQL, V2_RATE_TIERS_SQL, V3_MANAGERS_SQL, V4_JOB_TIMESHEET_SQL];

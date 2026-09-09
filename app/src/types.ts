@@ -1,3 +1,7 @@
+export type TimesheetPeriodType = "weekly" | "biweekly" | "monthly";
+export type TimesheetExportFormat = "csv" | "text" | "both";
+export type RoundingMode = "up" | "down" | "nearest";
+
 export interface Job {
   id: string;
   name: string;
@@ -7,6 +11,21 @@ export interface Job {
   // week. Null multiplier/threshold means overtime is disabled for this job.
   overtimeMultiplier: number | null;
   overtimeWeeklyThresholdHours: number | null;
+  // Timesheet tab settings — each job has its own recurring pay period and submission
+  // preferences, since different jobs can pay on different schedules and report to
+  // different people. See app/src/lib/timesheetPeriods.ts.
+  timesheetPeriodType: TimesheetPeriodType;
+  timesheetWeekStartDay: number; // 0=Sun..6=Sat
+  timesheetBiweeklyAnchor: string;
+  timesheetMonthlyStartDay: number; // 1-28
+  timesheetFormat: TimesheetExportFormat;
+  timesheetIncludeEarnings: boolean;
+  timesheetIncludeNotes: boolean;
+  timesheetIncludeTimes: boolean;
+  // Time entry rounding — optional, per job. See app/src/lib/rounding.ts.
+  roundingEnabled: boolean;
+  roundingMode: RoundingMode;
+  roundingIncrementMinutes: number;
   updatedAt: string;
   deletedAt: string | null;
 }
@@ -68,5 +87,16 @@ export interface Manager {
   deletedAt: string | null;
 }
 
-export type EntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager";
+// Assigns a Manager as a timesheet-submission recipient for a specific job. A plain join
+// row — a manager can receive timesheets for several jobs, and a job can submit to
+// several managers.
+export interface JobManager {
+  id: string;
+  jobId: string;
+  managerId: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export type EntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager" | "jobManager";
 export type PendingOp = "upsert" | "delete";

@@ -29,6 +29,7 @@ model Manager {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  jobManagers JobManager[]
 
   @@index([userId, updatedAt])
 }
@@ -45,13 +46,49 @@ model Job {
   // docs/sync-protocol.md and app/src/lib/pay.ts for the exact allocation rule.
   overtimeMultiplier          Float?
   overtimeWeeklyThresholdHours Float?
+  // Timesheet tab settings — each job has its own recurring pay period and its own
+  // submission preferences, since different jobs can legitimately pay on different
+  // schedules and report to different people. See app/src/lib/timesheetPeriods.ts.
+  timesheetPeriodType         String     @default("weekly") // "weekly" | "biweekly" | "monthly"
+  timesheetWeekStartDay       Int        @default(1) // 0=Sun..6=Sat
+  timesheetBiweeklyAnchor     DateTime   @default(now())
+  timesheetMonthlyStartDay    Int        @default(1) // 1-28
+  timesheetFormat             String     @default("both") // "csv" | "text" | "both"
+  timesheetIncludeEarnings    Boolean    @default(true)
+  timesheetIncludeNotes       Boolean    @default(true)
+  timesheetIncludeTimes       Boolean    @default(true)
+  // Time entry rounding — optional, per job. Rounds each shift's clock-in/out to the
+  // nearest increment before computing worked hours/pay (like a physical timeclock);
+  // the stored punch times themselves are never altered. See app/src/lib/rounding.ts.
+  roundingEnabled              Boolean    @default(false)
+  roundingMode                 String     @default("nearest") // "up" | "down" | "nearest"
+  roundingIncrementMinutes     Int        @default(15)
   createdAt                   DateTime   @default(now())
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?
   shifts                      Shift[]
   rateTiers                   RateTier[]
+  jobManagers                 JobManager[]
 
   @@index([userId, updatedAt])
+}
+
+// Assigns a Manager as a submission recipient for a specific job's timesheets. A plain
+// join row (no extra fields of its own) rather than a field on either side, since it's a
+// many-to-many: one manager can receive timesheets for several jobs, and a job can submit
+// to several managers.
+model JobManager {
+  id        String    @id @default(uuid())
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  managerId String
+  manager   Manager   @relation(fields: [managerId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([jobId, updatedAt])
+  @@index([managerId])
 }
 
 // A named rate under a job (most jobs have exactly one, called "Standard"). Exists so a

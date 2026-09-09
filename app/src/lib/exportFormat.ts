@@ -1,5 +1,6 @@
 import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
 import { calculateShiftPay, formatCents, type ShiftPay } from "./pay";
+import { roundedWorkedMillis } from "./rounding";
 import { breakMillis, formatClock, formatDay, workedMillis } from "./time";
 
 export interface ExportJobGroup {
@@ -44,7 +45,7 @@ export function groupShiftsByJob(params: {
       const jobVersions = versions.filter((v) => tierIds.has(v.tierId));
       const shiftsWithHours = sorted.map((shift) => ({
         shift,
-        workedHours: workedMillis(shift, breaksByShift[shift.id] ?? []) / 3_600_000,
+        workedHours: roundedWorkedMillis(shift, breaksByShift[shift.id] ?? [], job) / 3_600_000,
       }));
       for (const pay of calculateShiftPay({ job, tiers: jobTiers, versions: jobVersions, shiftsWithHours })) {
         payByShiftId.set(pay.shiftId, pay);
@@ -125,8 +126,11 @@ export function buildEmailHtml(params: {
       const rows = group.shifts
         .map((shift) => {
           const breaks = breaksByShift[shift.id] ?? [];
-          const hours = workedMillis(shift, breaks) / 3_600_000;
           const pay = payByShiftId.get(shift.id);
+          // Prefer the pay map's hours (already rounded per the job's rounding settings,
+          // see groupShiftsByJob) over recomputing from the raw punch times, so a rounded
+          // hours figure and its corresponding pay always agree on this row.
+          const hours = pay ? pay.regularHours + pay.overtimeHours : workedMillis(shift, breaks) / 3_600_000;
           const cells = [
             `<td ${td}>${formatDay(shift.clockIn)}</td>`,
             options.includeTimes ? `<td ${td}>${formatClock(shift.clockIn)}</td>` : "",
@@ -202,8 +206,8 @@ export function buildPlainText(params: {
     lines.push("-".repeat((group.job?.name ?? "Deleted job").length));
     for (const shift of group.shifts) {
       const breaks = breaksByShift[shift.id] ?? [];
-      const hours = workedMillis(shift, breaks) / 3_600_000;
       const pay = payByShiftId.get(shift.id);
+      const hours = pay ? pay.regularHours + pay.overtimeHours : workedMillis(shift, breaks) / 3_600_000;
       const parts = [formatDay(shift.clockIn)];
       if (options.includeTimes) {
         parts.push(`${formatClock(shift.clockIn)} - ${shift.clockOut ? formatClock(shift.clockOut) : "in progress"}`);

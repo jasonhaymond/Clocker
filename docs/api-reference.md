@@ -65,8 +65,14 @@ are client-generated UUIDs (see [`data-model.md`](./data-model.md)).
 {
   "jobs": [
     { "id": "<uuid>", "name": "Coffee Shop", "colorHex": "#2563eb", "archived": false,
-      "overtimeMultiplier": 1.5, "overtimeWeeklyThresholdHours": 40 }
-      // archived/overtimeMultiplier/overtimeWeeklyThresholdHours all optional
+      "overtimeMultiplier": 1.5, "overtimeWeeklyThresholdHours": 40,
+      "timesheetPeriodType": "biweekly", "timesheetWeekStartDay": 1,
+      "timesheetBiweeklyAnchor": "2026-01-05T00:00:00.000Z", "timesheetMonthlyStartDay": 1,
+      "timesheetFormat": "both", "timesheetIncludeEarnings": true, "timesheetIncludeNotes": true,
+      "timesheetIncludeTimes": true, "roundingEnabled": true, "roundingMode": "nearest",
+      "roundingIncrementMinutes": 15 }
+      // every field except id/name/colorHex is optional — omitted fields keep their
+      // current value on update, or the column's default on create
   ],
   "rateTiers": [
     { "id": "<uuid>", "jobId": "<uuid>", "name": "Standard",
@@ -89,12 +95,17 @@ are client-generated UUIDs (see [`data-model.md`](./data-model.md)).
     { "id": "<uuid>", "name": "Jane Manager", "email": "jane@example.com", "archived": false }
       // archived optional
   ],
+  "jobManagers": [
+    { "id": "<uuid>", "jobId": "<uuid>", "managerId": "<uuid>" }
+      // assigns this manager as a submission recipient for this job's timesheets
+  ],
   "deletedJobIds": ["<uuid>"],
   "deletedRateTierIds": ["<uuid>"],
   "deletedRateVersionIds": ["<uuid>"],
   "deletedShiftIds": ["<uuid>"],
   "deletedBreakIds": ["<uuid>"],
-  "deletedManagerIds": ["<uuid>"]
+  "deletedManagerIds": ["<uuid>"],
+  "deletedJobManagerIds": ["<uuid>"]
 }
 ```
 
@@ -105,12 +116,14 @@ This endpoint **upserts by id** (create if the id doesn't already belong to this
 otherwise update) and never trusts a client-supplied `updatedAt`/`deletedAt` — the server
 sets `updatedAt` itself on every write, and the `deleted*Ids` arrays are the only way
 to soft-delete a row (setting its `deletedAt`). A reference that doesn't resolve to a row
-owned by the caller (a job's tier, a tier's job, a shift's job or tier, a break's shift) is
-silently dropped rather than erroring (see
+owned by the caller (a job's tier, a tier's job, a shift's job or tier, a break's shift, a
+job-manager assignment's job or manager) is silently dropped rather than erroring (see
 [ownership checks](./sync-protocol.md#ownership-checks)) — a push is never rejected
 outright for one bad reference among many valid ones. The upsert arrays are also
-**applied in the order shown above** (`managers` has no parent, so its position doesn't
-matter) — see [why ordering matters](./sync-protocol.md#push) in the sync protocol doc.
+**applied in the order shown above** (`managers` has no parent so its position relative to
+jobs doesn't matter, but `jobManagers` depends on both a job and a manager and so is
+pushed last) — see [why ordering matters](./sync-protocol.md#push) in the sync protocol
+doc.
 
 ```json
 → 200 { "serverTimestamp": "2026-09-07T23:52:47.097Z" }
@@ -136,6 +149,11 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
   "serverTimestamp": "2026-09-07T23:52:47.366Z",
   "jobs":         [ { "id": "...", "userId": "...", "name": "...", "colorHex": "...",
                       "archived": false, "overtimeMultiplier": null, "overtimeWeeklyThresholdHours": null,
+                      "timesheetPeriodType": "weekly", "timesheetWeekStartDay": 1,
+                      "timesheetBiweeklyAnchor": "...", "timesheetMonthlyStartDay": 1,
+                      "timesheetFormat": "both", "timesheetIncludeEarnings": true,
+                      "timesheetIncludeNotes": true, "timesheetIncludeTimes": true,
+                      "roundingEnabled": false, "roundingMode": "nearest", "roundingIncrementMinutes": 15,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
   "rateTiers":    [ { "id": "...", "jobId": "...", "name": "Standard", "isDefault": true, "archived": false,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
@@ -147,7 +165,9 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
   "breaks":       [ { "id": "...", "shiftId": "...", "start": "...", "end": null,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
   "managers":     [ { "id": "...", "userId": "...", "name": "Jane Manager", "email": "jane@example.com",
-                      "archived": false, "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
+                      "archived": false, "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "jobManagers":  [ { "id": "...", "jobId": "...", "managerId": "...",
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
 }
 → 400 { "error": {...} }   // malformed `since`
 → 401 { "error": "..." }

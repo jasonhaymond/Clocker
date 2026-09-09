@@ -1,3 +1,4 @@
+import type { Job } from "../types";
 import { addDays, startOfDay } from "./time";
 
 export type PeriodType = "weekly" | "biweekly" | "monthly";
@@ -71,9 +72,13 @@ export function shiftPeriod(period: Period, settings: PeriodSettings, offset: nu
   return periodContaining(probeDate, settings);
 }
 
-export const DEFAULT_PERIOD_SETTINGS: PeriodSettings = {
-  periodType: "weekly",
-  weekStartDay: 1, // Monday, matching lib/time.ts's startOfWeek
-  biweeklyAnchor: new Date().toISOString(),
-  monthlyStartDay: 1,
-};
+// Each job carries its own period definition (see docs/data-model.md's "Timesheet
+// periods" section) — this just narrows a Job down to the fields periodContaining needs.
+export function jobPeriodSettings(job: Job): PeriodSettings {
+  return {
+    periodType: job.timesheetPeriodType,
+    weekStartDay: job.timesheetWeekStartDay,
+    biweeklyAnchor: job.timesheetBiweeklyAnchor,
+    monthlyStartDay: job.timesheetMonthlyStartDay,
+  };
+}

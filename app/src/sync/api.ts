@@ -1,5 +1,5 @@
 import { getToken } from "../auth/tokenStore";
-import type { Break, Job, Manager, RateTier, RateVersion, Shift } from "../types";
+import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } from "../types";
 
 // Points at your Fastify server. Set EXPO_PUBLIC_API_URL in app/.env (copy from
 // app/.env.example) for a persistent override, or inline per-command — Android emulator
@@ -48,12 +48,14 @@ export interface PushPayload {
   shifts: Shift[];
   breaks: Break[];
   managers: Manager[];
+  jobManagers: JobManager[];
   deletedJobIds: string[];
   deletedRateTierIds: string[];
   deletedRateVersionIds: string[];
   deletedShiftIds: string[];
   deletedBreakIds: string[];
   deletedManagerIds: string[];
+  deletedJobManagerIds: string[];
 }
 
 export function pushChanges(payload: PushPayload) {
@@ -68,6 +70,7 @@ export interface PullResponse {
   shifts: Shift[];
   breaks: Break[];
   managers: Manager[];
+  jobManagers: JobManager[];
 }
 
 export function pullChanges(since: string | null) {

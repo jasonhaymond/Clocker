@@ -10,9 +10,11 @@ and writes). They're kept in sync by the protocol in
 ```
 User 1──* Job 1──* RateTier 1──* RateVersion
    │          │
-   │          └──* Shift ──> RateTier (optional)
-   │                │
-   │                └──* Break
+   │          ├──* Shift ──> RateTier (optional)
+   │          │      │
+   │          │      └──* Break
+   │          │
+   │          └──* JobManager ──> Manager
    │
    └──* Manager
 ```
@@ -21,7 +23,10 @@ User 1──* Job 1──* RateTier 1──* RateVersion
   copy, just the JWT (see [`api-reference.md`](./api-reference.md#authentication)).
 - **Job** — something you clock time against: a name, a display color, an archived flag
   (archived jobs disappear from the Clock screen's picker but stay visible/editable in
-  Jobs and still show up in History/Export), and optional weekly overtime settings.
+  Jobs and still show up in History/Export), optional weekly overtime settings, optional
+  time-entry rounding, and its own Timesheets-tab period/submission settings — see
+  [Timesheet periods, submission settings, and rounding](#timesheet-periods-submission-settings-and-rounding-per-job)
+  below.
 - **RateTier** — a named rate under a job (most jobs have exactly one, called "Standard",
   created automatically with the job). Lets a job have more than one rate — e.g.
   "Standard" vs "Holiday" — and lets a shift record which one it was worked under.
@@ -41,9 +46,12 @@ User 1──* Job 1──* RateTier 1──* RateVersion
 - **Break** — one pause within a shift. `end` is `null` while the break is open. Break time
   is subtracted from a shift's worked-hours total (`app/src/lib/time.ts`'s `workedMillis`).
 - **Manager** — a saved recipient (name + email) for the Timesheets tab's "Submit
-  Timesheet" flow, configured from the Timesheet Settings modal. Independent of every
-  other entity (no foreign keys into it) — it's just an address book entry a user picks
-  from when submitting a timesheet, not something a shift/job ever references.
+  Timesheet" flow: a global address book entry, managed from any job's settings
+  (`JobDetailModal`'s "Submit to" section) but not itself tied to one job.
+- **JobManager** — a plain join row assigning a `Manager` as a submission recipient for one
+  specific `Job`'s timesheets. A manager can be assigned to several jobs, and a job can
+  submit to several managers; this table is the only place that relationship is recorded
+  (no fields of its own beyond the two ids).
 
 ## Rate history, tiers, and overtime
 
@@ -66,6 +74,35 @@ the `Job` row.
   is computed only over whatever shifts you hand it (e.g. the shifts in an export's date
   range), so for an exact weekly overtime total, pass a full calendar week.
 
+## Timesheet periods, submission settings, and rounding (per job)
+
+Every job carries its own Timesheets-tab configuration directly as fields on the `Job` row
+— unlike `promptForNotesOnClockOut` (a genuine device-only preference), this is real job
+data other devices need to see the same way, so it's synced like everything else on `Job`
+rather than living in `app/src/lib/preferences.ts`/AsyncStorage. Different jobs can
+legitimately pay on different schedules and report to different people, which is why this
+is per-job rather than one app-wide setting.
+
+- **Period definition** — `timesheetPeriodType` (`"weekly"` | `"biweekly"` | `"monthly"`),
+  `timesheetWeekStartDay` (0=Sun..6=Sat, used by weekly/biweekly), `timesheetBiweeklyAnchor`
+  (a known period-start date, fixing which week of a pair is "week one"), and
+  `timesheetMonthlyStartDay` (1-28). `app/src/lib/timesheetPeriods.ts`'s
+  `periodContaining`/`shiftPeriod` compute period boundaries from these (via
+  `jobPeriodSettings(job)`, which just narrows a `Job` down to the fields they need).
+- **Submission settings** — `timesheetFormat` (`"csv"` | `"text"` | `"both"`) and the
+  `timesheetIncludeEarnings`/`timesheetIncludeNotes`/`timesheetIncludeTimes` toggles control
+  what the Timesheets tab's "Submit Timesheet" button emails to the job's assigned
+  managers (via `JobManager`). All configured from `JobDetailModal`.
+- **Time entry rounding** — `roundingEnabled`, `roundingMode` (`"up"` | `"down"` |
+  `"nearest"`), and `roundingIncrementMinutes` (5/10/15/20/30/60/120). When enabled,
+  `app/src/lib/rounding.ts`'s `roundedWorkedMillis` rounds a *closed* shift's clock-in and
+  clock-out to the nearest increment before computing worked time — the same way a
+  physical timeclock rounds punches. The shift's stored `clockIn`/`clockOut` are never
+  altered; rounding only affects computed hours/pay, applied consistently everywhere
+  hours are calculated (`groupShiftsByJob` in `exportFormat.ts`, used by both the Export
+  and Timesheets tabs, and `HistoryScreen`'s own pay/duration calculations). A still-open
+  shift is never rounded. Breaks are never rounded, only the shift's own start/end.
+
 ## Server schema (PostgreSQL / Prisma)
 
 Source of truth: [`server/prisma/schema.prisma`](../server/prisma/schema.prisma). Migration
@@ -86,6 +123,15 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `archived` | `Boolean` | default `false` |
 | | `overtimeMultiplier` | `Float?` | e.g. `1.5`; `null` disables overtime for this job |
 | | `overtimeWeeklyThresholdHours` | `Float?` | e.g. `40`; `null` disables overtime for this job |
+| | `timesheetPeriodType` | `String` | `"weekly"` (default) \| `"biweekly"` \| `"monthly"` |
+| | `timesheetWeekStartDay` | `Int` | default `1` (Monday); 0=Sun..6=Sat |
+| | `timesheetBiweeklyAnchor` | `DateTime` | default now (at job creation); only meaningful when biweekly |
+| | `timesheetMonthlyStartDay` | `Int` | default `1`; 1-28 |
+| | `timesheetFormat` | `String` | `"csv"` \| `"text"` \| `"both"` (default) |
+| | `timesheetIncludeEarnings` / `timesheetIncludeNotes` / `timesheetIncludeTimes` | `Boolean` | all default `true` |
+| | `roundingEnabled` | `Boolean` | default `false` |
+| | `roundingMode` | `String` | `"up"` \| `"down"` \| `"nearest"` (default) |
+| | `roundingIncrementMinutes` | `Int` | default `15`; one of 5/10/15/20/30/60/120 |
 | | `createdAt` / `updatedAt` | `DateTime` | `updatedAt` is Prisma's `@updatedAt` — server-set on every write, and the field sync pulls by |
 | | `deletedAt` | `DateTime?` | soft delete (tombstone) — see sync protocol |
 | **RateTier** | `id` | `String` (uuid) | primary key, **client-generated** |
@@ -118,15 +164,21 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `email` | `String` | |
 | | `archived` | `Boolean` | default `false` |
 | | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
+| **JobManager** | `id` | `String` (uuid) | primary key, **client-generated** |
+| | `jobId` | `String` | FK → Job, cascade delete |
+| | `managerId` | `String` | FK → Manager, cascade delete |
+| | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
 
 Indexes: `Job`, `Shift`, and `Manager` are indexed on `(userId, updatedAt)` (the sync pull
 query's access pattern); `RateTier` on `(jobId, updatedAt)`; `RateVersion` on `(tierId,
 effectiveFrom)`; `Shift` also on `jobId` and `rateTierId`; `Break` on `(shiftId,
-updatedAt)`.
+updatedAt)`; `JobManager` on `(jobId, updatedAt)` and `managerId`.
 
-Note `RateTier`, `RateVersion`, and `Break` have no `userId` column — ownership is checked
-transitively through their parent (`Job` for tiers, a tier's `Job` for versions, `Shift`
-for breaks) — see the `upsertOwned*` helpers in `server/src/routes/sync.ts`.
+Note `RateTier`, `RateVersion`, `Break`, and `JobManager` have no `userId` column —
+ownership is checked transitively through their parent(s) (`Job` for tiers, a tier's `Job`
+for versions, `Shift` for breaks, `JobManager`'s own `jobId` *and* `managerId` must both
+resolve to rows this user owns) — see the `upsertOwned*` helpers in
+`server/src/routes/sync.ts`.
 
 ## Client schema (SQLite)
 
@@ -135,11 +187,11 @@ Source of truth: [`app/src/db/schema.ts`](../app/src/db/schema.ts). Column names
 functions live in `app/src/db/database.ts` (`rowToJob`, `rowToRateTier`,
 `rowToRateVersion`, `rowToShift`, `rowToBreak`).
 
-**`jobs`**, **`rate_tiers`**, **`rate_versions`**, **`shifts`**, **`breaks`**, **`managers`**
-mirror the server tables above one-for-one (same fields, `snake_case` names, `TEXT` for all
-dates/timestamps as ISO-8601 strings, `INTEGER` 0/1 for booleans). There is no `userId`
-column client-side — the local database only ever holds one signed-in user's data, so it's
-implicit.
+**`jobs`**, **`rate_tiers`**, **`rate_versions`**, **`shifts`**, **`breaks`**, **`managers`**,
+**`job_managers`** mirror the server tables above one-for-one (same fields, `snake_case`
+names, `TEXT` for all dates/timestamps as ISO-8601 strings, `INTEGER` 0/1 for booleans).
+There is no `userId` column client-side — the local database only ever holds one
+signed-in user's data, so it's implicit.
 
 The schema evolves via numbered migrations tracked in SQLite's built-in `PRAGMA
 user_version` (`runMigrations` in `database.ts`) — the same idea as
@@ -154,7 +206,7 @@ Two extra tables exist only on the client, for sync bookkeeping:
 
 ```sql
 CREATE TABLE pending_changes (
-  entity_type TEXT NOT NULL,   -- 'job' | 'rateTier' | 'rateVersion' | 'shift' | 'break' | 'manager'
+  entity_type TEXT NOT NULL,   -- 'job' | 'rateTier' | 'rateVersion' | 'shift' | 'break' | 'manager' | 'jobManager'
   entity_id   TEXT NOT NULL,
   op          TEXT NOT NULL,   -- 'upsert' | 'delete'
   PRIMARY KEY (entity_type, entity_id)
@@ -179,19 +231,8 @@ cursor for the next pull. Shown to you as "Last synced" on the Settings screen.
 ## TypeScript types
 
 `app/src/types.ts` defines the client-side shape (`Job`, `RateTier`, `RateVersion`,
-`Shift`, `Break`, `Manager`, `EntityType`, `PendingOp`) used throughout the app and by the
-sync client. These intentionally match the server's JSON response shape field-for-field
-(Prisma's `Date` fields serialize to ISO strings over HTTP, which is exactly what the
-client stores), so `app/src/sync/sync.ts` can push/pull without a translation layer beyond
-`snake_case`/`camelCase` mapping.
-
-## Timesheet periods and submission settings (device-local, not synced)
-
-The Timesheets tab groups shifts into a recurring period (weekly/biweekly/monthly) and
-lets a user submit that period's timesheet by email to one or more configured `Manager`s.
-Unlike everything above, the period definition and submission preferences
-(`TimesheetSettings` in `app/src/lib/preferences.ts`) are device-local — like
-`promptForNotesOnClockOut`, they're a per-device display/workflow preference, not data
-that needs to match across devices, so they live in AsyncStorage rather than SQLite and
-never go through sync. `app/src/lib/timesheetPeriods.ts` computes period boundaries
-(`periodContaining`, `shiftPeriod`) from that settings object.
+`Shift`, `Break`, `Manager`, `JobManager`, `EntityType`, `PendingOp`) used throughout the
+app and by the sync client. These intentionally match the server's JSON response shape
+field-for-field (Prisma's `Date` fields serialize to ISO strings over HTTP, which is
+exactly what the client stores), so `app/src/sync/sync.ts` can push/pull without a
+translation layer beyond `snake_case`/`camelCase` mapping.

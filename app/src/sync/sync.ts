@@ -3,6 +3,7 @@ import {
   getPendingChanges,
   getRawBreak,
   getRawJob,
+  getRawJobManager,
   getRawManager,
   getRawRateTier,
   getRawRateVersion,
@@ -11,13 +12,14 @@ import {
   setSyncCursor,
   upsertLocalBreak,
   upsertLocalJob,
+  upsertLocalJobManager,
   upsertLocalManager,
   upsertLocalRateTier,
   upsertLocalRateVersion,
   upsertLocalShift,
 } from "../db/database";
 import { dbEvents } from "../lib/events";
-import type { Break, Job, Manager, RateTier, RateVersion, Shift } from "../types";
+import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } from "../types";
 import { pullChanges, pushChanges, type PushPayload } from "./api";
 
 function jobFromRow(row: any): Job {
@@ -28,6 +30,17 @@ function jobFromRow(row: any): Job {
     archived: !!row.archived,
     overtimeMultiplier: row.overtime_multiplier,
     overtimeWeeklyThresholdHours: row.overtime_weekly_threshold_hours,
+    timesheetPeriodType: row.timesheet_period_type,
+    timesheetWeekStartDay: row.timesheet_week_start_day,
+    timesheetBiweeklyAnchor: row.timesheet_biweekly_anchor,
+    timesheetMonthlyStartDay: row.timesheet_monthly_start_day,
+    timesheetFormat: row.timesheet_format,
+    timesheetIncludeEarnings: !!row.timesheet_include_earnings,
+    timesheetIncludeNotes: !!row.timesheet_include_notes,
+    timesheetIncludeTimes: !!row.timesheet_include_times,
+    roundingEnabled: !!row.rounding_enabled,
+    roundingMode: row.rounding_mode,
+    roundingIncrementMinutes: row.rounding_increment_minutes,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -71,8 +84,11 @@ function breakFromRow(row: any): Break {
 function managerFromRow(row: any): Manager {
   return { id: row.id, name: row.name, email: row.email, archived: !!row.archived, updatedAt: row.updated_at, deletedAt: row.deleted_at };
 }
+function jobManagerFromRow(row: any): JobManager {
+  return { id: row.id, jobId: row.job_id, managerId: row.manager_id, updatedAt: row.updated_at, deletedAt: row.deleted_at };
+}
 
-type SyncEntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager";
+type SyncEntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager" | "jobManager";
 
 let syncing = false;
 
@@ -92,12 +108,14 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       shifts: [],
       breaks: [],
       managers: [],
+      jobManagers: [],
       deletedJobIds: [],
       deletedRateTierIds: [],
       deletedRateVersionIds: [],
       deletedShiftIds: [],
       deletedBreakIds: [],
       deletedManagerIds: [],
+      deletedJobManagerIds: [],
     };
     const applied: { entityType: SyncEntityType; entityId: string }[] = [];
 
@@ -110,6 +128,7 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
         if (change.entityType === "shift") payload.deletedShiftIds.push(change.entityId);
         if (change.entityType === "break") payload.deletedBreakIds.push(change.entityId);
         if (change.entityType === "manager") payload.deletedManagerIds.push(change.entityId);
+        if (change.entityType === "jobManager") payload.deletedJobManagerIds.push(change.entityId);
         continue;
       }
       if (change.entityType === "job") {
@@ -127,9 +146,12 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       } else if (change.entityType === "break") {
         const row = await getRawBreak(change.entityId);
         if (row) payload.breaks.push(breakFromRow(row));
-      } else {
+      } else if (change.entityType === "manager") {
         const row = await getRawManager(change.entityId);
         if (row) payload.managers.push(managerFromRow(row));
+      } else {
+        const row = await getRawJobManager(change.entityId);
+        if (row) payload.jobManagers.push(jobManagerFromRow(row));
       }
     }
 
@@ -140,12 +162,14 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       payload.shifts.length ||
       payload.breaks.length ||
       payload.managers.length ||
+      payload.jobManagers.length ||
       payload.deletedJobIds.length ||
       payload.deletedRateTierIds.length ||
       payload.deletedRateVersionIds.length ||
       payload.deletedShiftIds.length ||
       payload.deletedBreakIds.length ||
-      payload.deletedManagerIds.length;
+      payload.deletedManagerIds.length ||
+      payload.deletedJobManagerIds.length;
 
     if (hasPush) {
       await pushChanges(payload);
@@ -160,6 +184,7 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
     for (const shift of pulled.shifts) await upsertLocalShift(shift);
     for (const brk of pulled.breaks) await upsertLocalBreak(brk);
     for (const manager of pulled.managers) await upsertLocalManager(manager);
+    for (const jobManager of pulled.jobManagers) await upsertLocalJobManager(jobManager);
     await setSyncCursor(pulled.serverTimestamp);
 
     const pulledCount =
@@ -168,7 +193,8 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       pulled.rateVersions.length +
       pulled.shifts.length +
       pulled.breaks.length +
-      pulled.managers.length;
+      pulled.managers.length +
+      pulled.jobManagers.length;
     if (hasPush || pulledCount) dbEvents.emit();
     return { pushed: applied.length, pulled: pulledCount };
   } finally {

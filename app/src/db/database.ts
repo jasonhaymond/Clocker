@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import * as SQLite from "expo-sqlite";
 import { dbEvents } from "../lib/events";
-import type { Break, EntityType, Job, Manager, PendingOp, RateTier, RateVersion, Shift } from "../types";
+import type { Break, EntityType, Job, JobManager, Manager, PendingOp, RateTier, RateVersion, Shift } from "../types";
 import { MIGRATIONS, SCHEMA_VERSION } from "./schema";
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -55,9 +55,24 @@ function rowToJob(row: any): Job {
     archived: !!row.archived,
     overtimeMultiplier: row.overtime_multiplier,
     overtimeWeeklyThresholdHours: row.overtime_weekly_threshold_hours,
+    timesheetPeriodType: row.timesheet_period_type,
+    timesheetWeekStartDay: row.timesheet_week_start_day,
+    timesheetBiweeklyAnchor: row.timesheet_biweekly_anchor,
+    timesheetMonthlyStartDay: row.timesheet_monthly_start_day,
+    timesheetFormat: row.timesheet_format,
+    timesheetIncludeEarnings: !!row.timesheet_include_earnings,
+    timesheetIncludeNotes: !!row.timesheet_include_notes,
+    timesheetIncludeTimes: !!row.timesheet_include_times,
+    roundingEnabled: !!row.rounding_enabled,
+    roundingMode: row.rounding_mode,
+    roundingIncrementMinutes: row.rounding_increment_minutes,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
+}
+
+function rowToJobManager(row: any): JobManager {
+  return { id: row.id, jobId: row.job_id, managerId: row.manager_id, updatedAt: row.updated_at, deletedAt: row.deleted_at };
 }
 
 function rowToRateTier(row: any): RateTier {
@@ -158,16 +173,10 @@ export async function createJob(input: {
   await createRateTier(id, "Standard", input.initialHourlyRateCents, true);
 
   dbEvents.emit();
-  return {
-    id,
-    name: input.name,
-    colorHex: input.colorHex,
-    archived: false,
-    overtimeMultiplier: null,
-    overtimeWeeklyThresholdHours: null,
-    updatedAt,
-    deletedAt: null,
-  };
+  // Re-read rather than hand-assembling the return value, so it reflects the table's own
+  // SQL defaults for every column this function doesn't explicitly set (timesheet period/
+  // submission settings, rounding) without duplicating them here.
+  return (await getJob(id))!;
 }
 
 export async function updateJobDetails(id: string, patch: { name?: string; colorHex?: string }): Promise<void> {
@@ -189,6 +198,63 @@ export async function updateJobOvertime(
   await db.runAsync("UPDATE jobs SET overtime_multiplier = ?, overtime_weekly_threshold_hours = ?, updated_at = ? WHERE id = ?", [
     patch.overtimeMultiplier,
     patch.overtimeWeeklyThresholdHours,
+    nowIso(),
+    id,
+  ]);
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
+export async function updateJobTimesheetSettings(
+  id: string,
+  patch: Partial<
+    Pick<
+      Job,
+      | "timesheetPeriodType"
+      | "timesheetWeekStartDay"
+      | "timesheetBiweeklyAnchor"
+      | "timesheetMonthlyStartDay"
+      | "timesheetFormat"
+      | "timesheetIncludeEarnings"
+      | "timesheetIncludeNotes"
+      | "timesheetIncludeTimes"
+    >
+  >,
+): Promise<void> {
+  const db = await getDb();
+  const current = await getJob(id);
+  if (!current) return;
+  const merged = { ...current, ...patch };
+  await db.runAsync(
+    "UPDATE jobs SET timesheet_period_type = ?, timesheet_week_start_day = ?, timesheet_biweekly_anchor = ?, " +
+      "timesheet_monthly_start_day = ?, timesheet_format = ?, timesheet_include_earnings = ?, timesheet_include_notes = ?, " +
+      "timesheet_include_times = ?, updated_at = ? WHERE id = ?",
+    [
+      merged.timesheetPeriodType,
+      merged.timesheetWeekStartDay,
+      merged.timesheetBiweeklyAnchor,
+      merged.timesheetMonthlyStartDay,
+      merged.timesheetFormat,
+      merged.timesheetIncludeEarnings ? 1 : 0,
+      merged.timesheetIncludeNotes ? 1 : 0,
+      merged.timesheetIncludeTimes ? 1 : 0,
+      nowIso(),
+      id,
+    ],
+  );
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
+export async function updateJobRounding(
+  id: string,
+  patch: { roundingEnabled: boolean; roundingMode: Job["roundingMode"]; roundingIncrementMinutes: number },
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE jobs SET rounding_enabled = ?, rounding_mode = ?, rounding_increment_minutes = ?, updated_at = ? WHERE id = ?", [
+    patch.roundingEnabled ? 1 : 0,
+    patch.roundingMode,
+    patch.roundingIncrementMinutes,
     nowIso(),
     id,
   ]);
@@ -517,6 +583,36 @@ export async function deleteManager(id: string): Promise<void> {
   dbEvents.emit();
 }
 
+// ---- Job <-> Manager assignments (which managers a job's timesheets submit to) ----
+
+export async function listJobManagers(jobId: string): Promise<JobManager[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync("SELECT * FROM job_managers WHERE job_id = ? AND deleted_at IS NULL", [jobId]);
+  return rows.map(rowToJobManager);
+}
+
+export async function addJobManager(jobId: string, managerId: string): Promise<JobManager> {
+  const db = await getDb();
+  const id = newId();
+  const updatedAt = nowIso();
+  await db.runAsync("INSERT INTO job_managers (id, job_id, manager_id, updated_at) VALUES (?, ?, ?, ?)", [
+    id,
+    jobId,
+    managerId,
+    updatedAt,
+  ]);
+  await markPending("jobManager", id, "upsert");
+  dbEvents.emit();
+  return { id, jobId, managerId, updatedAt, deletedAt: null };
+}
+
+export async function removeJobManager(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE job_managers SET deleted_at = ? WHERE id = ?", [nowIso(), id]);
+  await markPending("jobManager", id, "delete");
+  dbEvents.emit();
+}
+
 // ---- Sync helpers (used by src/sync/sync.ts) ----
 
 export async function getPendingChanges(): Promise<{ entityType: EntityType; entityId: string; op: PendingOp }[]> {
@@ -557,12 +653,27 @@ export async function getRawManager(id: string) {
   const db = await getDb();
   return db.getFirstAsync("SELECT * FROM managers WHERE id = ?", [id]);
 }
+export async function getRawJobManager(id: string) {
+  const db = await getDb();
+  return db.getFirstAsync("SELECT * FROM job_managers WHERE id = ?", [id]);
+}
 
 export async function upsertLocalJob(job: Job): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    "INSERT INTO jobs (id, name, color_hex, archived, overtime_multiplier, overtime_weekly_threshold_hours, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
-      "ON CONFLICT(id) DO UPDATE SET name = excluded.name, color_hex = excluded.color_hex, archived = excluded.archived, overtime_multiplier = excluded.overtime_multiplier, overtime_weekly_threshold_hours = excluded.overtime_weekly_threshold_hours, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+    "INSERT INTO jobs (id, name, color_hex, archived, overtime_multiplier, overtime_weekly_threshold_hours, " +
+      "timesheet_period_type, timesheet_week_start_day, timesheet_biweekly_anchor, timesheet_monthly_start_day, " +
+      "timesheet_format, timesheet_include_earnings, timesheet_include_notes, timesheet_include_times, " +
+      "rounding_enabled, rounding_mode, rounding_increment_minutes, updated_at, deleted_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET name = excluded.name, color_hex = excluded.color_hex, archived = excluded.archived, " +
+      "overtime_multiplier = excluded.overtime_multiplier, overtime_weekly_threshold_hours = excluded.overtime_weekly_threshold_hours, " +
+      "timesheet_period_type = excluded.timesheet_period_type, timesheet_week_start_day = excluded.timesheet_week_start_day, " +
+      "timesheet_biweekly_anchor = excluded.timesheet_biweekly_anchor, timesheet_monthly_start_day = excluded.timesheet_monthly_start_day, " +
+      "timesheet_format = excluded.timesheet_format, timesheet_include_earnings = excluded.timesheet_include_earnings, " +
+      "timesheet_include_notes = excluded.timesheet_include_notes, timesheet_include_times = excluded.timesheet_include_times, " +
+      "rounding_enabled = excluded.rounding_enabled, rounding_mode = excluded.rounding_mode, " +
+      "rounding_increment_minutes = excluded.rounding_increment_minutes, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [
       job.id,
       job.name,
@@ -570,6 +681,17 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       job.archived ? 1 : 0,
       job.overtimeMultiplier,
       job.overtimeWeeklyThresholdHours,
+      job.timesheetPeriodType,
+      job.timesheetWeekStartDay,
+      job.timesheetBiweeklyAnchor,
+      job.timesheetMonthlyStartDay,
+      job.timesheetFormat,
+      job.timesheetIncludeEarnings ? 1 : 0,
+      job.timesheetIncludeNotes ? 1 : 0,
+      job.timesheetIncludeTimes ? 1 : 0,
+      job.roundingEnabled ? 1 : 0,
+      job.roundingMode,
+      job.roundingIncrementMinutes,
       job.updatedAt,
       job.deletedAt,
     ],
@@ -618,6 +740,15 @@ export async function upsertLocalManager(manager: Manager): Promise<void> {
     "INSERT INTO managers (id, name, email, archived, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, archived = excluded.archived, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [manager.id, manager.name, manager.email, manager.archived ? 1 : 0, manager.updatedAt, manager.deletedAt],
+  );
+}
+
+export async function upsertLocalJobManager(jm: JobManager): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    "INSERT INTO job_managers (id, job_id, manager_id, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET job_id = excluded.job_id, manager_id = excluded.manager_id, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+    [jm.id, jm.jobId, jm.managerId, jm.updatedAt, jm.deletedAt],
   );
 }
 

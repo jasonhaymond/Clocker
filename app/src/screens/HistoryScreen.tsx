@@ -10,9 +10,10 @@ import {
   listShiftsInRange,
 } from "../db/database";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
-import { addDays, formatClock, formatDay, formatDuration, startOfDay, workedMillis } from "../lib/time";
+import { addDays, formatClock, formatDay, formatDuration, startOfDay } from "../lib/time";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { calculateShiftPay, formatCents, type ShiftPay } from "../lib/pay";
+import { roundedWorkedMillis } from "../lib/rounding";
 import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
 
 const DAYS_BACK = 90;
@@ -61,7 +62,7 @@ export function HistoryScreen() {
       const jobVersions = versions.filter((v) => tierIds.has(v.tierId));
       const shiftsWithHours = jobShifts.map((s) => ({
         shift: s,
-        workedHours: workedMillis(s, breaksByShift[s.id] ?? []) / 3_600_000,
+        workedHours: roundedWorkedMillis(s, breaksByShift[s.id] ?? [], job) / 3_600_000,
       }));
       for (const pay of calculateShiftPay({ job, tiers: jobTiers, versions: jobVersions, shiftsWithHours })) {
         map.set(pay.shiftId, pay);
@@ -80,10 +81,10 @@ export function HistoryScreen() {
     return Array.from(byDay.entries())
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([day, dayShifts]) => {
-        const totalMs = dayShifts.reduce((sum, s) => sum + workedMillis(s, breaksByShift[s.id] ?? []), 0);
+        const totalMs = dayShifts.reduce((sum, s) => sum + roundedWorkedMillis(s, breaksByShift[s.id] ?? [], jobsById[s.jobId]), 0);
         return { title: `${formatDay(day)} — ${formatDuration(totalMs)}`, data: dayShifts };
       });
-  }, [shifts, breaksByShift]);
+  }, [shifts, breaksByShift, jobsById]);
 
   function confirmDelete(shift: Shift) {
     Alert.alert("Delete shift", "This can't be undone.", [
@@ -145,7 +146,7 @@ export function HistoryScreen() {
         renderItem={({ item }) => {
           const job = jobsById[item.jobId];
           const shiftBreaks = breaksByShift[item.id] ?? [];
-          const worked = workedMillis(item, shiftBreaks);
+          const worked = roundedWorkedMillis(item, shiftBreaks, job);
           const pay = payByShiftId.get(item.id);
           const selected = selectedIds.has(item.id);
           return (
