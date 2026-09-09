@@ -191,6 +191,26 @@ reason. If it happens, close anything that might be holding the file (stop `npm 
 dev:server`, restart your editor's TS server) and re-run `npm run db:generate
 --workspace=server`.
 
+## Known issue: React Native DevTools error on a headless Linux box
+
+Running `npm run dev:app` on a Linux machine with no display server (a remote/SSH-only
+box, exactly the kind of machine you might use for a persistent dev setup) can log this
+on startup or when pressing `j` (open debugger):
+
+```
+ERROR  An unknown error occurred while installing React Native DevTools. Details:
+.../@react-native/debugger-shell/bin/react-native-devtools: error while loading shared
+libraries: libatk-1.0.so.0: cannot open shared object file: No such file or directory
+```
+
+This is the new React Native DevTools trying to launch its bundled native (GTK/Chromium)
+debugger window — unrelated to Metro serving the JS bundle to Expo Go, which keeps
+working fine regardless. It's safe to ignore. Installing the missing library
+(`sudo apt-get install libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2` on
+Debian/Ubuntu) silences the specific error, but a debugger *window* fundamentally can't
+open on a machine with no display server at all — so there's nothing to actually fix
+here beyond not pressing `j` in that terminal.
+
 ## OTA updates
 
 `expo-updates` is installed and the app checks for updates on launch/foreground (see
