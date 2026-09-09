@@ -135,12 +135,20 @@ eas update --branch production --message "Describe the change"
   At..." accept an explicit time the same way clock in/out do
 - Per-shift notes/comments, added or edited from the History screen; optionally prompted
   for automatically right after clocking out (Settings toggle)
-- History grouped by day, with per-day and per-shift totals and computed pay
+- History grouped by day, with per-day and per-shift totals and computed pay; multi-select
+  (long-press or tap a row while a selection is active) to delete several shifts at once
 - CSV export by date range (this week / last week / this month / last 90 days) and job,
   shared via the OS share sheet (iOS/Android)
 - Export as a clean, formatted HTML email draft (recipients, subject, and
   earnings/comments/times toggles), opened in your device's mail app for you to review
-  and send — see `app/src/lib/exportFormat.ts`
+  and send — see `app/src/lib/exportFormat.ts`. Uses `expo-mail-composer`, which opens
+  whatever mail app is set as the device's default (Gmail, Outlook, iOS Mail, ...) — it's
+  not tied to any one provider.
+- **Timesheets tab**: shifts grouped by recurring pay period (weekly/biweekly/monthly,
+  configurable) and by job, with per-entry notes shown when enabled. A "Submit Timesheet"
+  button emails the current period to one or more saved **Managers** (name + email,
+  managed from the tab's settings) as CSV, formatted plain text, or both — independent of
+  the Export tab's own CSV/HTML-draft flow, which is unchanged.
 - Offline-first: every action works with no network; a manual "Sync Now" plus automatic
   background sync push changes and pull updates from other devices
 - Over-the-air JS updates via `expo-updates` (once `eas update:configure` is run once),

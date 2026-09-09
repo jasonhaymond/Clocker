@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import * as SQLite from "expo-sqlite";
 import { dbEvents } from "../lib/events";
-import type { Break, EntityType, Job, PendingOp, RateTier, RateVersion, Shift } from "../types";
+import type { Break, EntityType, Job, Manager, PendingOp, RateTier, RateVersion, Shift } from "../types";
 import { MIGRATIONS, SCHEMA_VERSION } from "./schema";
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -102,6 +102,17 @@ function rowToBreak(row: any): Break {
     shiftId: row.shift_id,
     start: row.start,
     end: row.end,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+  };
+}
+
+function rowToManager(row: any): Manager {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    archived: !!row.archived,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -447,6 +458,65 @@ export async function listBreaksForShifts(shiftIds: string[]): Promise<Break[]> 
   return rows.map(rowToBreak);
 }
 
+// ---- Managers ----
+
+export async function listManagers(includeArchived = true): Promise<Manager[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync(
+    includeArchived
+      ? "SELECT * FROM managers WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE"
+      : "SELECT * FROM managers WHERE deleted_at IS NULL AND archived = 0 ORDER BY name COLLATE NOCASE",
+  );
+  return rows.map(rowToManager);
+}
+
+export async function listManagersForIds(ids: string[]): Promise<Manager[]> {
+  if (ids.length === 0) return [];
+  const db = await getDb();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await db.getAllAsync(`SELECT * FROM managers WHERE deleted_at IS NULL AND id IN (${placeholders})`, ids);
+  return rows.map(rowToManager);
+}
+
+export async function createManager(input: { name: string; email: string }): Promise<Manager> {
+  const db = await getDb();
+  const id = newId();
+  const updatedAt = nowIso();
+  await db.runAsync("INSERT INTO managers (id, name, email, archived, updated_at) VALUES (?, ?, ?, 0, ?)", [
+    id,
+    input.name,
+    input.email,
+    updatedAt,
+  ]);
+  await markPending("manager", id, "upsert");
+  dbEvents.emit();
+  return { id, name: input.name, email: input.email, archived: false, updatedAt, deletedAt: null };
+}
+
+export async function updateManager(id: string, patch: { name?: string; email?: string }): Promise<void> {
+  const db = await getDb();
+  const current = await db.getFirstAsync("SELECT * FROM managers WHERE id = ?", [id]);
+  if (!current) return;
+  const merged = { ...rowToManager(current), ...patch };
+  await db.runAsync("UPDATE managers SET name = ?, email = ?, updated_at = ? WHERE id = ?", [merged.name, merged.email, nowIso(), id]);
+  await markPending("manager", id, "upsert");
+  dbEvents.emit();
+}
+
+export async function setManagerArchived(id: string, archived: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE managers SET archived = ?, updated_at = ? WHERE id = ?", [archived ? 1 : 0, nowIso(), id]);
+  await markPending("manager", id, "upsert");
+  dbEvents.emit();
+}
+
+export async function deleteManager(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE managers SET deleted_at = ? WHERE id = ?", [nowIso(), id]);
+  await markPending("manager", id, "delete");
+  dbEvents.emit();
+}
+
 // ---- Sync helpers (used by src/sync/sync.ts) ----
 
 export async function getPendingChanges(): Promise<{ entityType: EntityType; entityId: string; op: PendingOp }[]> {
@@ -482,6 +552,10 @@ export async function getRawShift(id: string) {
 export async function getRawBreak(id: string) {
   const db = await getDb();
   return db.getFirstAsync("SELECT * FROM breaks WHERE id = ?", [id]);
+}
+export async function getRawManager(id: string) {
+  const db = await getDb();
+  return db.getFirstAsync("SELECT * FROM managers WHERE id = ?", [id]);
 }
 
 export async function upsertLocalJob(job: Job): Promise<void> {
@@ -535,6 +609,15 @@ export async function upsertLocalBreak(brk: Break): Promise<void> {
     "INSERT INTO breaks (id, shift_id, start, end, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(id) DO UPDATE SET shift_id = excluded.shift_id, start = excluded.start, end = excluded.end, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [brk.id, brk.shiftId, brk.start, brk.end, brk.updatedAt, brk.deletedAt],
+  );
+}
+
+export async function upsertLocalManager(manager: Manager): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    "INSERT INTO managers (id, name, email, archived, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, archived = excluded.archived, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+    [manager.id, manager.name, manager.email, manager.archived ? 1 : 0, manager.updatedAt, manager.deletedAt],
   );
 }
 

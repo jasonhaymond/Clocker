@@ -88,9 +88,21 @@ CREATE INDEX IF NOT EXISTS idx_rate_tiers_job_id ON rate_tiers (job_id);
 CREATE INDEX IF NOT EXISTS idx_rate_versions_tier_id ON rate_versions (tier_id);
 `;
 
-export const SCHEMA_VERSION = 2;
+// Version 3 — saved email recipients for the export flow.
+const V3_MANAGERS_SQL = `
+CREATE TABLE IF NOT EXISTS managers (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+`;
+
+export const SCHEMA_VERSION = 3;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
 // EXISTS), index 1 is version 2, and so on.
-export const MIGRATIONS: string[] = [BASELINE_SQL, V2_RATE_TIERS_SQL];
+export const MIGRATIONS: string[] = [BASELINE_SQL, V2_RATE_TIERS_SQL, V3_MANAGERS_SQL];

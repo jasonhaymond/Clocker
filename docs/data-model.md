@@ -9,10 +9,12 @@ and writes). They're kept in sync by the protocol in
 
 ```
 User 1──* Job 1──* RateTier 1──* RateVersion
-              │
-              └──* Shift ──> RateTier (optional)
-                    │
-                    └──* Break
+   │          │
+   │          └──* Shift ──> RateTier (optional)
+   │                │
+   │                └──* Break
+   │
+   └──* Manager
 ```
 
 - **User** — email + bcrypt password hash. Server-only; the client never stores a local
@@ -38,6 +40,10 @@ User 1──* Job 1──* RateTier 1──* RateVersion
   free-text comment, editable from the History screen.
 - **Break** — one pause within a shift. `end` is `null` while the break is open. Break time
   is subtracted from a shift's worked-hours total (`app/src/lib/time.ts`'s `workedMillis`).
+- **Manager** — a saved recipient (name + email) for the Timesheets tab's "Submit
+  Timesheet" flow, configured from the Timesheet Settings modal. Independent of every
+  other entity (no foreign keys into it) — it's just an address book entry a user picks
+  from when submitting a timesheet, not something a shift/job ever references.
 
 ## Rate history, tiers, and overtime
 
@@ -106,9 +112,15 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `start` | `DateTime` | |
 | | `end` | `DateTime?` | `null` while open |
 | | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
+| **Manager** | `id` | `String` (uuid) | primary key, **client-generated** |
+| | `userId` | `String` | FK → User, cascade delete |
+| | `name` | `String` | |
+| | `email` | `String` | |
+| | `archived` | `Boolean` | default `false` |
+| | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
 
-Indexes: `Job` and `Shift` are indexed on `(userId, updatedAt)` (the sync pull query's
-access pattern); `RateTier` on `(jobId, updatedAt)`; `RateVersion` on `(tierId,
+Indexes: `Job`, `Shift`, and `Manager` are indexed on `(userId, updatedAt)` (the sync pull
+query's access pattern); `RateTier` on `(jobId, updatedAt)`; `RateVersion` on `(tierId,
 effectiveFrom)`; `Shift` also on `jobId` and `rateTierId`; `Break` on `(shiftId,
 updatedAt)`.
 
@@ -123,8 +135,8 @@ Source of truth: [`app/src/db/schema.ts`](../app/src/db/schema.ts). Column names
 functions live in `app/src/db/database.ts` (`rowToJob`, `rowToRateTier`,
 `rowToRateVersion`, `rowToShift`, `rowToBreak`).
 
-**`jobs`**, **`rate_tiers`**, **`rate_versions`**, **`shifts`**, **`breaks`** mirror the
-server tables above one-for-one (same fields, `snake_case` names, `TEXT` for all
+**`jobs`**, **`rate_tiers`**, **`rate_versions`**, **`shifts`**, **`breaks`**, **`managers`**
+mirror the server tables above one-for-one (same fields, `snake_case` names, `TEXT` for all
 dates/timestamps as ISO-8601 strings, `INTEGER` 0/1 for booleans). There is no `userId`
 column client-side — the local database only ever holds one signed-in user's data, so it's
 implicit.
@@ -142,7 +154,7 @@ Two extra tables exist only on the client, for sync bookkeeping:
 
 ```sql
 CREATE TABLE pending_changes (
-  entity_type TEXT NOT NULL,   -- 'job' | 'rateTier' | 'rateVersion' | 'shift' | 'break'
+  entity_type TEXT NOT NULL,   -- 'job' | 'rateTier' | 'rateVersion' | 'shift' | 'break' | 'manager'
   entity_id   TEXT NOT NULL,
   op          TEXT NOT NULL,   -- 'upsert' | 'delete'
   PRIMARY KEY (entity_type, entity_id)
@@ -167,8 +179,19 @@ cursor for the next pull. Shown to you as "Last synced" on the Settings screen.
 ## TypeScript types
 
 `app/src/types.ts` defines the client-side shape (`Job`, `RateTier`, `RateVersion`,
-`Shift`, `Break`, `EntityType`, `PendingOp`) used throughout the app and by the sync
-client. These intentionally match the server's JSON response shape field-for-field
+`Shift`, `Break`, `Manager`, `EntityType`, `PendingOp`) used throughout the app and by the
+sync client. These intentionally match the server's JSON response shape field-for-field
 (Prisma's `Date` fields serialize to ISO strings over HTTP, which is exactly what the
 client stores), so `app/src/sync/sync.ts` can push/pull without a translation layer beyond
 `snake_case`/`camelCase` mapping.
+
+## Timesheet periods and submission settings (device-local, not synced)
+
+The Timesheets tab groups shifts into a recurring period (weekly/biweekly/monthly) and
+lets a user submit that period's timesheet by email to one or more configured `Manager`s.
+Unlike everything above, the period definition and submission preferences
+(`TimesheetSettings` in `app/src/lib/preferences.ts`) are device-local — like
+`promptForNotesOnClockOut`, they're a per-device display/workflow preference, not data
+that needs to match across devices, so they live in AsyncStorage rather than SQLite and
+never go through sync. `app/src/lib/timesheetPeriods.ts` computes period boundaries
+(`periodContaining`, `shiftPeriod`) from that settings object.

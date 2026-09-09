@@ -180,3 +180,52 @@ export function buildEmailHtml(params: {
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+// A plain-text equivalent of buildEmailHtml — same grouping/options, for email clients
+// or contexts (clipboard, plain-text share) where HTML isn't appropriate.
+export function buildPlainText(params: {
+  groups: ExportJobGroup[];
+  payByShiftId: Map<string, ShiftPay>;
+  breaksByShift: Record<string, Break[]>;
+  rangeLabel: string;
+  options: EmailOptions;
+}): string {
+  const { groups, payByShiftId, breaksByShift, rangeLabel, options } = params;
+  const anyRate = groups.some((g) => g.hasRate);
+  const grandHours = groups.reduce((sum, g) => sum + g.totalHours, 0);
+  const grandCents = groups.reduce((sum, g) => sum + g.totalCents, 0);
+
+  const lines: string[] = [rangeLabel, ""];
+
+  for (const group of groups) {
+    lines.push(group.job?.name ?? "Deleted job");
+    lines.push("-".repeat((group.job?.name ?? "Deleted job").length));
+    for (const shift of group.shifts) {
+      const breaks = breaksByShift[shift.id] ?? [];
+      const hours = workedMillis(shift, breaks) / 3_600_000;
+      const pay = payByShiftId.get(shift.id);
+      const parts = [formatDay(shift.clockIn)];
+      if (options.includeTimes) {
+        parts.push(`${formatClock(shift.clockIn)} - ${shift.clockOut ? formatClock(shift.clockOut) : "in progress"}`);
+      }
+      parts.push(`${hours.toFixed(2)} hrs`);
+      if (options.includeEarnings && group.hasRate && pay && pay.rateCentsPerHour != null) {
+        parts.push(formatCents(pay.totalCents));
+      }
+      lines.push(`  ${parts.join(" · ")}`);
+      if (options.includeComments && shift.notes) {
+        lines.push(`    Note: ${shift.notes}`);
+      }
+    }
+    lines.push(
+      `  Subtotal: ${group.totalHours.toFixed(2)} hrs${
+        options.includeEarnings && group.hasRate ? ` · ${formatCents(group.totalCents)}` : ""
+      }`,
+    );
+    lines.push("");
+  }
+
+  lines.push(`Total: ${grandHours.toFixed(2)} hrs${options.includeEarnings && anyRate ? ` · ${formatCents(grandCents)}` : ""}`);
+
+  return lines.join("\n");
+}

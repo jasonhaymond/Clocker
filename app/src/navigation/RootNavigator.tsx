@@ -10,6 +10,7 @@ import { HistoryScreen } from "../screens/HistoryScreen";
 import { JobsScreen } from "../screens/JobsScreen";
 import { LoginScreen } from "../screens/LoginScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { TimesheetsScreen } from "../screens/TimesheetsScreen";
 import { synchronize } from "../sync/sync";
 import { checkForUpdate } from "../updates/updates";
 
@@ -21,6 +22,7 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Clock: "time-outline",
   Jobs: "briefcase-outline",
   History: "list-outline",
+  Timesheets: "document-text-outline",
   Export: "share-outline",
   Settings: "settings-outline",
 };
@@ -29,6 +31,7 @@ const TAB_ICONS_FOCUSED: Record<string, keyof typeof Ionicons.glyphMap> = {
   Clock: "time",
   Jobs: "briefcase",
   History: "list",
+  Timesheets: "document-text",
   Export: "share",
   Settings: "settings",
 };
@@ -62,6 +65,7 @@ function AppTabs() {
       <Tab.Screen name="Clock" component={ClockScreen} />
       <Tab.Screen name="Jobs" component={JobsScreen} />
       <Tab.Screen name="History" component={HistoryScreen} />
+      <Tab.Screen name="Timesheets" component={TimesheetsScreen} />
       <Tab.Screen name="Export" component={ExportScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>

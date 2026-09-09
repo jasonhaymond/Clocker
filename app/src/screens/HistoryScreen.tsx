@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useCallback, useMemo, useState } from "react";
 import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -23,6 +24,8 @@ export function HistoryScreen() {
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [versions, setVersions] = useState<RateVersion[]>([]);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectionMode = selectedIds.size > 0;
 
   const load = useCallback(() => {
     const start = addDays(startOfDay(new Date()), -DAYS_BACK);
@@ -89,21 +92,73 @@ export function HistoryScreen() {
     ]);
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(shifts.map((s) => s.id)));
+  }
+
+  function confirmDeleteSelected() {
+    const count = selectedIds.size;
+    Alert.alert("Delete shifts", `Delete ${count} shift${count === 1 ? "" : "s"}? This can't be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          for (const id of selectedIds) await deleteShift(id);
+          setSelectedIds(new Set());
+        },
+      },
+    ]);
+  }
+
   return (
     <>
+      {selectionMode && (
+        <View style={styles.selectionBar}>
+          <TouchableOpacity onPress={() => setSelectedIds(new Set())} style={styles.selectionAction}>
+            <Text style={styles.selectionActionText}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.selectionCount}>{selectedIds.size} selected</Text>
+          <TouchableOpacity onPress={selectAll} style={styles.selectionAction}>
+            <Text style={styles.selectionActionText}>Select All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={confirmDeleteSelected} style={styles.selectionAction}>
+            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+          </TouchableOpacity>
+        </View>
+      )}
       <SectionList
         style={styles.container}
         sections={sections}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 12 }}
         renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>}
         renderItem={({ item }) => {
           const job = jobsById[item.jobId];
           const shiftBreaks = breaksByShift[item.id] ?? [];
           const worked = workedMillis(item, shiftBreaks);
           const pay = payByShiftId.get(item.id);
+          const selected = selectedIds.has(item.id);
           return (
-            <TouchableOpacity style={styles.row} onPress={() => setEditingShift(item)} onLongPress={() => confirmDelete(item)}>
+            <TouchableOpacity
+              style={[styles.row, selected && styles.rowSelected]}
+              onPress={() => (selectionMode ? toggleSelected(item.id) : setEditingShift(item))}
+              onLongPress={() => (selectionMode ? confirmDelete(item) : toggleSelected(item.id))}
+            >
+              {selectionMode && (
+                <View style={[styles.checkboxBox, selected && styles.checkboxBoxChecked]}>
+                  {selected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                </View>
+              )}
               <View style={[styles.dot, { backgroundColor: job?.colorHex ?? "#999" }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.jobName}>{job?.name ?? "Deleted job"}</Text>
@@ -135,13 +190,29 @@ export function HistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  sectionHeader: { fontWeight: "700", fontSize: 14, color: "#444", backgroundColor: "#fff", paddingVertical: 8 },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 10 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  jobName: { fontSize: 16, fontWeight: "500" },
-  times: { color: "#666", fontSize: 13, marginTop: 2 },
-  notesPreview: { color: "#999", fontSize: 12, marginTop: 2, fontStyle: "italic" },
-  duration: { fontWeight: "600" },
-  pay: { color: "#16a34a", fontSize: 13, marginTop: 2 },
+  sectionHeader: { fontWeight: "700", fontSize: 13, color: "#444", backgroundColor: "#fff", paddingVertical: 5 },
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
+  rowSelected: { backgroundColor: "#eff6ff" },
+  checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#999", alignItems: "center", justifyContent: "center" },
+  checkboxBoxChecked: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
+  dot: { width: 11, height: 11, borderRadius: 6 },
+  jobName: { fontSize: 15, fontWeight: "500" },
+  times: { color: "#666", fontSize: 12, marginTop: 1 },
+  notesPreview: { color: "#999", fontSize: 11, marginTop: 1, fontStyle: "italic" },
+  duration: { fontWeight: "600", fontSize: 14 },
+  pay: { color: "#16a34a", fontSize: 12, marginTop: 1 },
   empty: { textAlign: "center", color: "#999", marginTop: 24 },
+  selectionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    backgroundColor: "#f7f8fa",
+    gap: 8,
+  },
+  selectionAction: { paddingHorizontal: 6, paddingVertical: 4 },
+  selectionActionText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
+  selectionCount: { flex: 1, textAlign: "center", fontWeight: "600", fontSize: 13, color: "#333" },
 });

@@ -85,11 +85,16 @@ are client-generated UUIDs (see [`data-model.md`](./data-model.md)).
     { "id": "<uuid>", "shiftId": "<uuid>", "start": "2026-09-07T15:00:00.000Z",
       "end": "2026-09-07T15:15:00.000Z" }   // end optional
   ],
+  "managers": [
+    { "id": "<uuid>", "name": "Jane Manager", "email": "jane@example.com", "archived": false }
+      // archived optional
+  ],
   "deletedJobIds": ["<uuid>"],
   "deletedRateTierIds": ["<uuid>"],
   "deletedRateVersionIds": ["<uuid>"],
   "deletedShiftIds": ["<uuid>"],
-  "deletedBreakIds": ["<uuid>"]
+  "deletedBreakIds": ["<uuid>"],
+  "deletedManagerIds": ["<uuid>"]
 }
 ```
 
@@ -98,14 +103,14 @@ ISO-8601 strings (`zod`'s `.datetime()`, which requires the `Z`/offset suffix).
 
 This endpoint **upserts by id** (create if the id doesn't already belong to this user,
 otherwise update) and never trusts a client-supplied `updatedAt`/`deletedAt` — the server
-sets `updatedAt` itself on every write, and the five `deleted*Ids` arrays are the only way
+sets `updatedAt` itself on every write, and the `deleted*Ids` arrays are the only way
 to soft-delete a row (setting its `deletedAt`). A reference that doesn't resolve to a row
 owned by the caller (a job's tier, a tier's job, a shift's job or tier, a break's shift) is
 silently dropped rather than erroring (see
 [ownership checks](./sync-protocol.md#ownership-checks)) — a push is never rejected
-outright for one bad reference among many valid ones. The five upsert arrays are also
-**applied in the order shown above** — see
-[why ordering matters](./sync-protocol.md#push) in the sync protocol doc.
+outright for one bad reference among many valid ones. The upsert arrays are also
+**applied in the order shown above** (`managers` has no parent, so its position doesn't
+matter) — see [why ordering matters](./sync-protocol.md#push) in the sync protocol doc.
 
 ```json
 → 200 { "serverTimestamp": "2026-09-07T23:52:47.097Z" }
@@ -140,7 +145,9 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
                       "clockOut": null, "notes": null,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
   "breaks":       [ { "id": "...", "shiftId": "...", "start": "...", "end": null,
-                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
+                      "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
+  "managers":     [ { "id": "...", "userId": "...", "name": "Jane Manager", "email": "jane@example.com",
+                      "archived": false, "createdAt": "...", "updatedAt": "...", "deletedAt": null } ]
 }
 → 400 { "error": {...} }   // malformed `since`
 → 401 { "error": "..." }

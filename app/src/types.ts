@@ -58,5 +58,15 @@ export interface Break {
   deletedAt: string | null;
 }
 
-export type EntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break";
+// A saved recipient for the "export to email" flow.
+export interface Manager {
+  id: string;
+  name: string;
+  email: string;
+  archived: boolean;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export type EntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager";
 export type PendingOp = "upsert" | "delete";

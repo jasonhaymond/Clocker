@@ -44,15 +44,16 @@ Deleting a row overwrites any pending `upsert` for that id with `delete`.
 `synchronize()` reads the entire outbox, and for each entry:
 
 - if `op === "delete"`, adds the id to the relevant `deletedJobIds` / `deletedRateTierIds` /
-  `deletedRateVersionIds` / `deletedShiftIds` / `deletedBreakIds` array
+  `deletedRateVersionIds` / `deletedShiftIds` / `deletedBreakIds` / `deletedManagerIds`
+  array
 - if `op === "upsert"`, reads the row's **current** state straight from its table (not
   from the outbox — the outbox only ever stores an id and an op) and adds it to the
-  relevant `jobs` / `rateTiers` / `rateVersions` / `shifts` / `breaks` array
+  relevant `jobs` / `rateTiers` / `rateVersions` / `shifts` / `breaks` / `managers` array
 
 That payload goes to `POST /sync/push` (see
-[`api-reference.md`](./api-reference.md#post-syncpush)). The server applies the five
-upsert arrays **in that order** — jobs, then rate tiers, then rate versions, then shifts,
-then breaks — scoped to the authenticated user (the `upsertOwned*` helpers in
+[`api-reference.md`](./api-reference.md#post-syncpush)). The server applies the upsert
+arrays **in this order** — jobs, then rate tiers, then rate versions, then shifts, then
+breaks, then managers — scoped to the authenticated user (the `upsertOwned*` helpers in
 `server/src/routes/sync.ts`) — see [ownership checks](#ownership-checks) below — and
 soft-deletes anything in the deleted-id arrays by setting `deletedAt = now()`. **Rows are
 never hard-deleted server-side.**
@@ -61,7 +62,8 @@ The ordering matters because each entity's ownership check looks up its parent: 
 tier's push is dropped unless its `jobId` already resolves to a job this user owns, and
 that job might be in the *same* push (e.g. a brand-new job created offline, with its
 default tier and first rate all queued together) — so jobs must land first, tiers before
-the versions that reference them, and so on down to breaks.
+the versions that reference them, and so on down to breaks. `Manager` has no parent (it
+hangs directly off `userId`, like `Job`), so its position in the order doesn't matter.
 
 Only on a successful push does the client clear the outbox entries it just sent
 (`clearPendingChanges`). If the push request fails (offline, server down, validation
@@ -72,13 +74,13 @@ error), the outbox is untouched and the same rows go out again on the next sync 
 After pushing, the client calls `GET /sync/pull?since=<cursor>`, where `<cursor>` is the
 `serverTimestamp` returned by the *previous* pull (stored in the `sync_state` table,
 `null`/absent on a device's first-ever sync, which the server treats as "the beginning of
-time"). The server returns every `Job`, `RateTier`, `RateVersion`, `Shift`, and `Break`
-belonging to that user whose `updatedAt` is strictly greater than `since` — **including
-soft-deleted ones**, so the client can find out about deletions.
+time"). The server returns every `Job`, `RateTier`, `RateVersion`, `Shift`, `Break`, and
+`Manager` belonging to that user whose `updatedAt` is strictly greater than `since` —
+**including soft-deleted ones**, so the client can find out about deletions.
 
 The client applies each returned row with an `INSERT ... ON CONFLICT(id) DO UPDATE`
 (`upsertLocalJob` / `upsertLocalRateTier` / `upsertLocalRateVersion` / `upsertLocalShift` /
-`upsertLocalBreak`), unconditionally overwriting its local copy — see
+`upsertLocalBreak` / `upsertLocalManager`), unconditionally overwriting its local copy — see
 [Conflict resolution](#conflict-resolution). If a returned row has a non-null `deletedAt`,
 it's written into the local table as such rather than removed from SQLite; every read
 query in `database.ts` filters `WHERE deleted_at IS NULL`, so it disappears from the UI
@@ -125,6 +127,9 @@ Every row a push touches is scoped to the authenticated user before being writte
 - `Break` rows: same pattern via a join through `shift.userId` (breaks have no `userId`
   column of their own), and the referenced `shiftId` must resolve to a shift owned by this
   user, or the break is silently dropped.
+- `Manager` rows: same pattern as `Job` — `updateMany({ where: { id, userId } })`, falling
+  back to `create` only if that update matched zero rows. No parent to check, since a
+  manager doesn't reference anything else.
 
 This means a client can never overwrite another user's row even if it somehow sent that
 row's id (a guessed UUID, a bug, a replayed payload) — the `updateMany` simply matches zero

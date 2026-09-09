@@ -3,6 +3,7 @@ import {
   getPendingChanges,
   getRawBreak,
   getRawJob,
+  getRawManager,
   getRawRateTier,
   getRawRateVersion,
   getRawShift,
@@ -10,12 +11,13 @@ import {
   setSyncCursor,
   upsertLocalBreak,
   upsertLocalJob,
+  upsertLocalManager,
   upsertLocalRateTier,
   upsertLocalRateVersion,
   upsertLocalShift,
 } from "../db/database";
 import { dbEvents } from "../lib/events";
-import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
+import type { Break, Job, Manager, RateTier, RateVersion, Shift } from "../types";
 import { pullChanges, pushChanges, type PushPayload } from "./api";
 
 function jobFromRow(row: any): Job {
@@ -66,8 +68,11 @@ function shiftFromRow(row: any): Shift {
 function breakFromRow(row: any): Break {
   return { id: row.id, shiftId: row.shift_id, start: row.start, end: row.end, updatedAt: row.updated_at, deletedAt: row.deleted_at };
 }
+function managerFromRow(row: any): Manager {
+  return { id: row.id, name: row.name, email: row.email, archived: !!row.archived, updatedAt: row.updated_at, deletedAt: row.deleted_at };
+}
 
-type SyncEntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break";
+type SyncEntityType = "job" | "rateTier" | "rateVersion" | "shift" | "break" | "manager";
 
 let syncing = false;
 
@@ -86,11 +91,13 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       rateVersions: [],
       shifts: [],
       breaks: [],
+      managers: [],
       deletedJobIds: [],
       deletedRateTierIds: [],
       deletedRateVersionIds: [],
       deletedShiftIds: [],
       deletedBreakIds: [],
+      deletedManagerIds: [],
     };
     const applied: { entityType: SyncEntityType; entityId: string }[] = [];
 
@@ -102,6 +109,7 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
         if (change.entityType === "rateVersion") payload.deletedRateVersionIds.push(change.entityId);
         if (change.entityType === "shift") payload.deletedShiftIds.push(change.entityId);
         if (change.entityType === "break") payload.deletedBreakIds.push(change.entityId);
+        if (change.entityType === "manager") payload.deletedManagerIds.push(change.entityId);
         continue;
       }
       if (change.entityType === "job") {
@@ -116,9 +124,12 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       } else if (change.entityType === "shift") {
         const row = await getRawShift(change.entityId);
         if (row) payload.shifts.push(shiftFromRow(row));
-      } else {
+      } else if (change.entityType === "break") {
         const row = await getRawBreak(change.entityId);
         if (row) payload.breaks.push(breakFromRow(row));
+      } else {
+        const row = await getRawManager(change.entityId);
+        if (row) payload.managers.push(managerFromRow(row));
       }
     }
 
@@ -128,11 +139,13 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
       payload.rateVersions.length ||
       payload.shifts.length ||
       payload.breaks.length ||
+      payload.managers.length ||
       payload.deletedJobIds.length ||
       payload.deletedRateTierIds.length ||
       payload.deletedRateVersionIds.length ||
       payload.deletedShiftIds.length ||
-      payload.deletedBreakIds.length;
+      payload.deletedBreakIds.length ||
+      payload.deletedManagerIds.length;
 
     if (hasPush) {
       await pushChanges(payload);
@@ -146,10 +159,16 @@ export async function synchronize(): Promise<{ pushed: number; pulled: number }>
     for (const version of pulled.rateVersions) await upsertLocalRateVersion(version);
     for (const shift of pulled.shifts) await upsertLocalShift(shift);
     for (const brk of pulled.breaks) await upsertLocalBreak(brk);
+    for (const manager of pulled.managers) await upsertLocalManager(manager);
     await setSyncCursor(pulled.serverTimestamp);
 
     const pulledCount =
-      pulled.jobs.length + pulled.rateTiers.length + pulled.rateVersions.length + pulled.shifts.length + pulled.breaks.length;
+      pulled.jobs.length +
+      pulled.rateTiers.length +
+      pulled.rateVersions.length +
+      pulled.shifts.length +
+      pulled.breaks.length +
+      pulled.managers.length;
     if (hasPush || pulledCount) dbEvents.emit();
     return { pushed: applied.length, pulled: pulledCount };
   } finally {

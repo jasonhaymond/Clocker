@@ -50,17 +50,26 @@ const breakInput = z.object({
   end: z.string().datetime().nullable().optional(),
 });
 
+const managerInput = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  archived: z.boolean().optional(),
+});
+
 const pushSchema = z.object({
   jobs: z.array(jobInput).default([]),
   rateTiers: z.array(rateTierInput).default([]),
   rateVersions: z.array(rateVersionInput).default([]),
   shifts: z.array(shiftInput).default([]),
   breaks: z.array(breakInput).default([]),
+  managers: z.array(managerInput).default([]),
   deletedJobIds: z.array(z.string().uuid()).default([]),
   deletedRateTierIds: z.array(z.string().uuid()).default([]),
   deletedRateVersionIds: z.array(z.string().uuid()).default([]),
   deletedShiftIds: z.array(z.string().uuid()).default([]),
   deletedBreakIds: z.array(z.string().uuid()).default([]),
+  deletedManagerIds: z.array(z.string().uuid()).default([]),
 });
 
 // Update the row if this user already owns it, otherwise create it under this user.
@@ -129,6 +138,14 @@ async function upsertOwnedBreak(userId: string, data: z.infer<typeof breakInput>
   }
 }
 
+async function upsertOwnedManager(userId: string, data: z.infer<typeof managerInput>) {
+  const { id, ...fields } = data;
+  const updated = await prisma.manager.updateMany({ where: { id, userId }, data: fields });
+  if (updated.count === 0) {
+    await prisma.manager.create({ data: { id, userId, ...fields } });
+  }
+}
+
 export async function syncRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
@@ -144,21 +161,28 @@ export async function syncRoutes(app: FastifyInstance) {
       rateVersions,
       shifts,
       breaks,
+      managers,
       deletedJobIds,
       deletedRateTierIds,
       deletedRateVersionIds,
       deletedShiftIds,
       deletedBreakIds,
+      deletedManagerIds,
     } = parsed.data;
 
     // Order matters: jobs before tiers before versions before shifts before breaks, so
     // each upsert's ownership check finds its parent already written this same push.
+    // Managers have no dependency on the others, so their order doesn't matter.
     for (const job of jobs) await upsertOwnedJob(userId, job);
     for (const tier of rateTiers) await upsertOwnedRateTier(userId, tier);
     for (const version of rateVersions) await upsertOwnedRateVersion(userId, version);
     for (const shift of shifts) await upsertOwnedShift(userId, shift);
     for (const brk of breaks) await upsertOwnedBreak(userId, brk);
+    for (const manager of managers) await upsertOwnedManager(userId, manager);
 
+    if (deletedManagerIds.length) {
+      await prisma.manager.updateMany({ where: { id: { in: deletedManagerIds }, userId }, data: { deletedAt: new Date() } });
+    }
     if (deletedJobIds.length) {
       await prisma.job.updateMany({ where: { id: { in: deletedJobIds }, userId }, data: { deletedAt: new Date() } });
     }
@@ -196,14 +220,15 @@ export async function syncRoutes(app: FastifyInstance) {
     const since = query.data.since ? new Date(query.data.since) : new Date(0);
     const serverTimestamp = new Date();
 
-    const [jobs, rateTiers, rateVersions, shifts, breaks] = await Promise.all([
+    const [jobs, rateTiers, rateVersions, shifts, breaks, managers] = await Promise.all([
       prisma.job.findMany({ where: { userId, updatedAt: { gt: since } } }),
       prisma.rateTier.findMany({ where: { job: { userId }, updatedAt: { gt: since } } }),
       prisma.rateVersion.findMany({ where: { tier: { job: { userId } }, updatedAt: { gt: since } } }),
       prisma.shift.findMany({ where: { userId, updatedAt: { gt: since } } }),
       prisma.break.findMany({ where: { shift: { userId }, updatedAt: { gt: since } } }),
+      prisma.manager.findMany({ where: { userId, updatedAt: { gt: since } } }),
     ]);
 
-    return reply.send({ serverTimestamp: serverTimestamp.toISOString(), jobs, rateTiers, rateVersions, shifts, breaks });
+    return reply.send({ serverTimestamp: serverTimestamp.toISOString(), jobs, rateTiers, rateVersions, shifts, breaks, managers });
   });
 }

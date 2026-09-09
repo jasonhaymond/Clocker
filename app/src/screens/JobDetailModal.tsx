@@ -131,7 +131,7 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Edit Job</Text>
           <TouchableOpacity onPress={onClose}>
@@ -220,27 +220,27 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  title: { fontSize: 20, fontWeight: "700" },
-  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 16 },
-  sectionLabel: { fontWeight: "600", color: "#444", marginTop: 16, marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 10, backgroundColor: "#fff" },
-  swatches: { flexDirection: "row", gap: 10 },
-  swatch: { width: 28, height: 28, borderRadius: 14 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  title: { fontSize: 17, fontWeight: "700" },
+  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
+  sectionLabel: { fontWeight: "600", color: "#444", marginTop: 12, marginBottom: 6, fontSize: 13 },
+  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, backgroundColor: "#fff" },
+  swatches: { flexDirection: "row", gap: 8 },
+  swatch: { width: 24, height: 24, borderRadius: 12 },
   swatchSelected: { borderWidth: 3, borderColor: "#111" },
-  tierRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
-  tierName: { fontWeight: "500" },
-  tierRate: { color: "#666", fontSize: 13, marginTop: 2 },
-  tierRateInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, width: 70 },
-  tierAction: { paddingHorizontal: 6, paddingVertical: 4 },
-  tierActionText: { color: "#2563eb", fontSize: 13, fontWeight: "600" },
+  tierRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
+  tierName: { fontWeight: "500", fontSize: 14 },
+  tierRate: { color: "#666", fontSize: 12, marginTop: 1 },
+  tierRateInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 6, width: 64 },
+  tierAction: { paddingHorizontal: 5, paddingVertical: 3 },
+  tierActionText: { color: "#2563eb", fontSize: 12, fontWeight: "600" },
   tierActionMuted: { color: "#999" },
-  addTierRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  addTierRow: { flexDirection: "row", gap: 6, marginTop: 8 },
   addTierInput: { flex: 2 },
   addTierRateInput: { flex: 1 },
-  secondaryButton: { marginTop: 10, alignItems: "center", padding: 10, borderRadius: 8, borderWidth: 1, borderColor: "#2563eb" },
-  secondaryButtonText: { color: "#2563eb", fontWeight: "600" },
-  overtimeHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 20 },
-  overtimeRow: { flexDirection: "row", gap: 12, marginTop: 8 },
-  hint: { color: "#999", fontSize: 12, marginTop: 10, marginBottom: 30 },
+  secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#2563eb" },
+  secondaryButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
+  overtimeHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 },
+  overtimeRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  hint: { color: "#999", fontSize: 11, marginTop: 8, marginBottom: 24 },
 });
