@@ -230,8 +230,13 @@ npm run start:tunnel   # or: npx expo start --tunnel
 
 Tunnel mode relays through Expo's own infrastructure instead, so it works regardless of
 which networks the server and your phone are each on (at the cost of a bit of latency).
-The first run may prompt to install `@expo/ngrok` — let it. Scan the new QR code; it'll
-be a different URL than plain `npm run dev:app` printed.
+It needs `@expo/ngrok`, already in `app/`'s `devDependencies` for exactly this reason —
+Expo would otherwise offer to install it *globally* on first use, which fails with a
+permissions error on plenty of Linux setups (Node installed via a system package manager
+rather than something like `nvm`, so the global `node_modules` isn't user-writable).
+Having it locally means `npm install` is all that's ever needed; nothing to install
+globally or `sudo`. Scan the new QR code; it'll be a different URL than plain
+`npm run dev:app` printed.
 
 If your phone genuinely *is* on the same LAN as the server and it's still not loading,
 that's more likely a firewall blocking Metro's port (8081) than a connection-mode issue.
