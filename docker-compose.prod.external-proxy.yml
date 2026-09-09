@@ -1,0 +1,46 @@
+# Alternate production stack for when you already run your own reverse proxy (a separate
+# Caddy, nginx, Traefik, etc. — possibly on a different machine) and just want to add
+# Clocker's site to it, rather than using the bundled Caddy from docker-compose.prod.yml.
+# Same Postgres + server as that file; no caddy service, and the server's port is
+# published to the host so your external proxy can reach it. See
+# docs/deployment.md#deploying-behind-your-own-reverse-proxy for the full walkthrough and
+# a ready-to-paste Caddy site block.
+#
+# Usage: npm run deploy -- your-domain.com --external-proxy
+# (or directly: docker compose -f docker-compose.prod.external-proxy.yml --env-file .env.prod up -d --build)
+#
+# `name` matches docker-compose.prod.yml's on purpose — these two files are alternate
+# configurations of the *same* deployment, never meant to run at once. Tear one down
+# (`docker compose -f <file> down`) before switching to the other.
+name: clocker-prod
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clocker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: clocker
+    volumes:
+      - clocker-postgres-prod:/var/lib/postgresql/data
+    # No host port published — only the `server` container needs to reach this.
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://clocker:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/clocker?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
+      PORT: 3001
+    depends_on:
+      - postgres
+    ports:
+      # SERVER_BIND defaults to all interfaces since an external proxy — possibly on a
+      # different machine — needs to reach this. Lock it down with a firewall rule scoped
+      # to your proxy's IP (see docs/deployment.md), or set SERVER_BIND in .env.prod to a
+      # specific private/internal IP if this host has one your proxy can use instead.
+      - "${SERVER_BIND:-0.0.0.0}:${SERVER_PORT:-3001}:3001"
+
+volumes:
+  clocker-postgres-prod:

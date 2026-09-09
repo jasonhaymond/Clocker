@@ -20,6 +20,12 @@ are for your own workstation.
 ## Quick start: production deployment (Caddy + Docker Compose)
 
 Everything needed is already in the repo — nothing to write, just to configure and run.
+This walks through the default setup, where the bundled Caddy owns ports 80/443 directly.
+**Already running your own reverse proxy** (a separate Caddy, possibly on another
+machine, nginx, Traefik, ...) and want to add Clocker to it instead? Skip to
+[Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy) —
+everything else on this page (the Prerequisites below aside — DNS/ports 80/443 are only
+relevant to the bundled-Caddy path) still applies.
 
 ### Prerequisites
 
@@ -170,6 +176,65 @@ configuration, but they can't both use the same Postgres port unless you've stop
 | `server` container shows "Restarting" in `ps` | It's crash-looping — read `docker compose -f docker-compose.prod.yml logs server` for the actual error, usually a missing/wrong env var or a database connection failure. |
 | Everything looks up, but the app can't reach it | `EXPO_PUBLIC_API_URL` is pointed at the wrong thing — it must be `https://your-domain.com` (through Caddy), never a raw container port like `:3001`, which is never published to the host at all. |
 | You ran `npm run setup`/`npm run dev:server` here and it "stopped working" | That's the dev workflow, not a deployment — see [Dev stack vs. production stack](#dev-stack-vs-production-stack--dont-run-one-thinking-its-the-other) above. Switch to the production stack instead of trying to keep the dev process alive. |
+| (`--external-proxy`) Your other proxy gets a connection error/timeout reaching Clocker | Port `SERVER_PORT` isn't actually reachable from the proxy's machine — check the firewall rule is scoped to (and allows) the proxy's real IP, and that `SERVER_BIND` in `.env.prod` isn't set to an address the proxy can't route to. |
+| (`--external-proxy`) `http://localhost:<port>/health` works on this machine but the domain still doesn't resolve through your proxy | That's your *other* proxy's configuration/DNS, not this stack — confirm the site block was actually added and reloaded there, and that domain's DNS points at *that* proxy (not this machine). |
+
+## Deploying behind your own reverse proxy
+
+If you already run a reverse proxy — a separate Caddy (possibly on a different machine,
+already fronting other services), nginx, Traefik, whatever — you don't need the bundled
+one from the Quick start above fighting it for ports 80/443. `PROXY_MODE=external` skips
+it entirely: Postgres and the server still run in Docker here, but instead of a `caddy`
+container, the server's own port is published for *your* proxy to reach, and `npm run
+deploy` prints a ready-to-paste Caddy site block at the end.
+
+```bash
+npm run deploy -- your-domain.com --external-proxy
+```
+
+What's different from the default (local) mode:
+
+- Uses `docker-compose.prod.external-proxy.yml` instead of `docker-compose.prod.yml` — no
+  `caddy` service at all; nothing here ever touches ports 80/443.
+- Auto-picks a free host port for the server (starting at 3001, the same
+  scan-and-persist logic `npm run setup` uses for local dev — see
+  [Automatic port selection](./development.md#automatic-port-selection)), published as
+  `SERVER_PORT` in `.env.prod`. Re-verified on every run, so a port that's since been
+  claimed by something else on this machine gets replaced automatically, same as dev.
+- Publishes that port on `SERVER_BIND` (default `0.0.0.0`, i.e. every interface) since
+  your proxy might be reachable only from elsewhere on the network — **this means the
+  server is reachable as plain HTTP on that port from anywhere that can reach this
+  machine's IP, not just your proxy.** Lock it down:
+  - **Firewall it to your proxy's specific IP** (`ufw allow from <proxy-ip> to any port
+    <SERVER_PORT>` or equivalent) — the important step, regardless of the next one.
+  - Optionally also set `SERVER_BIND` in `.env.prod` to a private/internal IP this host
+    has (e.g. a VPC-internal address, a Tailscale IP) if you have one your proxy can
+    reach, instead of leaving it bound to every interface.
+- Skips the DNS-must-resolve-for-Let's-Encrypt check and the "reach it over HTTPS through
+  Caddy" verification — nothing here handles TLS or knows your domain's DNS state, so it
+  instead confirms the server answers directly over plain HTTP
+  (`http://localhost:<SERVER_PORT>/health`) on this machine. Reaching it through *your*
+  proxy is a separate check you run after adding the site block below.
+- Prints this at the end (with your real domain and port already filled in):
+  ```caddyfile
+  your-domain.com {
+      reverse_proxy <this-machine's-address>:<server-port>
+  }
+  ```
+  Replace `<this-machine's-address>` with whatever your proxy can use to reach this host
+  (its LAN IP, a private network hostname, a VPN/Tailscale address) — add that block to
+  your proxy's own Caddyfile and reload it (`caddy reload` or your proxy's equivalent).
+  Not using Caddy on the far end? Translate the same "domain → this host:port" rule into
+  nginx/Traefik/whatever config format that proxy uses.
+
+Switching modes later (`--local-proxy` to switch back, or just `--external-proxy` again
+after having used local) is safe — `npm run deploy` detects the change and stops the
+previous mode's containers first, before starting the new ones, so you never end up with
+both running at once under the same project name.
+
+Re-run `npm run deploy` (no flags needed once a mode is chosen) any time you want to
+rebuild and restart with the latest code — it reuses the domain, generated
+password/secret, mode, and port already in `.env.prod`.
 
 ## How the stack fits together
 
@@ -184,7 +249,12 @@ configuration, but they can't both use the same Postgres port unless you've stop
   no-op once the database is current, so restarts never re-run migrations destructively).
 - **`docker-compose.prod.yml`** — wires up all three containers: Postgres (no host port
   published — only the `server` container can reach it), `server` (built from the
-  Dockerfile), and `caddy` (the only container exposed, on 80/443).
+  Dockerfile), and `caddy` (the only container exposed, on 80/443). Used for
+  `PROXY_MODE=local` (the default).
+- **`docker-compose.prod.external-proxy.yml`** — the alternate stack for
+  `PROXY_MODE=external` (see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)):
+  same Postgres + server, no `caddy` service, and the server's port is published to the
+  host instead of only being reachable internally.
 - **`.env.prod.example`** — the template `.env.prod` is copied from.
 
 `DOMAIN` defaults to `localhost` if you leave `.env.prod`'s value empty and just want to
@@ -237,9 +307,18 @@ yours to supply. Running the server directly, set all of these however your host
 - **`PORT`** (direct-run path only) — the code falls back to `3000` if unset
   (`server/src/index.ts`); set it explicitly so it matches whatever your host expects. The
   Compose stack always sets this to `3001` for you.
-- **`DOMAIN`** (Compose path only) — your server's real hostname, so Caddy knows what to
-  request a certificate for. The one value `npm run deploy` can't generate for you — pass
-  it as an argument the first time (`npm run deploy -- your-domain.com`).
+- **`DOMAIN`** (Compose path only) — your server's real hostname. In `PROXY_MODE=local`,
+  this is what the bundled Caddy requests a certificate for; in `external`, it's only
+  used to label the printed site-block snippet. The one value `npm run deploy` can't
+  generate for you — pass it as an argument the first time (`npm run deploy --
+  your-domain.com`).
+- **`PROXY_MODE`** (Compose path only) — `local` (default) or `external`; see
+  [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy).
+  Set via `--local-proxy`/`--external-proxy` on `npm run deploy`, persisted from then on.
+- **`SERVER_PORT`** / **`SERVER_BIND`** (Compose path, `external` mode only) — the host
+  port/interface the server is published on for your own proxy to reach. Auto-picked and
+  auto-set by `npm run deploy`; see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)
+  for the security note on `SERVER_BIND`.
 
 ## Security gaps to close before this is public
 
