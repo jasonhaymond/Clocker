@@ -195,6 +195,29 @@ reason. If it happens, close anything that might be holding the file (stop `npm 
 dev:server`, restart your editor's TS server) and re-run `npm run db:generate
 --workspace=server`.
 
+## Web support: blocked on an upstream Expo bug
+
+`npx expo start --web` / `npx expo export --platform web` **do work** — `react-dom` and
+`react-native-web` are installed, and `app/metro.config.js` adds the two things
+`expo-sqlite`'s web backend needs: treating `.wasm` as an asset (its WASM SQLite build),
+and `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response headers (its
+worker needs `SharedArrayBuffer`, which browsers only expose on a cross-origin-isolated
+page). Both bundling and asset resolution succeed, confirmed with a real export build.
+
+What doesn't work yet: Expo's dev server serves the root `/` document through a code path
+that doesn't run Metro's `enhanceMiddleware` — so every *other* response gets the two
+headers (confirmable with `curl -I`), but the actual page you load never does, which means
+the page is never cross-origin-isolated and `SharedArrayBuffer` is `undefined` at runtime
+the moment the app tries to open the database. This reproduces even on the latest `expo`
+patch version, and matches an open upstream issue exactly:
+[expo/expo#38481](https://github.com/expo/expo/issues/38481). There's no known workaround
+from the app side — it needs an Expo CLI fix. Re-test after bumping `expo` in the future;
+nothing else here should need to change once it's fixed upstream.
+
+Not yet addressed even once that's fixed: `expo-sharing`/`expo-mail-composer` (CSV/email
+export) have no web implementation at all, so Export needs a web-specific fallback (a
+browser download / clipboard copy, already planned) rather than assuming those work.
+
 ## Known issue: React Native DevTools error on a headless Linux box
 
 Running `npm run dev:app` on a Linux machine with no display server (a remote/SSH-only
