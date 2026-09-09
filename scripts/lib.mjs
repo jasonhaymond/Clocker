@@ -45,7 +45,11 @@ export function commandExists(command) {
 
 export function captureOutput(command, { cwd } = {}) {
   try {
-    return execSync(command, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    // trimEnd only (not trim): some callers parse fixed-width prefixes per line (e.g.
+    // `git status --porcelain`'s "XY path" format), where a leading-whitespace-stripping
+    // trim() would corrupt just the first line by removing meaningful leading spaces —
+    // trailing whitespace/the final newline is the only part that's always safe to drop.
+    return execSync(command, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trimEnd();
   } catch {
     return null;
   }
