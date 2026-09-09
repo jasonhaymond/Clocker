@@ -26,7 +26,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-mail-composer"
+      "expo-mail-composer",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

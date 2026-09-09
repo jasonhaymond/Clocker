@@ -301,42 +301,57 @@ export async function listRateVersionsForTiers(tierIds: string[]): Promise<RateV
 
 // ---- Shifts ----
 
-export async function getOpenShift(): Promise<Shift | null> {
+// Every shift still open app-wide — clocking into multiple jobs at once is allowed (see
+// getOpenShiftForJob below for the one constraint that remains: a job can't have two
+// open shifts of its own at the same time).
+export async function getOpenShifts(): Promise<Shift[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync("SELECT * FROM shifts WHERE clock_out IS NULL AND deleted_at IS NULL ORDER BY clock_in ASC");
+  return rows.map(rowToShift);
+}
+
+export async function getOpenShiftForJob(jobId: string): Promise<Shift | null> {
   const db = await getDb();
   const row = await db.getFirstAsync(
-    "SELECT * FROM shifts WHERE clock_out IS NULL AND deleted_at IS NULL ORDER BY clock_in DESC LIMIT 1",
+    "SELECT * FROM shifts WHERE job_id = ? AND clock_out IS NULL AND deleted_at IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [jobId],
   );
   return row ? rowToShift(row) : null;
 }
 
-export async function clockIn(jobId: string, rateTierId: string | null = null): Promise<Shift> {
-  const existingOpen = await getOpenShift();
-  if (existingOpen) {
-    throw new Error("A shift is already clocked in. Clock out first.");
+// `clockInTime` defaults to now but can be backdated (or postdated) — e.g. "Clock In
+// At..." for a forgotten clock-in. Only one open shift per job is enforced; a different
+// job can have its own open shift at the same time.
+export async function clockIn(jobId: string, rateTierId: string | null = null, clockInTime?: string): Promise<Shift> {
+  const existingForJob = await getOpenShiftForJob(jobId);
+  if (existingForJob) {
+    throw new Error("Already clocked in to this job. Clock out first.");
   }
   const db = await getDb();
   const id = newId();
+  const clockInAt = clockInTime ?? nowIso();
   const updatedAt = nowIso();
   await db.runAsync("INSERT INTO shifts (id, job_id, rate_tier_id, clock_in, updated_at) VALUES (?, ?, ?, ?, ?)", [
     id,
     jobId,
     rateTierId,
-    updatedAt,
+    clockInAt,
     updatedAt,
   ]);
   await markPending("shift", id, "upsert");
   dbEvents.emit();
-  return { id, jobId, rateTierId, clockIn: updatedAt, clockOut: null, notes: null, updatedAt, deletedAt: null };
+  return { id, jobId, rateTierId, clockIn: clockInAt, clockOut: null, notes: null, updatedAt, deletedAt: null };
 }
 
-export async function clockOut(shiftId: string): Promise<void> {
+// `clockOutTime` defaults to now but can be set explicitly ("Clock Out At...").
+export async function clockOut(shiftId: string, clockOutTime?: string): Promise<void> {
   const openBreak = await getOpenBreak(shiftId);
   if (openBreak) {
-    await endBreak(openBreak.id);
+    await endBreak(openBreak.id, clockOutTime);
   }
   const db = await getDb();
-  const clockOutAt = nowIso();
-  await db.runAsync("UPDATE shifts SET clock_out = ?, updated_at = ? WHERE id = ?", [clockOutAt, clockOutAt, shiftId]);
+  const clockOutAt = clockOutTime ?? nowIso();
+  await db.runAsync("UPDATE shifts SET clock_out = ?, updated_at = ? WHERE id = ?", [clockOutAt, nowIso(), shiftId]);
   await markPending("shift", shiftId, "upsert");
   dbEvents.emit();
 }
@@ -402,10 +417,13 @@ export async function startBreak(shiftId: string): Promise<Break> {
   return { id, shiftId, start, end: null, updatedAt: start, deletedAt: null };
 }
 
-export async function endBreak(breakId: string): Promise<void> {
+// `endTime` lets a custom clock-out (in the past) close a still-open break at the same
+// moment, rather than leaving it stamped with "now" — which could otherwise end up after
+// the shift's own clock-out.
+export async function endBreak(breakId: string, endTime?: string): Promise<void> {
   const db = await getDb();
-  const end = nowIso();
-  await db.runAsync("UPDATE breaks SET end = ?, updated_at = ? WHERE id = ?", [end, end, breakId]);
+  const end = endTime ?? nowIso();
+  await db.runAsync("UPDATE breaks SET end = ?, updated_at = ? WHERE id = ?", [end, nowIso(), breakId]);
   await markPending("break", breakId, "upsert");
   dbEvents.emit();
 }

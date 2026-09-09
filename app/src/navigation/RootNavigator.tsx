@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import React, { useEffect } from "react";
@@ -15,6 +16,22 @@ import { checkForUpdate } from "../updates/updates";
 const Tab = createBottomTabNavigator();
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Clock: "time-outline",
+  Jobs: "briefcase-outline",
+  History: "list-outline",
+  Export: "share-outline",
+  Settings: "settings-outline",
+};
+
+const TAB_ICONS_FOCUSED: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Clock: "time",
+  Jobs: "briefcase",
+  History: "list",
+  Export: "share",
+  Settings: "settings",
+};
 
 function AppTabs() {
   useEffect(() => {
@@ -34,7 +51,14 @@ function AppTabs() {
   }, []);
 
   return (
-    <Tab.Navigator screenOptions={{ headerShown: true }}>
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: true,
+        tabBarIcon: ({ focused, color, size }) => (
+          <Ionicons name={(focused ? TAB_ICONS_FOCUSED : TAB_ICONS)[route.name]} color={color} size={size} />
+        ),
+      })}
+    >
       <Tab.Screen name="Clock" component={ClockScreen} />
       <Tab.Screen name="Jobs" component={JobsScreen} />
       <Tab.Screen name="History" component={HistoryScreen} />

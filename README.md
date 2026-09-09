@@ -126,6 +126,11 @@ eas update --branch production --message "Describe the change"
   calculating pay
 - Clock in / clock out, with a live-updating elapsed timer; a rate-tier picker appears
   automatically only for jobs that actually have more than one tier
+- Clock into multiple jobs at once — each open shift gets its own card with its own timer,
+  break controls, and clock-out; a job can't be double-clocked into itself, but a
+  different job can run concurrently
+- "Clock In At..." / "Clock Out At..." — set an explicit date/time instead of "now", for
+  a forgotten clock-in/out
 - Breaks (start/end), excluded from worked-hours totals
 - Per-shift notes/comments, added or edited from the History screen
 - History grouped by day, with per-day and per-shift totals and computed pay

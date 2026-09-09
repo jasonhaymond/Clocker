@@ -29,9 +29,13 @@ User 1──* Job 1──* RateTier 1──* RateVersion
   [Rate history](#rate-history-tiers-and-overtime) below and `app/src/lib/pay.ts`.
 - **Shift** — one clock-in/clock-out span for a job, optionally tagged with which
   `RateTier` it was worked under (`null` means "the job's default tier," resolved at
-  pay-calculation time). `clockOut` is `null` while the shift is open; at most one shift is
-  open at a time app-wide (enforced in `app/src/db/database.ts`'s `clockIn()`, not at the
-  database level). `notes` is a free-text comment, editable from the History screen.
+  pay-calculation time). `clockOut` is `null` while the shift is open. Multiple shifts —
+  for different jobs — can be open at once (clocking into two jobs simultaneously is
+  allowed); a single job can only have one open shift of its own at a time, enforced in
+  `app/src/db/database.ts`'s `clockIn()` (via `getOpenShiftForJob`), not at the database
+  level. `clockIn`/`clockOut` default to "now" but accept an explicit timestamp (the
+  Clock screen's "At..." buttons), for backdating a forgotten clock-in/out. `notes` is a
+  free-text comment, editable from the History screen.
 - **Break** — one pause within a shift. `end` is `null` while the break is open. Break time
   is subtracted from a shift's worked-hours total (`app/src/lib/time.ts`'s `workedMillis`).
 
