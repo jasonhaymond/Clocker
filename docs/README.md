@@ -13,9 +13,10 @@
   variables, day-to-day commands, and known issues (with workarounds already applied) you
   might otherwise lose time to.
 - **[Deployment](./deployment.md)** — a complete, step-by-step walkthrough for a real
-  production deployment (Caddy + Docker Compose, with automatic HTTPS), how it differs
-  from the local dev stack, troubleshooting, required env vars, and mobile app
-  distribution options.
+  production deployment (Caddy + Docker Compose, with automatic HTTPS, or behind your own
+  existing reverse proxy), how it differs from the local dev stack, troubleshooting,
+  required env vars, and building/installing the Expo app itself (EAS Build, internal
+  distribution, OTA updates).
 
 Start with the root [`README.md`](../README.md) for the quick-start; come here for the
 "why" and the "exactly how" behind it.

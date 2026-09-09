@@ -214,3 +214,7 @@ eas update --branch production --message "Describe the change"
 Until `eas update:configure` has been run, the Settings screen's update section always
 reads "Updates aren't available in this build" — this is expected in Expo Go and any local
 dev build, not a bug.
+
+This covers *updating* an already-installed build. For producing that build in the first
+place — EAS Build, internal distribution, installing on a real device — see
+[Deploying the Expo app](./deployment.md#deploying-the-expo-app).

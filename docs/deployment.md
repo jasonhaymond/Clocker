@@ -96,11 +96,20 @@ same thing by hand instead — useful if you want to see every step, or `npm run
 doesn't fit your setup — see [Manual setup, without the deploy script](#manual-setup-without-the-deploy-script)
 below.
 
-Once it succeeds, point the app at it:
+Once it succeeds, point the app at it. For local development against this server
+(`npx expo start` / Expo Go), the persistent way is a **file**, not a shell command:
 
 ```bash
+# app/.env — copy from app/.env.example if it doesn't exist yet
 EXPO_PUBLIC_API_URL=https://your-domain.com
 ```
+
+Expo loads `app/.env` automatically (no extra config) whenever you run `npm run dev:app`
+or `npx expo start` from `app/` — see
+[`development.md`](./development.md#environment-variables). Building an actual
+installable app (not just running it in Expo Go) needs the same variable set a different
+way, since a build bakes it in rather than reading a file on your machine at the time —
+see [Deploying the Expo app](#deploying-the-expo-app) below.
 
 ### Manual setup, without the deploy script
 
@@ -342,21 +351,116 @@ itself listens on plain HTTP — a JWT sent over that is trivially interceptable
 None of this matters for local development against `localhost`/your own LAN — it starts
 mattering the moment the server is reachable from the open internet.
 
-## Mobile app
+## Deploying the Expo app
 
-Two distinct things, easy to conflate:
+So far, "running the app" has meant Expo Go against `npx expo start` — great for
+development, but Expo Go is a dev client: it can't be handed to someone else, doesn't
+work offline from your dev machine, and isn't what you'd put on your own phone
+permanently. This section is about producing an actual installable app.
 
-- **OTA (JavaScript) updates** — shipping a code change to an already-installed build
-  without going through an app store. Covered in
-  [`development.md`](./development.md#ota-updates) (`eas update`). This only works for
-  JS/asset changes; anything touching native code (a new native dependency, an
-  `app.json` config change with native effect) needs a new build.
-- **Binary distribution** — actually getting an installable build onto a device: Expo Go
-  (dev-only, what this project has used so far), an EAS Build development/internal build
-  (installable `.apk`/`.ipa` shared directly, no store review), or a full App
-  Store/Play Store release. None of this is configured yet — it starts with
-  `eas build:configure` in `app/`, which is a separate step from `eas update:configure`.
+Three distinct things, easy to conflate:
 
-For a genuinely personal app (you, your own phone), an EAS internal-distribution build is
-usually the right stopping point — no store review, no public listing, just an installable
-binary plus OTA updates on top of it.
+1. **Building** — compiling the app into something installable (`.apk`/`.aab` for
+   Android, `.ipa` for iOS), via [EAS Build](https://docs.expo.dev/build/introduction/)
+   (Expo's cloud build service — nothing to install locally beyond the CLI).
+2. **Installing it somewhere** — an *internal distribution* build (a direct download
+   link, no review) for personal/team use, vs. a full App Store/Play Store release for
+   the public. This doc focuses on internal distribution — the right stopping point for
+   a personal app.
+3. **Updating it afterward** — [OTA updates](./development.md#ota-updates) (`eas
+   update`) for JS/asset-only changes to an *already-installed* build, vs. a brand new
+   build (this section, again) for anything touching native code.
+
+### How `EXPO_PUBLIC_API_URL` gets into a real build
+
+Local dev reads `app/.env` live, every time you start Metro. A build is different: EAS
+Build runs on Expo's servers, not your machine, and whatever `EXPO_PUBLIC_*` values were
+present *at build time* get compiled directly into the JS bundle — there's no `.env` file
+on your machine for it to read, and no way to change it after the fact without a new
+build (an OTA update can't change this either, since it's baked into the bundle the OTA
+update itself would be diffed against).
+
+The fix: set it in `app/eas.json` (created in the next step), per build profile, so it's
+explicit and versioned rather than depending on whatever happened to be in your shell:
+
+```jsonc
+// app/eas.json
+{
+  "build": {
+    "production": {
+      "env": { "EXPO_PUBLIC_API_URL": "https://your-domain.com" }
+    },
+    "preview": {
+      "env": { "EXPO_PUBLIC_API_URL": "https://your-domain.com" }
+    }
+  }
+}
+```
+
+This is a plain URL, not a secret, so committing it in `eas.json` is fine — unlike
+`JWT_SECRET`/`POSTGRES_PASSWORD`, there's nothing here worth hiding. (If you ever *do*
+need to bake in a real secret for some other variable, use [EAS's environment
+variables](https://docs.expo.dev/eas/environment-variables/) — `eas env:create` — instead
+of putting it in `eas.json`.)
+
+### One-time setup
+
+```bash
+npm i -g eas-cli
+cd app
+eas login
+eas build:configure
+```
+
+`eas build:configure` asks a few questions (platforms to support) and writes `app/eas.json`
+with default `development`/`preview`/`production` profiles, plus links the project to an
+EAS project (writing `extra.eas.projectId` into `app.json` — the same field
+`eas update:configure` uses for [OTA updates](./development.md#ota-updates), so you only
+need to link the project once regardless of which you set up first).
+
+Add the `env` block from above to whichever profile(s) you'll actually build with.
+
+### Building
+
+```bash
+eas build --platform android --profile preview
+```
+
+- **Android** is the easy path: no developer account needed for internal distribution.
+  The build finishes with a download link — open it on the phone (or scan the QR code
+  EAS prints) and install directly. Android will warn about installing from an unknown
+  source the first time; that's expected for a non-Play-Store install.
+- **iOS** needs an [Apple Developer Program](https://developer.apple.com/programs/)
+  membership ($99/year) before EAS can produce anything installable on a real device —
+  there's no way around this, it's an Apple platform requirement, not an Expo one. You'll
+  also need to register the specific device(s) you want to install on:
+  ```bash
+  eas device:create   # follow the prompt; registers a device's UDID with Apple
+  eas build --platform ios --profile preview
+  ```
+  EAS handles provisioning-profile/certificate creation for you interactively the first
+  time. The resulting build installs via TestFlight or a direct install link, depending
+  on the profile's `distribution` setting.
+
+Use the `preview` profile (`"distribution": "internal"` by default from
+`build:configure`) for this — `production` is meant for an actual store submission (see
+below) and may be configured for that instead (e.g. an `.aab` for Play Store rather than
+an installable `.apk`).
+
+### After the first build
+
+- **JS/asset-only change** (a new screen, a bug fix, anything not touching native
+  dependencies or `app.json`'s native-affecting config): ship it as an
+  [OTA update](./development.md#ota-updates) — `eas update` — no new build, no
+  reinstalling anything.
+- **Native change** (a new native dependency, an Expo SDK upgrade, a change to
+  permissions/icons/etc. in `app.json`): repeat the `eas build` step above and reinstall.
+
+### Going further: an actual App Store / Play Store release
+
+Out of scope for a personal app, but if you want it later: `eas submit` uploads a
+`production`-profile build to App Store Connect / Google Play, after which normal store
+review/listing requirements apply (screenshots, a privacy policy, Apple/Google developer
+account enrollment if not already done for the steps above). Start with [Expo's own
+submission guide](https://docs.expo.dev/submit/introduction/) when you get there — nothing
+in this repo needs to change to support it, it's purely an EAS/store-side process.
