@@ -80,13 +80,16 @@ upward if that's already taken by something else on your machine — see
 `server/.env`'s `PORT` or the terminal output above rather than assuming 3001.
 
 The app needs to know where your server is, via `EXPO_PUBLIC_API_URL` (defaults to
-`http://localhost:3001` — override it if yours landed on a different port). Android
-emulator can't reach `localhost` directly — use `10.0.2.2`; a physical device needs your
-machine's LAN IP:
+`http://localhost:3001` — override it if yours landed on a different port, or points at
+a deployed server). Set it persistently in `app/.env` (copy from `app/.env.example` —
+Expo loads it automatically, no extra setup) or inline per-command:
 
 ```bash
 cd app && EXPO_PUBLIC_API_URL=http://192.168.1.20:3001 npm run start
 ```
+
+Android emulator can't reach `localhost` directly — use `10.0.2.2` instead of your LAN
+IP; a physical device needs your machine's actual LAN IP as shown above.
 
 ### Over-the-air app updates
 

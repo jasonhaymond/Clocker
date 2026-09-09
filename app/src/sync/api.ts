@@ -1,9 +1,10 @@
 import { getToken } from "../auth/tokenStore";
 import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
 
-// Points at your Fastify server. Override with EXPO_PUBLIC_API_URL in app config for a
-// device/emulator: Android emulator uses http://10.0.2.2:3001, a physical device needs
-// your machine's LAN IP (e.g. http://192.168.1.20:3001), a hosted server just uses its URL.
+// Points at your Fastify server. Set EXPO_PUBLIC_API_URL in app/.env (copy from
+// app/.env.example) for a persistent override, or inline per-command — Android emulator
+// uses http://10.0.2.2:3001, a physical device needs your machine's LAN IP (e.g.
+// http://192.168.1.20:3001), a deployed server just uses its URL (see docs/deployment.md).
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
 class ApiError extends Error {

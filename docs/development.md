@@ -91,12 +91,16 @@ Root `.env` (separate file, read by Docker Compose only — not the app or the s
 |---|---|
 | `POSTGRES_PORT` | The host port `docker-compose.yml` publishes Postgres on. Set by `npm run setup` to match `server/.env`'s `DATABASE_URL`; only relevant if you run `docker compose up` directly. |
 
-The app reads one variable, set however you launch Expo (shell env var, or an `.env` file
-if you add `react-native-dotenv`/similar — not currently wired up):
+`app/.env` (copy from `app/.env.example`) — Expo loads this automatically for both
+`npx expo start` and EAS builds via its built-in `@expo/env` support, no extra
+config/package needed; any `EXPO_PUBLIC_`-prefixed variable gets inlined into the app
+bundle. This is the persistent way to point the app somewhere other than
+`localhost:3001`; setting the same variable inline per-command (`EXPO_PUBLIC_API_URL=...
+npm run start`) works too and overrides the `.env` file for that one run.
 
 | Variable | Purpose |
 |---|---|
-| `EXPO_PUBLIC_API_URL` | Base URL the app calls for auth/sync. Defaults to `http://localhost:3001` (`app/src/sync/api.ts`) — override this with whatever port `server/.env`'s `PORT` actually is. Android emulator: `http://10.0.2.2:<port>`. Physical device: your machine's LAN IP. |
+| `EXPO_PUBLIC_API_URL` | Base URL the app calls for auth/sync. Defaults to `http://localhost:3001` (`app/src/sync/api.ts`) if `app/.env` doesn't exist and none is set inline — override with whatever port `server/.env`'s `PORT` actually is for local dev, or a deployed server's URL (see [`deployment.md`](./deployment.md)). Android emulator: `http://10.0.2.2:<port>`. Physical device: your machine's LAN IP. |
 
 ## Automatic port selection
 
