@@ -54,11 +54,14 @@ run("npm install", { cwd: rootDir });
 section("Applying database migrations");
 if (!existsSync(join(rootDir, "server", ".env"))) {
   warn("server/.env doesn't exist yet — run `npm run setup` first.");
-} else {
-  run("npm run db:deploy --workspace=server", { cwd: rootDir });
-  if (!run("npm run db:generate --workspace=server", { cwd: rootDir, optional: true })) {
-    warn("Prisma client generation failed (often a stale lock from another running process) — re-run `npm run db:generate --workspace=server` if types look out of date.");
-  }
+} else if (!run("npm run db:deploy --workspace=server", { cwd: rootDir, optional: true })) {
+  // Non-fatal: this machine might only be running the app (e.g. against a deployed
+  // server) with no reason to have the local dev Postgres up right now — don't block
+  // `npm install` / the rest of the update over a database this run may not even need.
+  warn("Couldn't apply migrations — is the local dev Postgres running? (`docker compose up -d`)");
+  warn("Harmless if you're not using the local dev server right now; otherwise start Postgres and re-run this.");
+} else if (!run("npm run db:generate --workspace=server", { cwd: rootDir, optional: true })) {
+  warn("Prisma client generation failed (often a stale lock from another running process) — re-run `npm run db:generate --workspace=server` if types look out of date.");
 }
 
 section("Done");
