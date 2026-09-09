@@ -26,7 +26,7 @@ complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.
 | [Sync Protocol](./docs/sync-protocol.md) | The outbox, conflict resolution, ownership checks |
 | [API Reference](./docs/api-reference.md) | Every endpoint, with a curl smoke test |
 | [Development Guide](./docs/development.md) | Setup/update scripts, env vars, known issues |
-| [Deployment](./docs/deployment.md) | Default Caddy + Docker Compose stack, env vars, security gaps to close |
+| [Deployment](./docs/deployment.md) | Complete step-by-step production setup (Caddy + Docker Compose), plus troubleshooting |
 
 ## Project layout
 

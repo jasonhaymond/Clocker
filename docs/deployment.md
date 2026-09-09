@@ -1,24 +1,157 @@
 # Deployment
 
-Nothing here is set up yet — this is a checklist for when you're ready to take the server
-off `localhost` and/or put the app on a real device permanently, not a description of an
-existing pipeline.
+## Dev stack vs. production stack — don't run one thinking it's the other
 
-## Server
+Clocker has **two completely separate ways to run the server**, and mixing them up is the
+most common way to end up with "I deployed it but it's not running / not reachable":
 
-The server is a stateless Fastify process (`server/src/index.ts`) plus a Postgres
-database — deploy it anywhere that runs a Node process and gives you a Postgres instance.
-None of the code assumes a specific host; two paths are documented below, but a
-platform-as-a-service (Fly.io, Railway, Render) with a managed Postgres add-on works too.
+| | `npm run dev:server` | `docker-compose.prod.yml` |
+|---|---|---|
+| What it is | `tsx watch` running the server directly, in your terminal | Postgres + server + Caddy, all in Docker |
+| Survives you logging out? | **No** — it's a foreground process tied to your shell session. Close the terminal/SSH connection (or the process crashes) and it's gone, with nothing to restart it. | **Yes** — every container has `restart: unless-stopped`; Docker brings them back after a crash or a host reboot. |
+| Reachable from the internet? | Only the raw port it's listening on (whatever `server/.env`'s `PORT` is) — nothing terminates TLS, and that port almost certainly isn't open in your firewall/cloud security group. | Only Caddy's 80/443, which proxy to the server internally. HTTPS included. |
+| What it's for | Local development on your own laptop, actively watching for `dev:server`'s output while you work. | An actual deployment: a server you point a real domain at and walk away from. |
 
-### Reverse proxy: Caddy (default)
+**If you want this running persistently on a server — reachable after you disconnect,
+surviving a reboot — use the production stack below, not `npm run setup` /
+`npm run dev:server`.** Those are documented in [`development.md`](./development.md) and
+are for your own workstation.
 
-The repo ships a complete, ready-to-run production stack: Postgres + the Fastify server +
-[Caddy](https://caddyserver.com) as a reverse proxy in front of it. Caddy's whole reason
-for being here is that it gets you HTTPS with **zero manual certificate work** — point a
-domain at your server and it obtains and renews a Let's Encrypt certificate automatically.
+## Quick start: production deployment (Caddy + Docker Compose)
 
-Files involved:
+Everything needed is already in the repo — nothing to write, just to configure and run.
+
+### Prerequisites
+
+Confirm all of these *before* starting the stack — every one of them causes exactly the
+"redeployed but it's not running or inaccessible" symptom if skipped:
+
+- **Docker and Docker Compose are installed** on the server (`docker --version` and
+  `docker compose version` both succeed).
+- **DNS is pointed at this server already.** An A (and/or AAAA) record for your domain
+  resolving to this machine's public IP. Check from *outside* the server (your laptop,
+  not the server itself — a server can sometimes resolve things a client can't):
+  ```bash
+  dig +short your-domain.com
+  ```
+  This should print the server's public IP. If it prints nothing or a different IP, fix
+  DNS first and wait for it to propagate (can take minutes to hours) — Caddy cannot get a
+  certificate for a domain that doesn't resolve to it.
+- **Ports 80 and 443 are open to the internet on this exact machine** — both in any OS
+  firewall (`ufw`, `firewalld`) and in front of it (a cloud provider's security group, a
+  home router's port forwarding if this is behind NAT). Port 80 matters even though the
+  app is only ever served over HTTPS: Caddy needs it for the ACME HTTP-01 challenge that
+  proves you control the domain. Check from outside the server:
+  ```bash
+  curl -I http://your-domain.com   # before the stack is even running, expect a connection
+                                     # refused/timeout if the port isn't reachable yet
+  ```
+- **Nothing else is already bound to 80/443** on this machine (another web server, a
+  previous Caddy instance, etc.) — `docker compose up` will fail to start the `caddy`
+  container if so. Check with `sudo ss -tlnp | grep -E ':80|:443'`.
+- **You're not simultaneously running the dev stack's Postgres** on this machine with a
+  conflicting setup — see [Migrating from the dev stack](#migrating-from-the-dev-stack)
+  below if you'd been running `npm run setup` / `npm run dev:server` here.
+
+### 1. Get the code
+
+```bash
+git clone https://github.com/<you>/Clocker.git   # or `git pull` if it's already cloned
+cd Clocker
+```
+
+### 2. Configure `.env.prod`
+
+```bash
+cp .env.prod.example .env.prod
+```
+
+Edit `.env.prod` and fill in all three values:
+
+```bash
+# .env.prod
+POSTGRES_PASSWORD=<a strong password — this is a NEW production database, not your dev one>
+JWT_SECRET=<a long random value>
+DOMAIN=your-domain.com
+```
+
+Generate a `JWT_SECRET` rather than typing something memorable:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+### 3. Build and start the stack
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+This builds the server's Docker image, then starts Postgres, the server (which runs
+`prisma migrate deploy` automatically before listening), and Caddy, in that order.
+
+### 4. Verify it's actually working
+
+Don't just assume it started — check each of these, in order, especially the first time:
+
+```bash
+# 1. All three containers should show "Up" / "running", not "Restarting" or "Exited"
+docker compose -f docker-compose.prod.yml ps
+
+# 2. Watch the server actually come up and migrate cleanly
+docker compose -f docker-compose.prod.yml logs server
+#   look for "All migrations have been successfully applied" and
+#   "Server listening at http://..." — if it's crash-looping instead, this is where you'll see why
+
+# 3. Confirm Caddy got a real certificate (not stuck retrying)
+docker compose -f docker-compose.prod.yml logs caddy
+#   look for "certificate obtained successfully" — repeated "obtaining certificate" /
+#   error lines mean DNS or port 80 isn't actually reachable from the internet yet (see Prerequisites)
+
+# 4. Hit it for real, from outside the server (your laptop, not an SSH session on the box)
+curl https://your-domain.com/health
+#   expect: {"ok":true}
+```
+
+If step 4 works, point the app at it:
+
+```bash
+EXPO_PUBLIC_API_URL=https://your-domain.com
+```
+
+### Migrating from the dev stack
+
+If you'd previously been running the dev workflow (`npm run setup` /
+`npm run dev:server`, `docker-compose.yml`) on this same machine and want to switch it
+over to the real production stack:
+
+```bash
+# Stop the dev Postgres container (add -v too if you don't need its data — a fresh
+# production deployment starts with an empty database either way, since it's a
+# different Postgres instance/volume entirely)
+docker compose down -v
+
+# If dev:server is running in a screen/tmux/nohup session, stop that process too —
+# find it and kill it, or just close that terminal session
+```
+
+Then follow the Quick start above. The dev stack (plain `docker-compose.yml`, whatever
+port `npm run setup` picked) and the production stack (`docker-compose.prod.yml`, always
+80/443 via Caddy) are entirely separate — nothing about one affects the other's
+configuration, but they can't both use the same Postgres port unless you've stopped one.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `docker compose up` fails immediately, mentions port 80 or 443 | Something else already has that port — see [Prerequisites](#prerequisites). Find it with `sudo ss -tlnp \| grep -E ':80\|:443'` and stop it, or stop it if it's a previous Caddy container (`docker ps -a`). |
+| Caddy logs repeat "obtaining certificate" and never say "obtained successfully" | DNS doesn't actually point here yet, or port 80 isn't reachable from the internet (a cloud firewall/security group is the usual culprit — the *server's own* `ufw`/`firewalld` can look fine while a provider-level firewall still blocks it). |
+| `curl https://your-domain.com/health` hangs or refuses | Either Caddy isn't up (`docker compose -f docker-compose.prod.yml ps`) or port 443 isn't actually open from the internet — check from your laptop, not from the server itself (localhost can "work" even when nothing external can reach it). |
+| `server` container shows "Restarting" in `ps` | It's crash-looping — read `docker compose -f docker-compose.prod.yml logs server` for the actual error, usually a missing/wrong env var or a database connection failure. |
+| Everything looks up, but the app can't reach it | `EXPO_PUBLIC_API_URL` is pointed at the wrong thing — it must be `https://your-domain.com` (through Caddy), never a raw container port like `:3001`, which is never published to the host at all. |
+| You ran `npm run setup`/`npm run dev:server` here and it "stopped working" | That's the dev workflow, not a deployment — see [Dev stack vs. production stack](#dev-stack-vs-production-stack--dont-run-one-thinking-its-the-other) above. Switch to the production stack instead of trying to keep the dev process alive. |
+
+## How the stack fits together
 
 - **`Caddyfile`** — the proxy config. One real line: forward everything to the `server`
   container on port 3001 — fixed, unlike local dev's port (see
@@ -32,18 +165,7 @@ Files involved:
 - **`docker-compose.prod.yml`** — wires up all three containers: Postgres (no host port
   published — only the `server` container can reach it), `server` (built from the
   Dockerfile), and `caddy` (the only container exposed, on 80/443).
-- **`.env.prod.example`** — copy to `.env.prod` and fill in `POSTGRES_PASSWORD`,
-  `JWT_SECRET`, and `DOMAIN`.
-
-```bash
-cp .env.prod.example .env.prod   # fill in POSTGRES_PASSWORD, JWT_SECRET, DOMAIN
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-```
-
-Before running this: point your domain's DNS A/AAAA record at the server's public IP, and
-make sure ports 80 and 443 are open to the internet (Caddy needs port 80 for the ACME
-HTTP-01 challenge, even though the app is only ever served over HTTPS). Point the app at
-it via `EXPO_PUBLIC_API_URL=https://your-domain`.
+- **`.env.prod.example`** — the template `.env.prod` is copied from.
 
 `DOMAIN` defaults to `localhost` if you leave `.env.prod`'s value empty and just want to
 smoke-test the compose stack locally first — Caddy then serves over HTTPS using its own
@@ -51,7 +173,7 @@ internal (self-signed, not Let's Encrypt) CA, which your phone/browser won't tru
 default, but confirms the containers wire up correctly before pointing a real domain at
 them.
 
-### Build & run without Docker
+## Running the server without Docker
 
 If you'd rather run the server directly (e.g. on a platform-as-a-service that builds Node
 apps for you), skip the Dockerfile/Caddy stack and put your own TLS termination in front
@@ -68,7 +190,12 @@ node server/dist/index.js
 is exactly what you want in a deploy pipeline (`prisma migrate dev`, used locally while
 authoring schema changes, is not safe to run unattended).
 
-### Required environment variables
+This path needs the same "survives you logging out" plan the Docker stack gets for free —
+run it under a process manager (systemd, pm2) or your platform's own process supervisor,
+not directly in a terminal, for the same reason described in
+[Dev stack vs. production stack](#dev-stack-vs-production-stack--dont-run-one-thinking-its-the-other) above.
+
+## Required environment variables
 
 Set these for real — see [`development.md`](./development.md#environment-variables) for
 what they're for; the concern here is specifically *not* using the local-dev defaults.
@@ -89,7 +216,7 @@ directly, set them however your host expects (platform env vars, a secret manage
 - **`DOMAIN`** (Compose path only) — your server's real hostname, so Caddy knows what to
   request a certificate for.
 
-### Before this is reachable from outside your machine
+## Security gaps to close before this is public
 
 The current code is fine for "one person, their own devices, their own network or a
 trusted host" and does **not** currently have:

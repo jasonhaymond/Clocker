@@ -12,8 +12,10 @@
 - **[Development Guide](./development.md)** — setup/update scripts, environment
   variables, day-to-day commands, and known issues (with workarounds already applied) you
   might otherwise lose time to.
-- **[Deployment](./deployment.md)** — what's needed before this leaves `localhost`:
-  required env vars, security gaps to close first, and mobile app distribution options.
+- **[Deployment](./deployment.md)** — a complete, step-by-step walkthrough for a real
+  production deployment (Caddy + Docker Compose, with automatic HTTPS), how it differs
+  from the local dev stack, troubleshooting, required env vars, and mobile app
+  distribution options.
 
 Start with the root [`README.md`](../README.md) for the quick-start; come here for the
 "why" and the "exactly how" behind it.
