@@ -59,6 +59,10 @@ npm run dev:app      # expo start — press i/a/w, or scan the QR code with Expo
 [Automatic port selection](#automatic-port-selection)) — check `server/.env`'s `PORT`, or
 just read it from the "Server listening at" line the command prints.
 
+Running `dev:app` on a different machine than your phone (e.g. a remote dev box)? Use
+`npm run start:tunnel` (from `app/`) instead — see
+[Running the dev server from a remote machine](#running-the-dev-server-from-a-remote-machine).
+
 Other useful commands, run from the repo root:
 
 | Command | What it does |
@@ -210,6 +214,27 @@ working fine regardless. It's safe to ignore. Installing the missing library
 Debian/Ubuntu) silences the specific error, but a debugger *window* fundamentally can't
 open on a machine with no display server at all — so there's nothing to actually fix
 here beyond not pressing `j` in that terminal.
+
+## Running the dev server from a remote machine
+
+If `app/`'s dev server (`npm run dev:app`) runs on a different machine than your phone —
+a persistent remote/SSH box rather than your own laptop, the same setup as the DevTools
+issue above — Expo Go can end up just spinning and never loading the app. That's Expo's
+default "LAN" connection mode: it advertises the *server's* local IP in the QR code, which
+your phone can't route to unless it's genuinely on the same network.
+
+```bash
+cd app
+npm run start:tunnel   # or: npx expo start --tunnel
+```
+
+Tunnel mode relays through Expo's own infrastructure instead, so it works regardless of
+which networks the server and your phone are each on (at the cost of a bit of latency).
+The first run may prompt to install `@expo/ngrok` — let it. Scan the new QR code; it'll
+be a different URL than plain `npm run dev:app` printed.
+
+If your phone genuinely *is* on the same LAN as the server and it's still not loading,
+that's more likely a firewall blocking Metro's port (8081) than a connection-mode issue.
 
 ## OTA updates
 
