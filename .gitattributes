@@ -1,0 +1,14 @@
+# Normalize line endings to LF in the repository regardless of the checking-out
+# platform's git config (core.autocrlf) — without this, Windows checkouts convert text
+# files to CRLF on checkout while tools like npm always write LF, so any `npm install`
+# immediately shows package-lock.json (and similar generated files) as "modified" with
+# no real content change. This was the root cause of git pull getting repeatedly blocked
+# on a Linux deployment box after npm install had run there.
+* text=auto eol=lf
+
+# Binary assets — never touched by line-ending normalization regardless, but explicit
+# beats relying on text=auto's content-sniffing to get it right for every file type.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
