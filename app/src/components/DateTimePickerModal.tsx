@@ -31,7 +31,7 @@ export function DateTimePickerModal({
             value={value}
             mode="datetime"
             display="spinner"
-            onChange={(_, picked) => picked && setValue(picked)}
+            onValueChange={(_, picked) => setValue(picked)}
           />
           <View style={styles.actions}>
             <TouchableOpacity onPress={onCancel} style={styles.button}>

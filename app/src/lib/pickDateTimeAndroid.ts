@@ -7,25 +7,19 @@ export function pickDateTimeAndroid(initial: Date): Promise<Date | null> {
     DateTimePickerAndroid.open({
       value: initial,
       mode: "date",
-      onChange: (event, pickedDate) => {
-        if (event.type !== "set" || !pickedDate) {
-          resolve(null);
-          return;
-        }
+      onValueChange: (_event, pickedDate) => {
         DateTimePickerAndroid.open({
           value: pickedDate,
           mode: "time",
-          onChange: (timeEvent, pickedTime) => {
-            if (timeEvent.type !== "set" || !pickedTime) {
-              resolve(null);
-              return;
-            }
+          onValueChange: (_timeEvent, pickedTime) => {
             const combined = new Date(pickedDate);
             combined.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
             resolve(combined);
           },
+          onDismiss: () => resolve(null),
         });
       },
+      onDismiss: () => resolve(null),
     });
   });
 }
