@@ -67,13 +67,19 @@ dependencies, and applies any new migrations.
 ### Running it
 
 ```bash
-npm run dev:server   # starts the API on http://localhost:3001
+npm run dev:server   # starts the API — prints the actual port, e.g. "Server listening at http://127.0.0.1:3001"
 npm run dev:app      # starts Expo — press i/a, or scan the QR code with Expo Go
 ```
 
+`npm run setup` picks the server's port automatically (starting at 3001, but scanning
+upward if that's already taken by something else on your machine — see
+[Automatic port selection](./docs/development.md#automatic-port-selection)), so check
+`server/.env`'s `PORT` or the terminal output above rather than assuming 3001.
+
 The app needs to know where your server is, via `EXPO_PUBLIC_API_URL` (defaults to
-`http://localhost:3001`). Android emulator can't reach `localhost` directly — use
-`10.0.2.2`; a physical device needs your machine's LAN IP:
+`http://localhost:3001` — override it if yours landed on a different port). Android
+emulator can't reach `localhost` directly — use `10.0.2.2`; a physical device needs your
+machine's LAN IP:
 
 ```bash
 cd app && EXPO_PUBLIC_API_URL=http://192.168.1.20:3001 npm run start

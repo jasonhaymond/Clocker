@@ -1,8 +1,10 @@
 # API Reference
 
 Base URL is whatever `EXPO_PUBLIC_API_URL` points at on the client (default
-`http://localhost:3001` — see [`development.md`](./development.md)). All request/response
-bodies are JSON. Source: `server/src/routes/*.ts`.
+`http://localhost:3001`, though the actual port on your machine depends on what
+`npm run setup` picked — see [Automatic port selection](./development.md#automatic-port-selection)).
+The examples below use `3001`; substitute your own. All request/response bodies are JSON.
+Source: `server/src/routes/*.ts`.
 
 ## Authentication
 
@@ -151,7 +153,7 @@ Save `serverTimestamp` as the new cursor for the next call's `since`.
 ## Manual smoke test
 
 The exact sequence used to verify this API end-to-end during development (adjust the port
-if you've changed `PORT` in `server/.env`):
+to match `PORT` in your own `server/.env`):
 
 ```bash
 # register and capture the token

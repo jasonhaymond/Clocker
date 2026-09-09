@@ -21,7 +21,11 @@ domain at your server and it obtains and renews a Let's Encrypt certificate auto
 Files involved:
 
 - **`Caddyfile`** — the proxy config. One real line: forward everything to the `server`
-  container on port 3001. The hostname comes from the `DOMAIN` environment variable.
+  container on port 3001 — fixed, unlike local dev's port (see
+  [Automatic port selection](./development.md#automatic-port-selection)), since this
+  container never publishes that port to the host at all; only Caddy is reachable from
+  outside, so there's nothing for it to collide with. The hostname comes from the
+  `DOMAIN` environment variable.
 - **`server/Dockerfile`** — multi-stage build (installs, `prisma generate`, `tsc`), and
   runs `prisma migrate deploy` before starting on every container start (idempotent — a
   no-op once the database is current, so restarts never re-run migrations destructively).

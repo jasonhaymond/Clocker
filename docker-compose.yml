@@ -7,7 +7,11 @@ services:
       POSTGRES_PASSWORD: clocker
       POSTGRES_DB: clocker
     ports:
-      - "5433:5432"
+      # POSTGRES_PORT is chosen by `npm run setup` (see scripts/setup.mjs) to avoid
+      # colliding with anything else already using a port on this machine, and written
+      # to a root .env file that Compose loads automatically. 5433 is just the fallback
+      # for running `docker compose up` directly without going through setup.
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - clocker-postgres:/var/lib/postgresql/data
 
