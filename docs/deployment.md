@@ -60,13 +60,52 @@ git clone https://github.com/<you>/Clocker.git   # or `git pull` if it's already
 cd Clocker
 ```
 
-### 2. Configure `.env.prod`
+### 2. Deploy
+
+```bash
+npm run deploy -- your-domain.com
+```
+
+This is `scripts/deploy.mjs`. `POSTGRES_PASSWORD` and `JWT_SECRET` don't need to be typed
+in anywhere — the first time it runs, it generates both randomly and writes them to
+`.env.prod` alongside the domain you passed, the same way `npm run setup` generates a
+`JWT_SECRET` for local dev. It then builds the server's Docker image, starts Postgres,
+the server (which runs `prisma migrate deploy` automatically), and Caddy, and finally
+checks the result itself:
+
+- polls until all three containers report running (and tells you which command to check
+  logs with if one doesn't, instead of just hanging)
+- does a `dig` on your domain first and warns (non-fatally — Caddy retries on its own) if
+  it doesn't resolve yet
+- curls `https://your-domain.com/health` through Caddy and reports whether that actually
+  succeeded, rather than declaring victory just because `docker compose up` didn't error
+
+Re-running `npm run deploy` later (e.g. after `git pull`-ing new code) reuses everything
+already in `.env.prod` — you only ever pass the domain once. To pin a specific
+password/secret instead of a generated one, edit `.env.prod` before running it; the
+script fills in only whatever's still blank.
+
+If a specific step fails, it tells you which command to run for more detail. To do the
+same thing by hand instead — useful if you want to see every step, or `npm run deploy`
+doesn't fit your setup — see [Manual setup, without the deploy script](#manual-setup-without-the-deploy-script)
+below.
+
+Once it succeeds, point the app at it:
+
+```bash
+EXPO_PUBLIC_API_URL=https://your-domain.com
+```
+
+### Manual setup, without the deploy script
+
+Equivalent to what `npm run deploy` automates, spelled out:
 
 ```bash
 cp .env.prod.example .env.prod
 ```
 
-Edit `.env.prod` and fill in all three values:
+Edit `.env.prod` and fill in all three values (generate `JWT_SECRET` rather than typing
+something memorable: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`):
 
 ```bash
 # .env.prod
@@ -75,48 +114,29 @@ JWT_SECRET=<a long random value>
 DOMAIN=your-domain.com
 ```
 
-Generate a `JWT_SECRET` rather than typing something memorable:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-```
-
-### 3. Build and start the stack
-
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
-This builds the server's Docker image, then starts Postgres, the server (which runs
-`prisma migrate deploy` automatically before listening), and Caddy, in that order.
-
-### 4. Verify it's actually working
-
-Don't just assume it started — check each of these, in order, especially the first time:
+Then verify it yourself — don't just assume it started because the command didn't error:
 
 ```bash
 # 1. All three containers should show "Up" / "running", not "Restarting" or "Exited"
-docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 
 # 2. Watch the server actually come up and migrate cleanly
-docker compose -f docker-compose.prod.yml logs server
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs server
 #   look for "All migrations have been successfully applied" and
 #   "Server listening at http://..." — if it's crash-looping instead, this is where you'll see why
 
 # 3. Confirm Caddy got a real certificate (not stuck retrying)
-docker compose -f docker-compose.prod.yml logs caddy
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs caddy
 #   look for "certificate obtained successfully" — repeated "obtaining certificate" /
 #   error lines mean DNS or port 80 isn't actually reachable from the internet yet (see Prerequisites)
 
 # 4. Hit it for real, from outside the server (your laptop, not an SSH session on the box)
 curl https://your-domain.com/health
 #   expect: {"ok":true}
-```
-
-If step 4 works, point the app at it:
-
-```bash
-EXPO_PUBLIC_API_URL=https://your-domain.com
 ```
 
 ### Migrating from the dev stack
@@ -199,22 +219,27 @@ not directly in a terminal, for the same reason described in
 
 Set these for real — see [`development.md`](./development.md#environment-variables) for
 what they're for; the concern here is specifically *not* using the local-dev defaults.
-Using the Caddy/Docker Compose path above, these go in `.env.prod`; running the server
-directly, set them however your host expects (platform env vars, a secret manager, etc).
+Using the Caddy/Docker Compose path above, `npm run deploy` generates `POSTGRES_PASSWORD`
+and `JWT_SECRET` into `.env.prod` for you (see [Deploy](#2-deploy)) — only `DOMAIN` is
+yours to supply. Running the server directly, set all of these however your host expects
+(platform env vars, a secret manager, etc) — nothing generates them for you on that path.
 
 - **`DATABASE_URL`** (direct-run path only — the Compose stack builds this for you from
   `POSTGRES_PASSWORD`) — your production Postgres, not the local dev one.
-- **`POSTGRES_PASSWORD`** (Compose path only) — a strong password for the production
-  Postgres container.
+- **`POSTGRES_PASSWORD`** — a strong password for the production Postgres container.
+  Auto-generated by `npm run deploy`; set it yourself in `.env.prod`/your host's env vars
+  on the direct-run path.
 - **`JWT_SECRET`** — a long random value that is **not** the one `npm run setup` generated
-  on your laptop. Treat it like any other credential (secret manager / platform env vars,
-  never committed). Rotating it invalidates every currently-issued token — every signed-in
-  device would need to sign in again.
+  on your laptop. Auto-generated by `npm run deploy`, same as above otherwise. Treat it
+  like any other credential (secret manager / platform env vars, never committed).
+  Rotating it invalidates every currently-issued token — every signed-in device would
+  need to sign in again.
 - **`PORT`** (direct-run path only) — the code falls back to `3000` if unset
   (`server/src/index.ts`); set it explicitly so it matches whatever your host expects. The
   Compose stack always sets this to `3001` for you.
 - **`DOMAIN`** (Compose path only) — your server's real hostname, so Caddy knows what to
-  request a certificate for.
+  request a certificate for. The one value `npm run deploy` can't generate for you — pass
+  it as an argument the first time (`npm run deploy -- your-domain.com`).
 
 ## Security gaps to close before this is public
 

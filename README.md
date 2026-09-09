@@ -33,7 +33,7 @@ complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.
 ```
 app/       Expo app (screens, local DB, sync client, auth)
 server/    Fastify API + Prisma schema/migrations, Dockerfile
-scripts/   setup.mjs / update.mjs — dev environment bootstrap and update
+scripts/   setup.mjs / update.mjs (dev) and deploy.mjs (production) — see docs/
 docs/      Detailed documentation (see table above)
 docker-compose.yml        Local Postgres for development
 docker-compose.prod.yml   Postgres + server + Caddy for production (see docs/deployment.md)
