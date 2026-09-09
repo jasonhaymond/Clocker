@@ -1,71 +1,61 @@
 #!/usr/bin/env node
 // One-shot bootstrap for a fresh clone: installs dependencies, picks free ports for
-// Postgres and the API (never assumes 5433/3001 are actually free on this machine),
-// creates server/.env with a generated secret, starts Postgres via Docker, and applies
-// migrations. Safe to re-run — every step is skipped or made a no-op if it's already done.
+// Postgres and the API (never assumes 5433/3001 are actually free on this machine, and
+// re-checks even on an already-configured install in case something else has since
+// claimed the port), creates/updates server/.env, starts Postgres via Docker, and
+// applies migrations. Safe to re-run — every step is skipped or made a no-op if it's
+// already done.
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { commandExists, findFreePort, run, section, step, warn } from "./lib.mjs";
+import { captureOutput, commandExists, findFreePort, isPortFree, readEnvValue, run, section, step, upsertEnvLine, warn } from "./lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const serverDir = join(rootDir, "server");
 const rootEnvPath = join(rootDir, ".env");
 const serverEnvPath = join(serverDir, ".env");
 
-function readEnvValue(filePath, key) {
-  if (!existsSync(filePath)) return null;
-  const match = readFileSync(filePath, "utf8").match(new RegExp(`^${key}=(.*)$`, "m"));
-  return match ? match[1].trim().replace(/^"|"$/g, "") : null;
-}
-
 section("Installing dependencies");
 run("npm install", { cwd: rootDir });
 
 section("Configuring ports & server/.env");
-let postgresPort;
-let apiPort;
+const serverEnvExistedBefore = existsSync(serverEnvPath);
 
-if (existsSync(serverEnvPath)) {
-  step("server/.env already exists, leaving it as-is");
-  const databaseUrl = readEnvValue(serverEnvPath, "DATABASE_URL") ?? "";
-  // Trust whatever's already configured over re-scanning — this server/.env may have
-  // been hand-edited to point at a Postgres this script never chose in the first place.
-  postgresPort = databaseUrl.match(/localhost:(\d+)/)?.[1] ?? readEnvValue(rootEnvPath, "POSTGRES_PORT") ?? "5433";
-  apiPort = readEnvValue(serverEnvPath, "PORT") ?? "3001";
-} else {
-  // Fresh install: scan for ports nothing else on this machine is already using, rather
-  // than assuming the conventional 5433/3001 are actually free.
-  postgresPort = readEnvValue(rootEnvPath, "POSTGRES_PORT");
-  if (postgresPort) {
-    step(`Using existing Postgres port ${postgresPort} from .env`);
-  } else {
-    postgresPort = String(await findFreePort(5433));
-    step(`Port 5433+ scanned — selected ${postgresPort} for Postgres`);
+// If our own Postgres container is already running, it's expected to be holding its
+// configured port — that's not a conflict, it's the whole point. Only treat the
+// configured port as suspect when nothing of ours currently explains it being occupied.
+function isOwnPostgresRunning() {
+  if (!commandExists("docker --version")) return false;
+  const services = captureOutput("docker compose ps --status running --services", { cwd: rootDir });
+  return services?.split("\n").includes("postgres") ?? false;
+}
+
+async function resolvePort(current, { startPort, label, skipLiveCheck = false }) {
+  if (current && (skipLiveCheck || (await isPortFree(Number(current))))) {
+    step(`Using existing ${label} port ${current}`);
+    return current;
   }
-  apiPort = String(await findFreePort(3001));
-  step(`Port 3001+ scanned — selected ${apiPort} for the API`);
-
-  const secret = randomBytes(48).toString("hex");
-  const contents = [
-    `DATABASE_URL="postgresql://clocker:clocker@localhost:${postgresPort}/clocker?schema=public"`,
-    `JWT_SECRET="${secret}"`,
-    `PORT=${apiPort}`,
-    "",
-  ].join("\n");
-  writeFileSync(serverEnvPath, contents);
-  step("Wrote server/.env with a generated JWT_SECRET");
+  if (current) warn(`Configured ${label} port ${current} is now in use by something else on this machine — picking a new one.`);
+  const chosen = String(await findFreePort(startPort));
+  step(`Port ${startPort}+ scanned — selected ${chosen} for ${label}`);
+  return chosen;
 }
 
-// Docker Compose reads a root .env file (separate from server/.env) to fill in
-// docker-compose.yml's `${POSTGRES_PORT}`. Keep it in sync with whatever Postgres port
-// is actually in play above, whether freshly chosen or read from an existing server/.env,
-// so the container's published port never silently drifts from what the API expects.
-if (readEnvValue(rootEnvPath, "POSTGRES_PORT") !== postgresPort) {
-  writeFileSync(rootEnvPath, `POSTGRES_PORT=${postgresPort}\n`);
-  step(`Set POSTGRES_PORT=${postgresPort} in .env for Docker Compose`);
-}
+let postgresPort = readEnvValue(rootEnvPath, "POSTGRES_PORT") ?? readEnvValue(serverEnvPath, "DATABASE_URL")?.match(/localhost:(\d+)/)?.[1];
+postgresPort = await resolvePort(postgresPort, { startPort: 5433, label: "Postgres", skipLiveCheck: isOwnPostgresRunning() });
+upsertEnvLine(rootEnvPath, "POSTGRES_PORT", postgresPort);
+
+let apiPort = readEnvValue(serverEnvPath, "PORT");
+apiPort = await resolvePort(apiPort, { startPort: 3001, label: "API" });
+
+let jwtSecret = readEnvValue(serverEnvPath, "JWT_SECRET");
+if (!jwtSecret) jwtSecret = randomBytes(48).toString("hex");
+
+upsertEnvLine(serverEnvPath, "DATABASE_URL", `"postgresql://clocker:clocker@localhost:${postgresPort}/clocker?schema=public"`);
+upsertEnvLine(serverEnvPath, "JWT_SECRET", `"${jwtSecret}"`);
+upsertEnvLine(serverEnvPath, "PORT", apiPort);
+step(serverEnvExistedBefore ? "Updated server/.env" : "Wrote server/.env with a generated JWT_SECRET");
 
 section("Starting Postgres");
 let dbReady = false;
@@ -109,4 +99,7 @@ http://localhost:3001, which only matches if that's what got picked on this mach
 
 Android emulator: use http://10.0.2.2:${apiPort} instead of localhost. Physical device:
 use your machine's LAN IP instead.
+
+To pin a specific port instead of whatever gets auto-picked, see "Changing a port" in
+docs/development.md.
 `);

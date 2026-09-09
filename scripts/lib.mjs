@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 
 // Plain-text section/step logging (no chalk dependency, so these scripts run with zero
@@ -55,7 +56,7 @@ export function captureOutput(command, { cwd } = {}) {
 // to a specific interface too (binding "any" fails if a specific-address bind already
 // holds the port), which is what we care about — "would starting our own service here
 // collide with something else already running."
-function isPortFree(port) {
+export function isPortFree(port) {
   return new Promise((resolve) => {
     const server = createServer();
     server.once("error", () => resolve(false));
@@ -64,13 +65,33 @@ function isPortFree(port) {
   });
 }
 
-// Finds the first free port at or after `startPort`, so first-time setup never hard-codes
-// a port that happens to already be taken by some other app on this machine. Once
-// written to a .env file, that choice is fixed for this install — this only runs when
-// there's no existing config yet (see setup.mjs).
+// Finds the first free port at or after `startPort`, so setup never hard-codes a port
+// that happens to already be taken by some other app on this machine.
 export async function findFreePort(startPort, attempts = 50) {
   for (let port = startPort; port < startPort + attempts; port++) {
     if (await isPortFree(port)) return port;
   }
   fail(`Could not find a free port in range ${startPort}-${startPort + attempts - 1}`);
+}
+
+// Replaces a `KEY=...` line in an env file if present, otherwise appends it — every other
+// line (including comments, and any keys this script doesn't know about) is left exactly
+// as it was. Creates the file if it doesn't exist yet. This is how a port choice
+// "persists": once written, re-running setup reads it back with readEnvValue below
+// instead of picking a new one, unless it's since become genuinely unavailable.
+export function upsertEnvLine(filePath, key, value) {
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8").split("\n") : [];
+  while (existing.length && existing[existing.length - 1] === "") existing.pop();
+  const line = `${key}=${value}`;
+  const idx = existing.findIndex((l) => l.startsWith(`${key}=`));
+  if (idx >= 0) existing[idx] = line;
+  else existing.push(line);
+  writeFileSync(filePath, existing.join("\n") + "\n");
+}
+
+// Reads a `KEY=...` line from an env file, unwrapping surrounding quotes if present.
+export function readEnvValue(filePath, key) {
+  if (!existsSync(filePath)) return null;
+  const match = readFileSync(filePath, "utf8").match(new RegExp(`^${key}=(.*)$`, "m"));
+  return match ? match[1].trim().replace(/^"|"$/g, "") : null;
 }

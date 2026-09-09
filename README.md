@@ -48,11 +48,14 @@ Caddyfile                 Reverse proxy config for the production stack
 npm run setup
 ```
 
-This installs dependencies for both workspaces, creates `server/.env` with a freshly
-generated `JWT_SECRET` (if it doesn't already exist), starts Postgres via Docker, and
-applies migrations. It's safe to re-run — every step is skipped or a no-op if it's already
-done. If Docker isn't available it skips starting Postgres and tells you what to do
-instead (point `DATABASE_URL` in `server/.env` at your own instance).
+This installs dependencies for both workspaces, picks free ports for Postgres and the API
+(see [Automatic port selection](./docs/development.md#automatic-port-selection) — it
+re-checks on every run, so a port that's since been claimed by something else gets
+replaced automatically rather than silently failing to start), creates/updates
+`server/.env` with a freshly generated `JWT_SECRET` the first time only, starts Postgres
+via Docker, and applies migrations. Safe to re-run any time. If Docker isn't available it
+skips starting Postgres and tells you what to do instead (point `DATABASE_URL` in
+`server/.env` at your own instance).
 
 ### Staying up to date
 

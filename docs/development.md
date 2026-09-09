@@ -18,12 +18,12 @@ This is `scripts/setup.mjs`. It, in order:
 1. `npm install` at the repo root (an npm workspaces monorepo — this installs both
    `app/` and `server/`'s dependencies in one pass; there's no separate install step per
    workspace)
-2. on a fresh install (no `server/.env` yet), scans for a free TCP port starting at 5433
-   for Postgres and another starting at 3001 for the API — see
-   [Automatic port selection](#automatic-port-selection) — then writes `server/.env` with
-   those ports and a freshly generated 96-character random hex `JWT_SECRET`
-   (`crypto.randomBytes(48)`). If `server/.env` already exists, it's left untouched and
-   its existing ports are reused instead of re-scanning.
+2. picks a port for Postgres and one for the API — reusing whatever's already configured
+   in `server/.env` if it's still actually free, otherwise scanning upward from 5433/3001
+   for the first one that is — see [Automatic port selection](#automatic-port-selection).
+   Writes/updates `server/.env` with those ports, generating a 96-character random hex
+   `JWT_SECRET` (`crypto.randomBytes(48)`) the first time only — an existing secret is
+   never touched.
 3. runs `docker compose up -d` (skipped with a warning if Docker isn't installed), then
    polls `pg_isready` for up to 30s
 4. runs `prisma migrate deploy` and `prisma generate` against that database
@@ -103,27 +103,58 @@ if you add `react-native-dotenv`/similar — not currently wired up):
 `npm run setup` never assumes the conventional `5433` (Postgres) or `3001` (API) are
 actually free — plenty of dev machines run several projects at once, and a hard-coded
 port is a recurring source of "why won't this start" (this project ran into exactly that
-with another local project already on `3000`/`5432`). Instead, on a fresh install (no
-`server/.env` yet), `scripts/setup.mjs` calls `findFreePort` (in `scripts/lib.mjs`) to try
-binding each port starting from 5433/3001 upward and use the first one that's actually
-free, before writing anything.
+with another local project already on `3000`/`5432`). Every time you run `setup` —
+first time or the hundredth — `scripts/setup.mjs`:
 
-Two things worth knowing:
+1. Reads whatever port is currently configured (`server/.env`'s `PORT`/`DATABASE_URL`, or
+   nothing on a fresh clone).
+2. **Actually checks whether that port is available right now** (a real socket bind via
+   `isPortFree` in `scripts/lib.mjs`) — not just "did we pick this before."
+3. If it's free (or, for Postgres, if *this project's own* container is what's currently
+   holding it — starting it back up is the point, not a conflict), keeps it.
+4. Otherwise, scans upward from the conventional starting point (`findFreePort`) for the
+   first genuinely free port, prints a message explaining why it changed, and writes the
+   new value.
 
-- **Once chosen, a port is fixed for that install.** Re-running `setup` on an
-  already-configured project reads the port back out of the existing `server/.env`
-  (parsed from `DATABASE_URL`/`PORT`) rather than re-scanning — so it can never drift out
-  from under an app you've already pointed `EXPO_PUBLIC_API_URL` at.
-- **The chosen Postgres port is mirrored into a root `.env`** (distinct from
-  `server/.env`) purely so `docker-compose.yml`'s `${POSTGRES_PORT:-5433}` picks it up —
-  Compose auto-loads a `.env` file from the project directory. `setup` keeps this in sync
-  with `server/.env` on every run, even when it didn't just choose the port itself (e.g.
-  if you hand-edited `server/.env`'s `DATABASE_URL`).
+This means a port that was free when you first ran `setup` but has since been claimed by
+some other app gets automatically replaced on your next `setup` run, rather than silently
+failing to start — this was a real gap in an earlier version of this script, which only
+ever scanned on a completely fresh install and otherwise trusted whatever was already in
+`server/.env` forever.
 
-If you're setting this up somewhere the conventional ports are free, nothing changes for
-you — they're what gets picked. There's no config flag to force specific ports today;
-edit `server/.env` (and re-run `setup` once, so it mirrors the change into root `.env`)
-if you need a specific one.
+Two implementation details worth knowing:
+
+- **The Postgres port is mirrored into a root `.env`** (distinct from `server/.env`)
+  purely so `docker-compose.yml`'s `${POSTGRES_PORT:-5433}` picks it up — Compose
+  auto-loads a `.env` file from the project directory. `setup` keeps the two files in
+  sync every run.
+- **Re-verifying never disrupts an already-running dev server.** If you have
+  `npm run dev:server` open in another terminal, re-running `setup` won't touch that
+  running process — at most it updates `server/.env` for the *next* time you start it. If
+  its port really has been taken over by something else, you'd see that as a normal
+  `EADDRINUSE` the next time you restart it, at which point `setup`'s new value is
+  already waiting.
+
+### Changing a port
+
+There's no dedicated flag for this — edit the file and let `setup` pick up and persist
+your choice:
+
+- **API port**: edit `PORT` in `server/.env` to the port you want, then run `npm run
+  setup` again. It checks that port is actually free (not just "different from before")
+  and, if so, keeps your exact choice from then on — every future `setup` run reuses it
+  rather than picking a new one, as long as it stays free. If the port you asked for
+  turns out to be taken, `setup` tells you so and picks a different one instead of
+  silently ignoring your edit.
+- **Postgres port**: same idea, but edit `POSTGRES_PORT` in the root `.env` (not
+  `server/.env`'s `DATABASE_URL` directly — `setup` treats the root `.env` as the source
+  of truth for this one and will overwrite a `DATABASE_URL` port that disagrees with it).
+  Run `npm run setup` again afterward; if Postgres is currently running, stop it first
+  (`docker compose down`) so the new port actually takes effect on the next
+  `docker compose up -d` inside `setup`.
+
+If you're setting this up somewhere the conventional ports are free, none of this changes
+anything for you — `3001`/`5433` are just what gets picked.
 
 ## Known issue: `@types/react` version pin
 
