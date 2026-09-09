@@ -407,14 +407,16 @@ export async function getOpenBreak(shiftId: string): Promise<Break | null> {
   return row ? rowToBreak(row) : null;
 }
 
-export async function startBreak(shiftId: string): Promise<Break> {
+// `startTime` defaults to now but can be backdated ("Start Break At...").
+export async function startBreak(shiftId: string, startTime?: string): Promise<Break> {
   const db = await getDb();
   const id = newId();
-  const start = nowIso();
-  await db.runAsync("INSERT INTO breaks (id, shift_id, start, updated_at) VALUES (?, ?, ?, ?)", [id, shiftId, start, start]);
+  const start = startTime ?? nowIso();
+  const updatedAt = nowIso();
+  await db.runAsync("INSERT INTO breaks (id, shift_id, start, updated_at) VALUES (?, ?, ?, ?)", [id, shiftId, start, updatedAt]);
   await markPending("break", id, "upsert");
   dbEvents.emit();
-  return { id, shiftId, start, end: null, updatedAt: start, deletedAt: null };
+  return { id, shiftId, start, end: null, updatedAt, deletedAt: null };
 }
 
 // `endTime` lets a custom clock-out (in the past) close a still-open break at the same

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import {
   clockIn,
   clockOut,
@@ -12,6 +13,7 @@ import {
   listRateTiers,
   startBreak,
 } from "../db/database";
+import { getPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { formatClock, formatDuration, workedMillis } from "../lib/time";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
@@ -32,7 +34,13 @@ export function ClockScreen() {
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [, setTick] = useState(0);
+  const [promptForNotes, setPromptForNotes] = useState(false);
+  const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
   const { pick, modal } = useDateTimePicker();
+
+  useEffect(() => {
+    getPromptForNotesOnClockOut().then(setPromptForNotes);
+  }, []);
 
   const load = useCallback(() => {
     listJobs(false).then(setJobs);
@@ -96,9 +104,10 @@ export function ClockScreen() {
     if (date) handleClockIn(date);
   }
 
-  async function handleClockOut(shiftId: string, customTime?: Date) {
-    await clockOut(shiftId, customTime?.toISOString());
+  async function handleClockOut(shift: Shift, customTime?: Date) {
+    await clockOut(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
+    if (promptForNotes) setNotesPrompt({ shiftId: shift.id, notes: shift.notes });
   }
 
   async function handleClockOutAt(shift: Shift) {
@@ -108,16 +117,35 @@ export function ClockScreen() {
       Alert.alert("Invalid time", "Clock-out must be after clock-in.");
       return;
     }
-    handleClockOut(shift.id, date);
+    handleClockOut(shift, date);
   }
 
-  async function handleToggleBreak(shift: Shift, openBreak: Break | null) {
-    if (openBreak) {
-      await endBreak(openBreak.id);
-    } else {
-      await startBreak(shift.id);
+  async function handleStartBreak(shift: Shift, customTime?: Date) {
+    if (customTime && customTime.getTime() < new Date(shift.clockIn).getTime()) {
+      Alert.alert("Invalid time", "A break can't start before the shift's clock-in.");
+      return;
     }
+    await startBreak(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
+  }
+
+  async function handleStartBreakAt(shift: Shift) {
+    const date = await pick(new Date(), "Start Break At");
+    if (date) handleStartBreak(shift, date);
+  }
+
+  async function handleEndBreak(openBreak: Break, customTime?: Date) {
+    if (customTime && customTime.getTime() <= new Date(openBreak.start).getTime()) {
+      Alert.alert("Invalid time", "Break end must be after it started.");
+      return;
+    }
+    await endBreak(openBreak.id, customTime?.toISOString());
+    synchronize().catch(() => {});
+  }
+
+  async function handleEndBreakAt(openBreak: Break) {
+    const date = await pick(new Date(), "End Break At");
+    if (date) handleEndBreak(openBreak, date);
   }
 
   return (
@@ -133,17 +161,25 @@ export function ClockScreen() {
             <Text style={styles.since}>Since {formatClock(shift.clockIn)}</Text>
             {openBreak && <Text style={styles.onBreak}>On break since {formatClock(openBreak.start)}</Text>}
 
-            <TouchableOpacity
-              style={[styles.bigButton, openBreak ? styles.resumeButton : styles.breakButton]}
-              onPress={() => handleToggleBreak(shift, openBreak)}
-            >
-              <Text style={styles.bigButtonText}>{openBreak ? "End Break" : "Start Break"}</Text>
-            </TouchableOpacity>
+            <View style={styles.splitRow}>
+              <TouchableOpacity
+                style={[styles.bigButton, openBreak ? styles.resumeButton : styles.breakButton, styles.flexButton]}
+                onPress={() => (openBreak ? handleEndBreak(openBreak) : handleStartBreak(shift))}
+              >
+                <Text style={styles.bigButtonText}>{openBreak ? "End Break" : "Start Break"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.atButton}
+                onPress={() => (openBreak ? handleEndBreakAt(openBreak) : handleStartBreakAt(shift))}
+              >
+                <Text style={styles.atButtonText}>At...</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.splitRow}>
               <TouchableOpacity
                 style={[styles.bigButton, styles.clockOutButton, styles.flexButton]}
-                onPress={() => handleClockOut(shift.id)}
+                onPress={() => handleClockOut(shift)}
               >
                 <Text style={styles.bigButtonText}>Clock Out</Text>
               </TouchableOpacity>
@@ -205,6 +241,13 @@ export function ClockScreen() {
       </View>
 
       {modal}
+      {notesPrompt && (
+        <ShiftNotesModal
+          shiftId={notesPrompt.shiftId}
+          initialNotes={notesPrompt.notes}
+          onClose={() => setNotesPrompt(null)}
+        />
+      )}
     </ScrollView>
   );
 }

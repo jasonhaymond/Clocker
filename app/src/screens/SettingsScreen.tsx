@@ -1,12 +1,13 @@
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
+import { getPromptForNotesOnClockOut, setPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { synchronize } from "../sync/sync";
-import { applyUpdate, checkForUpdate, currentRuntimeInfo, otaUpdatesSupported } from "../updates/updates";
+import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
@@ -36,6 +37,7 @@ export function SettingsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(updateState.get());
+  const [promptForNotes, setPromptForNotes] = useState(false);
 
   const load = useCallback(() => {
     getSyncCursor().then(setLastSynced);
@@ -43,6 +45,14 @@ export function SettingsScreen() {
   useDbRefresh(load);
 
   useEffect(() => updateState.subscribe(setUpdate), []);
+  useEffect(() => {
+    getPromptForNotesOnClockOut().then(setPromptForNotes);
+  }, []);
+
+  async function togglePromptForNotes(value: boolean) {
+    setPromptForNotes(value);
+    await setPromptForNotesOnClockOut(value);
+  }
 
   async function syncNow() {
     setSyncing(true);
@@ -81,20 +91,28 @@ export function SettingsScreen() {
             <Text style={styles.syncButtonText}>Restart to Update</Text>
           </TouchableOpacity>
         ) : (
-          otaUpdatesSupported && (
-            <TouchableOpacity
-              style={[styles.updateButton, styles.checkButton]}
-              onPress={() => checkForUpdate()}
-              disabled={update.status === "checking" || update.status === "downloading"}
-            >
-              {update.status === "checking" || update.status === "downloading" ? (
-                <ActivityIndicator color="#2563eb" />
-              ) : (
-                <Text style={styles.checkButtonText}>Check for Updates</Text>
-              )}
-            </TouchableOpacity>
-          )
+          <TouchableOpacity
+            style={[styles.updateButton, styles.checkButton]}
+            onPress={() => checkForUpdate()}
+            disabled={update.status === "checking" || update.status === "downloading"}
+          >
+            {update.status === "checking" || update.status === "downloading" ? (
+              <ActivityIndicator color="#2563eb" />
+            ) : (
+              <Text style={styles.checkButtonText}>Check for Updates</Text>
+            )}
+          </TouchableOpacity>
         )}
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.preferenceRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.preferenceLabel}>Prompt for notes when clocking out</Text>
+            <Text style={styles.preferenceHint}>Asks for an optional note right after you clock out of a shift.</Text>
+          </View>
+          <Switch value={promptForNotes} onValueChange={togglePromptForNotes} />
+        </View>
       </View>
 
       <TouchableOpacity
@@ -117,6 +135,9 @@ const styles = StyleSheet.create({
   value: { fontSize: 18, fontWeight: "600", marginTop: 4, marginBottom: 8 },
   updateStatus: { color: "#666", marginBottom: 16 },
   error: { color: "#dc2626", marginBottom: 12 },
+  preferenceRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  preferenceLabel: { fontSize: 15, fontWeight: "600" },
+  preferenceHint: { color: "#666", fontSize: 13, marginTop: 2 },
   syncButton: { backgroundColor: "#2563eb", borderRadius: 10, padding: 14, alignItems: "center" },
   syncButtonText: { color: "#fff", fontWeight: "600" },
   updateButton: { backgroundColor: "#16a34a", borderRadius: 10, padding: 14, alignItems: "center" },

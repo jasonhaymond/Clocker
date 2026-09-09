@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Modal, SectionList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import {
   deleteShift,
   listBreaksForShifts,
@@ -7,49 +7,14 @@ import {
   listRateTiersForJobs,
   listRateVersionsForTiers,
   listShiftsInRange,
-  updateShiftTimes,
 } from "../db/database";
+import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { addDays, formatClock, formatDay, formatDuration, startOfDay, workedMillis } from "../lib/time";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { calculateShiftPay, formatCents, type ShiftPay } from "../lib/pay";
 import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
 
 const DAYS_BACK = 90;
-
-function NotesModal({ shift, onClose }: { shift: Shift; onClose: () => void }) {
-  const [notes, setNotes] = useState(shift.notes ?? "");
-
-  async function save() {
-    await updateShiftTimes(shift.id, { notes: notes.trim() ? notes.trim() : null });
-    onClose();
-  }
-
-  return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Note</Text>
-          <TextInput
-            style={styles.notesInput}
-            placeholder="Add a note about this shift..."
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            autoFocus
-          />
-          <View style={styles.modalActions}>
-            <TouchableOpacity onPress={onClose} style={styles.modalButton}>
-              <Text style={styles.modalButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={save} style={[styles.modalButton, styles.modalButtonPrimary]}>
-              <Text style={[styles.modalButtonText, styles.modalButtonPrimaryText]}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 export function HistoryScreen() {
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -161,7 +126,9 @@ export function HistoryScreen() {
         }}
         ListEmptyComponent={<Text style={styles.empty}>No shifts in the last {DAYS_BACK} days.</Text>}
       />
-      {editingShift && <NotesModal shift={editingShift} onClose={() => setEditingShift(null)} />}
+      {editingShift && (
+        <ShiftNotesModal shiftId={editingShift.id} initialNotes={editingShift.notes} onClose={() => setEditingShift(null)} />
+      )}
     </>
   );
 }
@@ -177,13 +144,4 @@ const styles = StyleSheet.create({
   duration: { fontWeight: "600" },
   pay: { color: "#16a34a", fontSize: 13, marginTop: 2 },
   empty: { textAlign: "center", color: "#999", marginTop: 24 },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 24 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
-  notesInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 12, minHeight: 100, textAlignVertical: "top" },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
-  modalButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  modalButtonPrimary: { backgroundColor: "#2563eb" },
-  modalButtonText: { fontWeight: "600", color: "#333" },
-  modalButtonPrimaryText: { color: "#fff" },
 });
