@@ -15,10 +15,9 @@ import {
 } from "../db/database";
 import { getPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
-import { formatClock, formatDuration, workedMillis } from "../lib/time";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
-import type { Break, Job, RateTier, Shift } from "../types";
+import { formatClock, formatDuration, workedMillis, type Break, type Job, type RateTier, type Shift } from "@clocker/shared";
 
 interface OpenShiftDetail {
   shift: Shift;

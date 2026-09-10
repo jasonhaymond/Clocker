@@ -70,20 +70,24 @@ prints a `!` warning and continues instead of aborting the whole script.
    ```bash
    npm run dev:server   # tsx watch — restarts on save; prints the actual port on startup
    ```
-2. In a second terminal, start the app:
+2. In a second terminal, start whichever client(s) you're working on:
    ```bash
-   npm run dev:app      # expo start — press i/a/w, or scan the QR code with Expo Go
+   npm run dev:app      # expo start — press i/a, or scan the QR code with Expo Go
    ```
-3. Confirm the app can reach the server — see [Environment variables](#environment-variables)
-   below (`EXPO_PUBLIC_API_URL`) if it can't.
+   ```bash
+   npm run dev:web      # vite — prints a localhost URL to open in a browser
+   ```
+3. Confirm the client can reach the server — see [Environment variables](#environment-variables)
+   below (`EXPO_PUBLIC_API_URL` / `VITE_API_URL`) if it can't.
 
 `dev:server`'s port is whatever `npm run setup` picked (see
 [Automatic port selection](#automatic-port-selection)) — check `server/.env`'s `PORT`, or
 just read it from the "Server listening at" line the command prints.
 
 Running `dev:app` on a different machine than your phone (e.g. a remote dev box)? Use
-`npm run start:tunnel` (from `app/`) instead of step 2 above — see
+`npm run start:tunnel` (from `app/`) instead of step 2's mobile command — see
 [Running the dev server from a remote machine](#running-the-dev-server-from-a-remote-machine).
+`dev:web` doesn't have an equivalent concern — it's just a browser hitting a URL.
 
 Other useful commands, run from the repo root:
 
@@ -93,7 +97,8 @@ Other useful commands, run from the repo root:
 | `npm run db:generate` | Regenerate the Prisma client after schema/model changes |
 | `npm --workspace=server run db:studio` | Opens Prisma Studio, a GUI for browsing/editing the Postgres data |
 | `npm --workspace=server run build` | Typechecks and compiles the server to `server/dist` |
-| `npx tsc --noEmit -p tsconfig.json` (from `app/` or `server/`) | Typecheck only, no build output |
+| `npm --workspace=web run build` | Typechecks and produces a static production build in `web/dist` |
+| `npx tsc --noEmit -p tsconfig.json` (from `app/`, `server/`, `shared/`, or `web/`) | Typecheck only, no build output |
 | `docker compose up -d` / `down` | Start/stop the local Postgres container |
 
 There's no automated test suite yet — verification today is `tsc --noEmit` on both
@@ -127,6 +132,14 @@ npm run start`) works too and overrides the `.env` file for that one run.
 | Variable | Purpose |
 |---|---|
 | `EXPO_PUBLIC_API_URL` | Base URL the app calls for auth/sync. Defaults to `http://localhost:3001` (`app/src/sync/api.ts`) if `app/.env` doesn't exist and none is set inline — override with whatever port `server/.env`'s `PORT` actually is for local dev, or a deployed server's URL (see [`deployment.md`](./deployment.md)). Android emulator: `http://10.0.2.2:<port>`. Physical device: your machine's LAN IP. |
+
+`web/.env` (copy from `web/.env.example`) — Vite's equivalent: any `VITE_`-prefixed
+variable gets inlined into the browser bundle, loaded automatically by `npm run dev:web`
+and `npm run build --workspace=web`.
+
+| Variable | Purpose |
+|---|---|
+| `VITE_API_URL` | Base URL the web client calls for auth/sync. Defaults to `http://localhost:3001` (`web/src/api.ts`) if `web/.env` doesn't exist. Same value as `EXPO_PUBLIC_API_URL` above for local dev; no Android-emulator/LAN-IP concerns since it runs in a regular browser. |
 
 ## Automatic port selection
 
@@ -237,28 +250,43 @@ reason.
    npm run db:generate --workspace=server
    ```
 
-## Web support: blocked on an upstream Expo bug
+## Web client (`web/`)
 
-`npx expo start --web` / `npx expo export --platform web` **do work** — `react-dom` and
-`react-native-web` are installed, and `app/metro.config.js` adds the two things
-`expo-sqlite`'s web backend needs: treating `.wasm` as an asset (its WASM SQLite build),
-and `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response headers (its
-worker needs `SharedArrayBuffer`, which browsers only expose on a cross-origin-isolated
-page). Both bundling and asset resolution succeed, confirmed with a real export build.
+Web is a separate, thin client (Vite + React), not a third Expo target — see
+[`architecture.md`](./architecture.md#two-frontend-clients-one-api) for why. It has no
+local database and no offline story: every action calls the server directly.
 
-What doesn't work yet: Expo's dev server serves the root `/` document through a code path
-that doesn't run Metro's `enhanceMiddleware` — so every *other* response gets the two
-headers (confirmable with `curl -I`), but the actual page you load never does, which means
-the page is never cross-origin-isolated and `SharedArrayBuffer` is `undefined` at runtime
-the moment the app tries to open the database. This reproduces even on the latest `expo`
-patch version, and matches an open upstream issue exactly:
-[expo/expo#38481](https://github.com/expo/expo/issues/38481). There's no known workaround
-from the app side — it needs an Expo CLI fix. Re-test after bumping `expo` in the future;
-nothing else here should need to change once it's fixed upstream.
+1. Copy the env template and point it at your server:
+   ```bash
+   cd web
+   cp .env.example .env
+   ```
+   Edit `.env`'s `VITE_API_URL` if your server isn't on `localhost:3001` — see
+   [Automatic port selection](#automatic-port-selection) for what port `setup` actually
+   picked.
+2. Start it (from the repo root, in its own terminal — alongside `npm run dev:server`
+   from [Running things day to day](#running-things-day-to-day) above):
+   ```bash
+   npm run dev:web
+   ```
+3. Open the URL Vite prints (`http://localhost:5173` by default) in a browser and
+   register an account — it's a separate `User` row from anything you've created in the
+   mobile app or Expo Go, same as signing up on a second device.
 
-Not yet addressed even once that's fixed: `expo-sharing`/`expo-mail-composer` (CSV/email
-export) have no web implementation at all, so Export needs a web-specific fallback (a
-browser download / clipboard copy, already planned) rather than assuming those work.
+Other useful commands, run from `web/`:
+
+| Command | What it does |
+|---|---|
+| `npm run build` | Typechecks, then produces a static production build in `web/dist` |
+| `npm run preview` | Serves that production build locally, to sanity-check it before deploying |
+| `npm run typecheck` | Typecheck only, no build output |
+
+Known gaps, since this is a scaffold proving the client/server split works, not yet at
+feature parity with the mobile app: only auth, jobs, and clock in/out are wired up so far
+— no rate tiers, overtime, Timesheets, Export, or Managers UI yet. Add them the same way:
+call `pushChanges`/`pullAll` from `web/src/api.ts` directly (no outbox to route through),
+reusing `@clocker/shared`'s types and calculation functions so the numbers agree with the
+mobile app.
 
 ## Known issue: React Native DevTools error on a headless Linux box
 

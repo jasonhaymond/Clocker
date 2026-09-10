@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import * as SQLite from "expo-sqlite";
 import { dbEvents } from "../lib/events";
-import type { Break, EntityType, Job, JobManager, Manager, PendingOp, RateTier, RateVersion, Shift } from "../types";
+import type { Break, EntityType, Job, JobManager, Manager, PendingOp, RateTier, RateVersion, Shift } from "@clocker/shared";
 import { MIGRATIONS, SCHEMA_VERSION } from "./schema";
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;

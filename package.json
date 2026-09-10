@@ -2,8 +2,10 @@
   "name": "clocker",
   "private": true,
   "workspaces": [
+    "shared",
     "app",
-    "server"
+    "server",
+    "web"
   ],
   "scripts": {
     "setup": "node scripts/setup.mjs",
@@ -11,6 +13,7 @@
     "deploy": "node scripts/deploy.mjs",
     "dev:server": "npm run dev --workspace=server",
     "dev:app": "npm run start --workspace=app",
+    "dev:web": "npm run dev --workspace=web",
     "db:generate": "npm run db:generate --workspace=server",
     "db:migrate": "npm run db:migrate --workspace=server"
   },

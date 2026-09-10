@@ -1,6 +1,7 @@
 node_modules/
 app/package-lock.json
 server/package-lock.json
+web/package-lock.json
 .expo/
 .expo-shared/
 dist/

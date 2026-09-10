@@ -19,7 +19,7 @@ import {
   upsertLocalShift,
 } from "../db/database";
 import { dbEvents } from "../lib/events";
-import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } from "../types";
+import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } from "@clocker/shared";
 import { pullChanges, pushChanges, type PushPayload } from "./api";
 
 function jobFromRow(row: any): Job {

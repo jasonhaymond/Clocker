@@ -1,4 +1,4 @@
-import type { Job, RateTier, RateVersion, Shift } from "../types";
+import type { Job, RateTier, RateVersion, Shift } from "./types";
 import { startOfWeek } from "./time";
 
 export interface ShiftPay {

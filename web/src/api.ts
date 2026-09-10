@@ -1,14 +1,31 @@
-import { getToken } from "../auth/tokenStore";
 import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } from "@clocker/shared";
 
-// Points at your Fastify server. Set EXPO_PUBLIC_API_URL in app/.env (copy from
-// app/.env.example) for a persistent override, or inline per-command — Android emulator
-// uses http://10.0.2.2:3001, a physical device needs your machine's LAN IP (e.g.
-// http://192.168.1.20:3001), a deployed server just uses its URL (see docs/deployment.md).
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
+// This client deliberately has no local database and no outbox (contrast with
+// app/src/sync/sync.ts) — see docs/architecture.md's "Two frontend clients, one API".
+// Every mutation pushes immediately; every read re-pulls everything. That's a fine trade
+// for a browser tab that can reasonably assume it has a network, and it means this file
+// is the *entire* client-side sync story, not a small piece of one.
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+const TOKEN_KEY = "clocker.token";
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
 
 class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -16,7 +33,7 @@ class ApiError extends Error {
 async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options.auth) {
-    const token = await getToken();
+    const token = getToken();
     if (!token) throw new ApiError(401, "Not signed in");
     headers.Authorization = `Bearer ${token}`;
   }
@@ -58,7 +75,27 @@ export interface PushPayload {
   deletedJobManagerIds: string[];
 }
 
-export function pushChanges(payload: PushPayload) {
+const EMPTY_PUSH_PAYLOAD: PushPayload = {
+  jobs: [],
+  rateTiers: [],
+  rateVersions: [],
+  shifts: [],
+  breaks: [],
+  managers: [],
+  jobManagers: [],
+  deletedJobIds: [],
+  deletedRateTierIds: [],
+  deletedRateVersionIds: [],
+  deletedShiftIds: [],
+  deletedBreakIds: [],
+  deletedManagerIds: [],
+  deletedJobManagerIds: [],
+};
+
+// Sends only whatever changed — every field optional, defaulting to "nothing of this
+// kind changed" — so a caller creating one job just passes `{ jobs: [job] }`.
+export function pushChanges(partial: Partial<PushPayload>) {
+  const payload: PushPayload = { ...EMPTY_PUSH_PAYLOAD, ...partial };
   return request<{ serverTimestamp: string }>("/sync/push", { method: "POST", body: payload, auth: true });
 }
 
@@ -73,7 +110,9 @@ export interface PullResponse {
   jobManagers: JobManager[];
 }
 
-export function pullChanges(since: string | null) {
-  const query = since ? `?since=${encodeURIComponent(since)}` : "";
-  return request<PullResponse>(`/sync/pull${query}`, { auth: true });
+// No cursor: this client has nothing durable to reconcile a partial pull against, so it
+// always asks for everything and replaces its in-memory state wholesale. Fine at a single
+// user's data volume (see docs/sync-protocol.md's "What sync deliberately does not do").
+export function pullAll() {
+  return request<PullResponse>("/sync/pull", { auth: true });
 }

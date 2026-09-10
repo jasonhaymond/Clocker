@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { createJob, deleteJob, listJobs, listRateTiers, listRateVersionsForTier, setJobArchived } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
-import type { Job } from "../types";
+import type { Job } from "@clocker/shared";
 import { JobDetailModal } from "./JobDetailModal";
 
 const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];

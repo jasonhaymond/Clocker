@@ -1,4 +1,4 @@
-import type { Break, Job, Shift } from "../types";
+import type { Break, Job, Shift } from "./types";
 import { breakMillis } from "./time";
 
 export const ROUNDING_INCREMENT_MINUTES = [5, 10, 15, 20, 30, 60, 120] as const;

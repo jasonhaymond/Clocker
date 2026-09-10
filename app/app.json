@@ -22,9 +22,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "plugins": [
       "expo-mail-composer",
       "@react-native-community/datetimepicker"

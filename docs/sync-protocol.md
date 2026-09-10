@@ -5,6 +5,14 @@ is the part of the app most worth understanding before changing anything in
 `app/src/db`, `app/src/sync`, or `server/src/routes/sync.ts` — a subtle bug here means
 silently lost or duplicated hours, not just a crash.
 
+This entire document describes how `app/` (the mobile client) uses `/sync/push` and
+`/sync/pull` — the outbox, the pull cursor, all of it. `web/` (the web client) calls the
+same two endpoints but has no local database or outbox to speak of: it pushes one change
+at a time immediately and pulls everything with no cursor, replacing its in-memory state
+wholesale on every refresh. See [`architecture.md`](./architecture.md#two-frontend-clients-one-api)
+for why the two clients differ this much despite sharing an API, and `web/src/api.ts` for
+that much simpler client-side story.
+
 ## When sync runs
 
 `app/src/navigation/RootNavigator.tsx` calls `synchronize()` (from `app/src/sync/sync.ts`):

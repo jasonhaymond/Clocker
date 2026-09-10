@@ -1,4 +1,4 @@
-import type { Break, Job, RateTier, RateVersion, Shift } from "../types";
+import type { Break, Job, RateTier, RateVersion, Shift } from "./types";
 import { calculateShiftPay, formatCents, type ShiftPay } from "./pay";
 import { roundedWorkedMillis } from "./rounding";
 import { breakMillis, formatClock, formatDay, workedMillis } from "./time";

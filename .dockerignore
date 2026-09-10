@@ -1,0 +1,8 @@
+# Used by web/Dockerfile's monorepo-root build context (see that file's comment on why).
+# server/Dockerfile has its own separate context (./server) and isn't affected by this file.
+**/node_modules
+**/dist
+server/generated
+.git
+.expo
+*.log

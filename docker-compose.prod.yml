@@ -46,8 +46,22 @@ services:
       - caddy-config:/config
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
+      WEB_DOMAIN: ${WEB_DOMAIN:-web.localhost}
     depends_on:
       - server
+
+  # Static build of the web client, served by its own small Caddy (see web/Dockerfile) —
+  # the main `caddy` service above proxies WEB_DOMAIN to it. Opt-in (not started by a
+  # plain `docker compose up`) since not every deployment wants the web client hosted
+  # here — see docs/deployment.md#deploying-the-web-client.
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_URL: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
+    restart: unless-stopped
+    profiles: ["web"]
 
 volumes:
   clocker-postgres-prod:

@@ -284,23 +284,32 @@ password/secret, mode, and port already in `.env.prod`.
 
 ## How the stack fits together
 
-- **`Caddyfile`** — the proxy config. One real line: forward everything to the `server`
-  container on port 3001 — fixed, unlike local dev's port (see
+- **`Caddyfile`** — the proxy config, two site blocks. The first forwards everything to
+  the `server` container on port 3001 — fixed, unlike local dev's port (see
   [Automatic port selection](./development.md#automatic-port-selection)), since this
   container never publishes that port to the host at all; only Caddy is reachable from
   outside, so there's nothing for it to collide with. The hostname comes from the
-  `DOMAIN` environment variable.
+  `DOMAIN` environment variable. The second, keyed by `WEB_DOMAIN`, forwards to the `web`
+  container (see [Deploying the web client](#deploying-the-web-client) above) — present
+  whether or not you ever start that container; it just 502s for that hostname until you
+  do.
 - **`server/Dockerfile`** — multi-stage build (installs, `prisma generate`, `tsc`), and
   runs `prisma migrate deploy` before starting on every container start (idempotent — a
   no-op once the database is current, so restarts never re-run migrations destructively).
-- **`docker-compose.prod.yml`** — wires up all three containers: Postgres (no host port
-  published — only the `server` container can reach it), `server` (built from the
-  Dockerfile), and `caddy` (the only container exposed, on 80/443). Used for
-  `PROXY_MODE=local` (the default).
+- **`web/Dockerfile`** — multi-stage build for the web client (see
+  [Deploying the web client](#deploying-the-web-client) above); unlike `server/Dockerfile`
+  its build context is the *monorepo root*, since it needs the sibling `shared` workspace.
+  Final stage is a small Caddy (`web/Caddyfile`) just serving the static build — no Node
+  runtime in the shipped image.
+- **`docker-compose.prod.yml`** — wires up Postgres (no host port published — only the
+  `server` container can reach it), `server` (built from `server/Dockerfile`), `caddy`
+  (the only container exposed, on 80/443), and `web` (built from `web/Dockerfile`, only
+  started when you pass `--profile web`). Used for `PROXY_MODE=local` (the default).
 - **`docker-compose.prod.external-proxy.yml`** — the alternate stack for
   `PROXY_MODE=external` (see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)):
   same Postgres + server, no `caddy` service, and the server's port is published to the
-  host instead of only being reachable internally.
+  host instead of only being reachable internally. Does not yet include a `web` service —
+  see [Deploying the web client](#deploying-the-web-client)'s note on `PROXY_MODE=external`.
 - **`.env.prod.example`** — the template `.env.prod` is copied from.
 
 `DOMAIN` defaults to `localhost` if you leave `.env.prod`'s value empty and just want to
@@ -372,6 +381,9 @@ yours to supply. Running the server directly, set all of these however your host
   port/interface the server is published on for your own proxy to reach. Auto-picked and
   auto-set by `npm run deploy`; see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)
   for the security note on `SERVER_BIND`.
+- **`WEB_DOMAIN`** (Compose path, `PROXY_MODE=local` only, and only if you deploy the web
+  client) — the web client's own hostname. Not set by `npm run deploy` — see
+  [Deploying the web client](#deploying-the-web-client), a manual step.
 
 ## Security gaps to close before this is public
 
@@ -379,9 +391,12 @@ The current code is fine for "one person, their own devices, their own network o
 trusted host" and does **not** currently have:
 
 - **CORS restricted to specific origins** — it's registered as `{ origin: true }`
-  (reflects any request's `Origin`). Native mobile requests aren't really subject to CORS
-  the way a browser is, so this is low-risk for a mobile-only client, but tighten it
-  (`server/src/index.ts`) if a web client is ever added.
+  (reflects any request's `Origin`). This mattered less when the only client was mobile
+  (native requests aren't really subject to CORS the way a browser is), but now that
+  `web/` is a real browser client, tighten this (`server/src/index.ts`) to your actual
+  `WEB_DOMAIN` before this is genuinely public — right now any website could make
+  authenticated-looking requests from a visitor's browser if it somehow obtained their
+  token, since nothing here restricts *which* origins the API accepts.
 - **Rate limiting** on `/auth/login` or `/auth/register` — nothing currently prevents a
   brute-force credential-stuffing attempt against those endpoints.
 - **A refresh-token flow** — tokens are long-lived (180 days, see
@@ -394,6 +409,69 @@ itself listens on plain HTTP — a JWT sent over that is trivially interceptable
 
 None of this matters for local development against `localhost`/your own LAN — it starts
 mattering the moment the server is reachable from the open internet.
+
+## Deploying the web client
+
+The web client (`web/`) is a thin, server-dependent React app with no offline story — see
+[`architecture.md`](./architecture.md#two-frontend-clients-one-api) for why it's built
+that way instead of as a third Expo target. Its production build (`npm run build
+--workspace=web`) is a handful of static files (`web/dist`) with zero server-side
+requirements beyond reaching the existing API — deploy them however you like (Netlify,
+Cloudflare Pages, GitHub Pages, S3+CDN, ...).
+
+This section covers the one option that's actually wired up and tested: hosting it
+alongside the API, from the same `docker-compose.prod.yml` stack, using the Caddy that's
+already there. It's **opt-in** — a plain `npm run deploy` / `docker compose up` never
+starts it.
+
+**This is currently `PROXY_MODE=local` only.** Running `PROXY_MODE=external` (your own
+reverse proxy)? The web client isn't wired into that path yet — you'd need to publish the
+`web` container's port the same way `SERVER_PORT`/`SERVER_BIND` do for the API (see
+[Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)) and
+add a second site block to your own proxy. Nothing prevents this, it just isn't automated
+yet.
+
+### Steps to deploy it
+
+1. Point DNS at this same server for a second hostname (e.g. `app.your-domain.com`) — a
+   separate A/AAAA record, the same way `DOMAIN` needed one (see
+   [Prerequisites](#prerequisites) above).
+2. Add that hostname to `.env.prod`:
+   ```bash
+   # .env.prod
+   WEB_DOMAIN=app.your-domain.com
+   ```
+3. Build and start it — this is the one piece `npm run deploy` doesn't do for you, so it's
+   a direct `docker compose` call instead, with `--profile web` added to the usual
+   command:
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build
+   ```
+   This builds `web/Dockerfile` (context is the *monorepo root*, not `web/` alone — it
+   needs the sibling `shared` workspace, see that file's own comment), bakes
+   `VITE_API_URL=https://$DOMAIN` into the build (Vite inlines it at build time, same
+   constraint EAS builds have — see [Step 2: Point the build at your server](#step-2-point-the-build-at-your-server)
+   below), and adds a second Caddy site block (already in the repo's `Caddyfile`) that
+   reverse-proxies `WEB_DOMAIN` to it.
+4. Verify, from outside the server:
+   ```bash
+   curl https://app.your-domain.com/
+   ```
+   Expect real HTML back (a `<title>Clocker</title>` page), the same way
+   `/health` confirms the API.
+
+Re-run the command in step 3 any time you want to rebuild with the latest code — same
+idempotent `up -d --build` pattern as the API.
+
+### Verified locally
+
+Built and ran the full stack this way against `DOMAIN=localhost` /
+`WEB_DOMAIN=web.localhost` (Caddy's local self-signed CA, same smoke-test pattern
+described in [How the stack fits together](#how-the-stack-fits-together)): all four
+containers came up, `https://localhost/health` and `https://web.localhost/` both resolved
+correctly through the one Caddy instance, and the served bundle had the right
+`VITE_API_URL` baked in. Not yet exercised against a real domain/Let's Encrypt or
+alongside a real mobile client pointed at the same server.
 
 ## Deploying the Expo app
 

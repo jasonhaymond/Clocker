@@ -18,11 +18,19 @@ import {
   updateJobRounding,
   updateJobTimesheetSettings,
 } from "../db/database";
-import { ROUNDING_INCREMENT_MINUTES } from "../lib/rounding";
-import type { PeriodType } from "../lib/timesheetPeriods";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
-import type { Job, JobManager, Manager, RateTier, RateVersion, RoundingMode, TimesheetExportFormat } from "../types";
+import {
+  ROUNDING_INCREMENT_MINUTES,
+  type PeriodType,
+  type Job,
+  type JobManager,
+  type Manager,
+  type RateTier,
+  type RateVersion,
+  type RoundingMode,
+  type TimesheetExportFormat,
+} from "@clocker/shared";
 
 const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 

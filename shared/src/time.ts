@@ -1,4 +1,4 @@
-import type { Break, Shift } from "../types";
+import type { Break, Shift } from "./types";
 
 export function formatDuration(ms: number): string {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));

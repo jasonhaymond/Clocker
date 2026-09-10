@@ -1,4 +1,4 @@
-import type { Job } from "../types";
+import type { Job } from "./types";
 import { addDays, startOfDay } from "./time";
 
 export type PeriodType = "weekly" | "biweekly" | "monthly";

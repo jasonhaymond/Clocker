@@ -1,42 +1,51 @@
 # Clocker
 
 A personal timeclock app for tracking hours across multiple jobs — clock in/out, breaks,
-history, and CSV export. Built as an offline-first React Native (Expo) app backed by a
-small Fastify + PostgreSQL server for cross-device sync.
+history, and CSV export. Built as an offline-first React Native (Expo) mobile app, plus a
+thin web client, both backed by a small Fastify + PostgreSQL server.
 
 ## How it works
 
-- **App** (`app/`): Expo + React Native + TypeScript. All data lives first in a local
-  SQLite database (`app/src/db`), so the app works fully offline. Every local write is
-  also recorded in a `pending_changes` outbox table.
+- **Mobile app** (`app/`): Expo + React Native + TypeScript. All data lives first in a
+  local SQLite database (`app/src/db`), so the app works fully offline. Every local write
+  is also recorded in a `pending_changes` outbox table.
+- **Web client** (`web/`): Vite + React + TypeScript. No local database — a thin client
+  that calls the server directly on every action. Deliberately *not* offline-first; see
+  [Architecture](./docs/architecture.md#two-frontend-clients-one-api) for why the two
+  clients differ this much.
+- **Shared** (`shared/`): framework-free TypeScript (types + pay/rounding/period/export
+  calculations) imported by both clients, so they agree on every number.
 - **Server** (`server/`): Fastify + Prisma + PostgreSQL. Exposes email/password auth and
-  two sync endpoints (`/sync/push`, `/sync/pull`) that the app calls opportunistically
-  (on launch, every 5 minutes, on app foreground, and after local edits).
-- **Sync** (`app/src/sync/sync.ts`): push whatever's in the outbox, then pull anything
-  newer than the last-seen server timestamp and merge it into the local mirror. Conflicts
-  resolve last-write-wins by `updatedAt`.
+  two sync endpoints (`/sync/push`, `/sync/pull`) that both clients call — the mobile app
+  opportunistically (on launch, every 5 minutes, on app foreground, and after local
+  edits), the web client immediately on every mutation.
+- **Sync** (`app/src/sync/sync.ts`, mobile only): push whatever's in the outbox, then pull
+  anything newer than the last-seen server timestamp and merge it into the local mirror.
+  Conflicts resolve last-write-wins by `updatedAt`.
 
 For the full picture — why it's built this way, the exact data model on both sides, the
 complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.md)**:
 
 | | |
 |---|---|
-| [Architecture](./docs/architecture.md) | Design principles and the reasoning behind them |
+| [Architecture](./docs/architecture.md) | Design principles and the reasoning behind them, including why there are two separate frontend clients |
 | [Data Model](./docs/data-model.md) | Every table/field, Postgres and SQLite |
 | [Sync Protocol](./docs/sync-protocol.md) | The outbox, conflict resolution, ownership checks |
 | [API Reference](./docs/api-reference.md) | Every endpoint, with a curl smoke test |
 | [Development Guide](./docs/development.md) | Setup/update scripts, env vars, known issues |
-| [Deployment](./docs/deployment.md) | Server setup (Caddy + Docker Compose, or your own reverse proxy), building/installing the Expo app, troubleshooting |
+| [Deployment](./docs/deployment.md) | Server setup (Caddy + Docker Compose, or your own reverse proxy), deploying the web client, building/installing the Expo app, troubleshooting |
 
 ## Project layout
 
 ```
-app/       Expo app (screens, local DB, sync client, auth)
+app/       Expo mobile app (screens, local DB, sync client, auth)
+web/       Vite web client (thin, no local DB) — see docs/architecture.md
+shared/    Framework-free TypeScript shared by both clients (types + calculations)
 server/    Fastify API + Prisma schema/migrations, Dockerfile
 scripts/   setup.mjs / update.mjs (dev) and deploy.mjs (production) — see docs/
 docs/      Detailed documentation (see table above)
 docker-compose.yml        Local Postgres for development
-docker-compose.prod.yml   Postgres + server + Caddy for production (see docs/deployment.md)
+docker-compose.prod.yml   Postgres + server + Caddy (+ optional web) for production (see docs/deployment.md)
 Caddyfile                 Reverse proxy config for the production stack
 ```
 
@@ -83,12 +92,20 @@ npm run dev:server   # starts the API — prints the actual port, e.g. "Server l
 npm run dev:app      # starts Expo — press i/a, or scan the QR code with Expo Go
 ```
 
+Working on the web client instead (or as well)? Run this in place of (or alongside)
+`dev:app`:
+
+```bash
+npm run dev:web       # starts Vite — open the localhost URL it prints in a browser
+```
+
 `setup` doesn't always land on `3001` (see step 2.2) — check `server/.env`'s `PORT`, or
 just read the port from `dev:server`'s own startup line, before assuming it.
 
 ### Step 4: Point the app at your server
 
-The app needs `EXPO_PUBLIC_API_URL` set to wherever your server actually is. Pick one:
+**Mobile app** — needs `EXPO_PUBLIC_API_URL` set to wherever your server actually is. Pick
+one:
 
 - **Persistent (recommended)** — copy `app/.env.example` to `app/.env` and set it there;
   Expo loads it automatically, no extra setup:
@@ -109,6 +126,10 @@ Which host to use:
 | Physical phone (same network as the server) | Your machine's LAN IP, e.g. `http://192.168.1.20:<port>` |
 | Physical phone (different network — see [Running the dev server from a remote machine](./docs/development.md#running-the-dev-server-from-a-remote-machine)) | Still your server's real address; also start Expo with `npm run start:tunnel` instead of `npm run dev:app` |
 | A deployed server | Its real `https://` URL — see [Deployment](./docs/deployment.md) |
+
+**Web client** — same idea, its own env var: copy `web/.env.example` to `web/.env` and
+set `VITE_API_URL` (defaults to `http://localhost:3001`). No emulator/LAN-IP concerns
+since it's a regular browser.
 
 ### Step 5 (optional): Enable over-the-air app updates
 

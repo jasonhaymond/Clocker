@@ -17,3 +17,20 @@
 		format console
 	}
 }
+
+# The web client (see docs/deployment.md#deploying-the-web-client) — only reachable if
+# you also start the `web` service (`docker compose --profile web up -d`). Defaults to
+# `web.localhost`, distinct from DOMAIN's own `localhost` default above, so the two site
+# blocks never collide before either is configured with a real hostname. Routing here
+# still works even if the `web` service isn't running — this block just 502s for
+# WEB_DOMAIN's hostname until it is, without affecting the API's own site block above.
+{$WEB_DOMAIN:web.localhost} {
+	reverse_proxy web:80
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}
