@@ -420,48 +420,55 @@ requirements beyond reaching the existing API — deploy them however you like (
 Cloudflare Pages, GitHub Pages, S3+CDN, ...).
 
 This section covers the one option that's actually wired up and tested: hosting it
-alongside the API, from the same `docker-compose.prod.yml` stack, using the Caddy that's
-already there. It's **opt-in** — a plain `npm run deploy` / `docker compose up` never
-starts it.
+alongside the API, using the Caddy (or your own reverse proxy) that's already there. It's
+**opt-in** — a plain `npm run deploy` never builds or starts it; pass `--web` when you
+want it. Works with either `PROXY_MODE`.
 
-**This is currently `PROXY_MODE=local` only.** Running `PROXY_MODE=external` (your own
-reverse proxy)? The web client isn't wired into that path yet — you'd need to publish the
-`web` container's port the same way `SERVER_PORT`/`SERVER_BIND` do for the API (see
-[Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)) and
-add a second site block to your own proxy. Nothing prevents this, it just isn't automated
-yet.
-
-### Steps to deploy it
+### Steps (`PROXY_MODE=local`, the default)
 
 1. Point DNS at this same server for a second hostname (e.g. `app.your-domain.com`) — a
    separate A/AAAA record, the same way `DOMAIN` needed one (see
    [Prerequisites](#prerequisites) above).
-2. Add that hostname to `.env.prod`:
+2. Deploy with `--web`, passing the new hostname as `WEB_DOMAIN`:
    ```bash
-   # .env.prod
-   WEB_DOMAIN=app.your-domain.com
+   WEB_DOMAIN=app.your-domain.com npm run deploy -- your-domain.com --web
    ```
-3. Build and start it — this is the one piece `npm run deploy` doesn't do for you, so it's
-   a direct `docker compose` call instead, with `--profile web` added to the usual
-   command:
-   ```bash
-   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build
-   ```
-   This builds `web/Dockerfile` (context is the *monorepo root*, not `web/` alone — it
-   needs the sibling `shared` workspace, see that file's own comment), bakes
+   (Or set `WEB_DOMAIN=app.your-domain.com` directly in `.env.prod` first, then just
+   `npm run deploy -- your-domain.com --web` — same as `DOMAIN`, whichever's more
+   convenient.) This builds `web/Dockerfile` (context is the *monorepo root*, not `web/`
+   alone — it needs the sibling `shared` workspace, see that file's own comment), bakes
    `VITE_API_URL=https://$DOMAIN` into the build (Vite inlines it at build time, same
    constraint EAS builds have — see [Step 2: Point the build at your server](#step-2-point-the-build-at-your-server)
-   below), and adds a second Caddy site block (already in the repo's `Caddyfile`) that
-   reverse-proxies `WEB_DOMAIN` to it.
-4. Verify, from outside the server:
-   ```bash
-   curl https://app.your-domain.com/
-   ```
-   Expect real HTML back (a `<title>Clocker</title>` page), the same way
-   `/health` confirms the API.
+   below), starts it alongside the rest of the stack, and checks
+   `https://$WEB_DOMAIN/` the same way it already checks `https://$DOMAIN/health`.
+3. `--web` persists in `.env.prod` (`DEPLOY_WEB=true`) — every later `npm run deploy`
+   keeps rebuilding/restarting it too, no flag needed again. Pass `--no-web` once to turn
+   it back off.
 
-Re-run the command in step 3 any time you want to rebuild with the latest code — same
-idempotent `up -d --build` pattern as the API.
+Skip `WEB_DOMAIN` and it defaults to `web.localhost` — fine for a local smoke test (see
+[Verified locally](#verified-locally) below), not reachable from the real internet.
+
+### Steps (`PROXY_MODE=external`, your own reverse proxy)
+
+Same `--web` flag; the difference is what gets printed, matching how the API's own
+external-proxy path works (see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)):
+
+```bash
+npm run deploy -- your-domain.com --external-proxy --web
+```
+
+This auto-picks a free `WEB_PORT` (starting at 3002, same scan-and-persist logic as
+`SERVER_PORT`) and prints a *second* ready-to-paste site-block snippet at the end,
+alongside the API's — add both to your own proxy, each with its own hostname.
+
+### Doing it by hand instead
+
+Equivalent manual command, either mode, once `.env.prod` already has whatever
+`WEB_DOMAIN`/`WEB_PORT` you want:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build
+```
 
 ### Verified locally
 
@@ -470,8 +477,11 @@ Built and ran the full stack this way against `DOMAIN=localhost` /
 described in [How the stack fits together](#how-the-stack-fits-together)): all four
 containers came up, `https://localhost/health` and `https://web.localhost/` both resolved
 correctly through the one Caddy instance, and the served bundle had the right
-`VITE_API_URL` baked in. Not yet exercised against a real domain/Let's Encrypt or
-alongside a real mobile client pointed at the same server.
+`VITE_API_URL` baked in. The `--web`/`--no-web`/`PROXY_MODE=external` automation in
+`scripts/deploy.mjs` itself has been read through carefully but not yet run end-to-end the
+way the manual compose command above was — the external-proxy `--web` path in particular
+is worth a real dry run before trusting it blindly. Not yet exercised against a real
+domain/Let's Encrypt or alongside a real mobile client pointed at the same server.
 
 ## Deploying the Expo app
 
@@ -495,6 +505,9 @@ Three distinct things, easy to conflate:
 
 ### Step 1: One-time setup
 
+`app/eas.json` is already committed (see below for why) — you still need to log in and
+link the project to your own EAS account the first time:
+
 ```bash
 npm i -g eas-cli
 cd app
@@ -502,11 +515,35 @@ eas login
 eas build:configure
 ```
 
-`eas build:configure` asks a few questions (platforms to support) and writes `app/eas.json`
-with default `development`/`preview`/`production` profiles, plus links the project to an
-EAS project (writing `extra.eas.projectId` into `app.json` — the same field
+`eas build:configure` asks a few questions (platforms to support) and links the project to
+an EAS project (writing `extra.eas.projectId` into `app.json` — the same field
 `eas update:configure` uses for [OTA updates](./development.md#ota-updates), so you only
-need to link the project once regardless of which you set up first).
+need to link the project once regardless of which you set up first). If it offers to
+overwrite the existing `eas.json`, decline (or re-add the `EXPO_USE_METRO_WORKSPACE_ROOT`
+env var below afterward) — that's the monorepo fix described next.
+
+**Monorepo builds need `EXPO_USE_METRO_WORKSPACE_ROOT=1`.** Since this repo is an npm
+workspaces monorepo, `node_modules` (including `expo` itself) is hoisted to the repo
+root rather than living inside `app/node_modules`. Expo's default entry point
+(`expo/AppEntry.js`) resolves your app's root component with a path relative to wherever
+`node_modules/expo` physically is — so without this variable, EAS Build fails with
+`Unable to resolve module ../../App`, because it's looking two directories above the
+*hoisted* `node_modules/expo` (the repo root) instead of `app/`. Each build profile in
+`app/eas.json` sets it in its `env` block:
+```jsonc
+// app/eas.json
+{
+  "build": {
+    "preview": {
+      "env": { "EXPO_USE_METRO_WORKSPACE_ROOT": "1" }
+    }
+    // ...same for development/production
+  }
+}
+```
+This only affects EAS's remote build environment — local dev doesn't need it, since
+`app/metro.config.js` already sets the equivalent `watchFolders`/`resolver.nodeModulesPaths`
+manually for the dev server (see [`architecture.md`](./architecture.md#two-frontend-clients-one-api)).
 
 ### Step 2: Point the build at your server
 
@@ -552,6 +589,13 @@ Use the `preview` profile (`"distribution": "internal"` by default from
 [Going further](#going-further-an-actual-app-store--play-store-release) below) and may be
 configured for that instead (e.g. an `.aab` for Play Store rather than an installable
 `.apk`).
+
+You'll likely see this warning — it's informational, not a failure, and safe to ignore
+for a personal internal-distribution build (set `EAS_BUILD_NO_EXPO_GO_WARNING=true` to
+silence it if it bothers you):
+```
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+```
 
 **iOS only:** you also need an [Apple Developer Program](https://developer.apple.com/programs/)
 membership ($99/year) before EAS can produce anything installable on a real device —

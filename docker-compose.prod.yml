@@ -1,9 +1,12 @@
 # Production stack: Postgres + the Fastify server + Caddy as a reverse proxy handling
-# TLS automatically. See docs/deployment.md for the full walkthrough.
+# TLS automatically. See docs/deployment.md for the full walkthrough. The `web` service
+# (opt-in, --profile web) hosts the web client the same way — see
+# docs/deployment.md#deploying-the-web-client.
 #
 # Usage:
 #   cp .env.prod.example .env.prod   # fill in POSTGRES_PASSWORD, JWT_SECRET, DOMAIN
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build   # + web client
 #
 # `name` is set explicitly (rather than defaulting to the directory name) so this never
 # collides with docker-compose.yml's dev stack if both are ever run on the same machine —

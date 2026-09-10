@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_USE_METRO_WORKSPACE_ROOT": "1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_USE_METRO_WORKSPACE_ROOT": "1",
+        "EXPO_PUBLIC_API_URL": "https://clocker.haymondtechnologies.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_USE_METRO_WORKSPACE_ROOT": "1",
+        "EXPO_PUBLIC_API_URL": "https://clocker.haymondtechnologies.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
