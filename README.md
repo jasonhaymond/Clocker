@@ -42,20 +42,97 @@ Caddyfile                 Reverse proxy config for the production stack
 
 ## Getting started
 
-### First-time setup
+Full detail, troubleshooting, and every env var: [Development Guide](./docs/development.md).
+This section is the fast path.
+
+### Step 1: Prerequisites
+
+- [ ] Node.js 20+ installed (`node --version`)
+- [ ] Docker Desktop installed and running (`docker --version`) — optional; skip if
+      you'll point `DATABASE_URL` at your own Postgres instance instead
+- [ ] Expo Go installed on a phone, and/or Xcode/Android Studio for a simulator
+
+### Step 2: Clone and run first-time setup
 
 ```bash
+git clone https://github.com/<you>/Clocker.git
+cd Clocker
 npm run setup
 ```
 
-This installs dependencies for both workspaces, picks free ports for Postgres and the API
-(see [Automatic port selection](./docs/development.md#automatic-port-selection) — it
-re-checks on every run, so a port that's since been claimed by something else gets
-replaced automatically rather than silently failing to start), creates/updates
-`server/.env` with a freshly generated `JWT_SECRET` the first time only, starts Postgres
-via Docker, and applies migrations. Safe to re-run any time. If Docker isn't available it
-skips starting Postgres and tells you what to do instead (point `DATABASE_URL` in
-`server/.env` at your own instance).
+`npm run setup` (`scripts/setup.mjs`) does everything needed to go from a fresh clone to a
+runnable app, and is safe to re-run any time:
+
+1. `npm install` at the repo root — an npm workspaces monorepo, so this installs both
+   `app/` and `server/`'s dependencies in one pass.
+2. Picks free ports for Postgres and the API (starting at `5433`/`3001`, scanning upward
+   if those are taken — see [Automatic port selection](./docs/development.md#automatic-port-selection))
+   and writes them to `server/.env`, generating a random `JWT_SECRET` the first time only.
+3. Starts Postgres via Docker (skipped with instructions if Docker isn't installed).
+4. Applies database migrations.
+
+### Step 3: Run it
+
+Two terminals, both from the repo root:
+
+```bash
+npm run dev:server   # starts the API — prints the actual port, e.g. "Server listening at http://127.0.0.1:3001"
+```
+
+```bash
+npm run dev:app      # starts Expo — press i/a, or scan the QR code with Expo Go
+```
+
+`setup` doesn't always land on `3001` (see step 2.2) — check `server/.env`'s `PORT`, or
+just read the port from `dev:server`'s own startup line, before assuming it.
+
+### Step 4: Point the app at your server
+
+The app needs `EXPO_PUBLIC_API_URL` set to wherever your server actually is. Pick one:
+
+- **Persistent (recommended)** — copy `app/.env.example` to `app/.env` and set it there;
+  Expo loads it automatically, no extra setup:
+  ```bash
+  # app/.env
+  EXPO_PUBLIC_API_URL=http://192.168.1.20:3001
+  ```
+- **One-off** — set it inline for a single run instead:
+  ```bash
+  cd app && EXPO_PUBLIC_API_URL=http://192.168.1.20:3001 npm run start
+  ```
+
+Which host to use:
+
+| Running the app on... | Use |
+|---|---|
+| Android emulator | `http://10.0.2.2:<port>` (emulator's alias for the host machine — `localhost` won't work) |
+| Physical phone (same network as the server) | Your machine's LAN IP, e.g. `http://192.168.1.20:<port>` |
+| Physical phone (different network — see [Running the dev server from a remote machine](./docs/development.md#running-the-dev-server-from-a-remote-machine)) | Still your server's real address; also start Expo with `npm run start:tunnel` instead of `npm run dev:app` |
+| A deployed server | Its real `https://` URL — see [Deployment](./docs/deployment.md) |
+
+### Step 5 (optional): Enable over-the-air app updates
+
+The app checks for OTA updates (via `expo-updates`) on launch and when it comes back to
+the foreground, and the Settings screen shows the current version, lets you check
+manually, and prompts to restart once an update has downloaded. Skip this step and it
+just always shows "Updates aren't available in this build" — harmless, and expected in
+Expo Go/local dev regardless.
+
+To enable it (needs a free Expo account):
+
+1. ```bash
+   npm i -g eas-cli
+   cd app
+   eas login
+   ```
+2. ```bash
+   eas update:configure   # links this app to an EAS project and fills in app.json
+   ```
+3. Whenever you want to ship a JS-only change (no native code changes) without a new app
+   build:
+   ```bash
+   eas update --branch production --message "Describe the change"
+   ```
 
 ### Staying up to date
 
@@ -66,55 +143,6 @@ npm run update
 Pulls the latest commits (only if your working tree is clean — otherwise it tells you to
 commit or stash first and stops, rather than risk overwriting anything), reinstalls
 dependencies, and applies any new migrations.
-
-### Running it
-
-```bash
-npm run dev:server   # starts the API — prints the actual port, e.g. "Server listening at http://127.0.0.1:3001"
-npm run dev:app      # starts Expo — press i/a, or scan the QR code with Expo Go
-```
-
-`npm run setup` picks the server's port automatically (starting at 3001, but scanning
-upward if that's already taken by something else on your machine — see
-[Automatic port selection](./docs/development.md#automatic-port-selection)), so check
-`server/.env`'s `PORT` or the terminal output above rather than assuming 3001.
-
-The app needs to know where your server is, via `EXPO_PUBLIC_API_URL` (defaults to
-`http://localhost:3001` — override it if yours landed on a different port, or points at
-a deployed server). Set it persistently in `app/.env` (copy from `app/.env.example` —
-Expo loads it automatically, no extra setup) or inline per-command:
-
-```bash
-cd app && EXPO_PUBLIC_API_URL=http://192.168.1.20:3001 npm run start
-```
-
-Android emulator can't reach `localhost` directly — use `10.0.2.2` instead of your LAN
-IP; a physical device needs your machine's actual LAN IP as shown above.
-
-### Over-the-air app updates
-
-The app checks for OTA updates (via `expo-updates`) on launch and when it comes back to
-the foreground, and the Settings screen shows the current version, lets you check
-manually, and prompts to restart once an update has downloaded. This only does anything
-in a build published through EAS Update — Expo Go and local dev builds always show
-"Updates aren't available in this build."
-
-One-time setup (needs a free Expo account):
-
-```bash
-npm i -g eas-cli
-cd app
-eas login
-eas update:configure   # links this app to an EAS project and fills in app.json
-```
-
-Then, whenever you want to ship a JS-only change (no native code changes) without an app
-store release:
-
-```bash
-cd app
-eas update --branch production --message "Describe the change"
-```
 
 ## Features
 

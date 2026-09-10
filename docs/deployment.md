@@ -29,21 +29,24 @@ relevant to the bundled-Caddy path) still applies.
 
 ### Prerequisites
 
-Confirm all of these *before* starting the stack — every one of them causes exactly the
-"redeployed but it's not running or inaccessible" symptom if skipped:
+Confirm every one of these *before* starting the stack — each one causes exactly the
+"redeployed but it's not running or inaccessible" symptom if skipped.
 
-- **Docker and Docker Compose are installed** on the server (`docker --version` and
-  `docker compose version` both succeed).
-- **DNS is pointed at this server already.** An A (and/or AAAA) record for your domain
-  resolving to this machine's public IP. Check from *outside* the server (your laptop,
-  not the server itself — a server can sometimes resolve things a client can't):
+- [ ] **Docker and Docker Compose are installed** on the server:
+  ```bash
+  docker --version && docker compose version
+  ```
+  Both should print a version, not an error.
+- [ ] **DNS is pointed at this server already.** Check from *outside* the server (your
+  laptop, not the server itself — a server can sometimes resolve things a client can't):
   ```bash
   dig +short your-domain.com
   ```
   This should print the server's public IP. If it prints nothing or a different IP, fix
-  DNS first and wait for it to propagate (can take minutes to hours) — Caddy cannot get a
-  certificate for a domain that doesn't resolve to it.
-- **Ports 80 and 443 are open to the internet on this exact machine** — both in any OS
+  DNS first (an A and/or AAAA record for your domain) and wait for it to propagate (can
+  take minutes to hours) — Caddy cannot get a certificate for a domain that doesn't
+  resolve to it.
+- [ ] **Ports 80 and 443 are open to the internet on this exact machine** — both in any OS
   firewall (`ufw`, `firewalld`) and in front of it (a cloud provider's security group, a
   home router's port forwarding if this is behind NAT). Port 80 matters even though the
   app is only ever served over HTTPS: Caddy needs it for the ACME HTTP-01 challenge that
@@ -52,11 +55,15 @@ Confirm all of these *before* starting the stack — every one of them causes ex
   curl -I http://your-domain.com   # before the stack is even running, expect a connection
                                      # refused/timeout if the port isn't reachable yet
   ```
-- **Nothing else is already bound to 80/443** on this machine (another web server, a
-  previous Caddy instance, etc.) — `docker compose up` will fail to start the `caddy`
-  container if so. Check with `sudo ss -tlnp | grep -E ':80|:443'`.
-- **You're not simultaneously running the dev stack's Postgres** on this machine with a
-  conflicting setup — see [Migrating from the dev stack](#migrating-from-the-dev-stack)
+- [ ] **Nothing else is already bound to 80/443** on this machine (another web server, a
+  previous Caddy instance, etc.):
+  ```bash
+  sudo ss -tlnp | grep -E ':80|:443'
+  ```
+  Empty output is what you want. If something's listed, `docker compose up` will fail to
+  start the `caddy` container.
+- [ ] **You're not simultaneously running the dev stack's Postgres** on this machine with
+  a conflicting setup — see [Migrating from the dev stack](#migrating-from-the-dev-stack)
   below if you'd been running `npm run setup` / `npm run dev:server` here.
 
 ### 1. Get the code
@@ -113,46 +120,52 @@ see [Deploying the Expo app](#deploying-the-expo-app) below.
 
 ### Manual setup, without the deploy script
 
-Equivalent to what `npm run deploy` automates, spelled out:
+Equivalent to what `npm run deploy` automates, spelled out step by step.
 
-```bash
-cp .env.prod.example .env.prod
-```
-
-Edit `.env.prod` and fill in all three values (generate `JWT_SECRET` rather than typing
-something memorable: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`):
-
-```bash
-# .env.prod
-POSTGRES_PASSWORD=<a strong password — this is a NEW production database, not your dev one>
-JWT_SECRET=<a long random value>
-DOMAIN=your-domain.com
-```
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-```
-
-Then verify it yourself — don't just assume it started because the command didn't error:
-
-```bash
-# 1. All three containers should show "Up" / "running", not "Restarting" or "Exited"
-docker compose -f docker-compose.prod.yml --env-file .env.prod ps
-
-# 2. Watch the server actually come up and migrate cleanly
-docker compose -f docker-compose.prod.yml --env-file .env.prod logs server
-#   look for "All migrations have been successfully applied" and
-#   "Server listening at http://..." — if it's crash-looping instead, this is where you'll see why
-
-# 3. Confirm Caddy got a real certificate (not stuck retrying)
-docker compose -f docker-compose.prod.yml --env-file .env.prod logs caddy
-#   look for "certificate obtained successfully" — repeated "obtaining certificate" /
-#   error lines mean DNS or port 80 isn't actually reachable from the internet yet (see Prerequisites)
-
-# 4. Hit it for real, from outside the server (your laptop, not an SSH session on the box)
-curl https://your-domain.com/health
-#   expect: {"ok":true}
-```
+1. Copy the template env file:
+   ```bash
+   cp .env.prod.example .env.prod
+   ```
+2. Generate a strong `JWT_SECRET`:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+   ```
+3. Edit `.env.prod` and fill in all three values (paste the secret from step 2):
+   ```bash
+   # .env.prod
+   POSTGRES_PASSWORD=<a strong password — this is a NEW production database, not your dev one>
+   JWT_SECRET=<the value generated in step 2>
+   DOMAIN=your-domain.com
+   ```
+4. Build and start the stack:
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+   ```
+5. Verify it yourself — don't just assume it started because the command didn't error.
+   Run each of these in order; stop and troubleshoot at the first one that doesn't match:
+   1. All three containers should show "Up" / "running", not "Restarting" or "Exited":
+      ```bash
+      docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+      ```
+   2. Watch the server actually come up and migrate cleanly:
+      ```bash
+      docker compose -f docker-compose.prod.yml --env-file .env.prod logs server
+      ```
+      Look for "All migrations have been successfully applied" and "Server listening
+      at http://..." — if it's crash-looping instead, this is where you'll see why.
+   3. Confirm Caddy got a real certificate (not stuck retrying):
+      ```bash
+      docker compose -f docker-compose.prod.yml --env-file .env.prod logs caddy
+      ```
+      Look for "certificate obtained successfully" — repeated "obtaining certificate" /
+      error lines mean DNS or port 80 isn't actually reachable from the internet yet (see
+      Prerequisites above).
+   4. Hit it for real, from outside the server (your laptop, not an SSH session on the
+      box):
+      ```bash
+      curl https://your-domain.com/health
+      ```
+      Expect: `{"ok":true}`.
 
 ### Migrating from the dev stack
 
@@ -160,17 +173,18 @@ If you'd previously been running the dev workflow (`npm run setup` /
 `npm run dev:server`, `docker-compose.yml`) on this same machine and want to switch it
 over to the real production stack:
 
-```bash
-# Stop the dev Postgres container (add -v too if you don't need its data — a fresh
-# production deployment starts with an empty database either way, since it's a
-# different Postgres instance/volume entirely)
-docker compose down -v
+1. Stop the dev Postgres container (add `-v` too if you don't need its data — a fresh
+   production deployment starts with an empty database either way, since it's a
+   different Postgres instance/volume entirely):
+   ```bash
+   docker compose down -v
+   ```
+2. If `dev:server` is running in a screen/tmux/nohup session, stop that process too —
+   find it and kill it, or just close that terminal session.
+3. Follow the [Quick start](#quick-start-production-deployment-caddy--docker-compose)
+   above from the top.
 
-# If dev:server is running in a screen/tmux/nohup session, stop that process too —
-# find it and kill it, or just close that terminal session
-```
-
-Then follow the Quick start above. The dev stack (plain `docker-compose.yml`, whatever
+The dev stack (plain `docker-compose.yml`, whatever
 port `npm run setup` picked) and the production stack (`docker-compose.prod.yml`, always
 80/443 via Caddy) are entirely separate — nothing about one affects the other's
 configuration, but they can't both use the same Postgres port unless you've stopped one.
@@ -194,14 +208,34 @@ If you already run a reverse proxy — a separate Caddy (possibly on a different
 already fronting other services), nginx, Traefik, whatever — you don't need the bundled
 one from the Quick start above fighting it for ports 80/443. `PROXY_MODE=external` skips
 it entirely: Postgres and the server still run in Docker here, but instead of a `caddy`
-container, the server's own port is published for *your* proxy to reach, and `npm run
-deploy` prints a ready-to-paste Caddy site block at the end.
+container, the server's own port is published for *your* proxy to reach.
 
-```bash
-npm run deploy -- your-domain.com --external-proxy
-```
+### Steps
 
-What's different from the default (local) mode:
+1. Run the deploy script with `--external-proxy`:
+   ```bash
+   npm run deploy -- your-domain.com --external-proxy
+   ```
+2. **Firewall the published server port to your proxy's specific IP** — this is the
+   important step, not optional (see the security note below):
+   ```bash
+   ufw allow from <proxy-ip> to any port <SERVER_PORT>
+   ```
+   (`<SERVER_PORT>` is whatever the deploy script printed/wrote to `.env.prod` — see
+   [Automatic port selection](./development.md#automatic-port-selection).)
+3. Copy the Caddy site block the deploy script printed at the end, add it to your other
+   proxy's own config, and reload it (`caddy reload` or your proxy's equivalent). See
+   [What the deploy script prints](#what-the-deploy-script-prints) below for the exact
+   format and what to fill in.
+4. Verify from *outside* this machine, through your actual proxy:
+   ```bash
+   curl https://your-domain.com/health
+   ```
+   Expect: `{"ok":true}`. If it doesn't work, re-check step 3 (site block actually added
+   and reloaded, domain's DNS points at *that* proxy) before assuming this stack is at
+   fault — see the [Troubleshooting](#troubleshooting) table above.
+
+### What's different from the default (local) mode
 
 - Uses `docker-compose.prod.external-proxy.yml` instead of `docker-compose.prod.yml` — no
   `caddy` service at all; nothing here ever touches ports 80/443.
@@ -213,28 +247,31 @@ What's different from the default (local) mode:
 - Publishes that port on `SERVER_BIND` (default `0.0.0.0`, i.e. every interface) since
   your proxy might be reachable only from elsewhere on the network — **this means the
   server is reachable as plain HTTP on that port from anywhere that can reach this
-  machine's IP, not just your proxy.** Lock it down:
-  - **Firewall it to your proxy's specific IP** (`ufw allow from <proxy-ip> to any port
-    <SERVER_PORT>` or equivalent) — the important step, regardless of the next one.
-  - Optionally also set `SERVER_BIND` in `.env.prod` to a private/internal IP this host
-    has (e.g. a VPC-internal address, a Tailscale IP) if you have one your proxy can
-    reach, instead of leaving it bound to every interface.
+  machine's IP, not just your proxy**, until you complete step 2 above. Optionally also
+  set `SERVER_BIND` in `.env.prod` to a private/internal IP this host has (e.g. a
+  VPC-internal address, a Tailscale IP) if you have one your proxy can reach, instead of
+  leaving it bound to every interface — the firewall rule in step 2 is still the important
+  part regardless.
 - Skips the DNS-must-resolve-for-Let's-Encrypt check and the "reach it over HTTPS through
   Caddy" verification — nothing here handles TLS or knows your domain's DNS state, so it
   instead confirms the server answers directly over plain HTTP
   (`http://localhost:<SERVER_PORT>/health`) on this machine. Reaching it through *your*
-  proxy is a separate check you run after adding the site block below.
-- Prints this at the end (with your real domain and port already filled in):
-  ```caddyfile
-  your-domain.com {
-      reverse_proxy <this-machine's-address>:<server-port>
-  }
-  ```
-  Replace `<this-machine's-address>` with whatever your proxy can use to reach this host
-  (its LAN IP, a private network hostname, a VPN/Tailscale address) — add that block to
-  your proxy's own Caddyfile and reload it (`caddy reload` or your proxy's equivalent).
-  Not using Caddy on the far end? Translate the same "domain → this host:port" rule into
-  nginx/Traefik/whatever config format that proxy uses.
+  proxy is what step 4 above checks separately.
+
+### What the deploy script prints
+
+At the end of a successful run, with your real domain and port already filled in:
+
+```caddyfile
+your-domain.com {
+    reverse_proxy <this-machine's-address>:<server-port>
+}
+```
+
+Replace `<this-machine's-address>` with whatever your proxy can use to reach this host
+(its LAN IP, a private network hostname, a VPN/Tailscale address) — that's the one value
+the script can't know for you. Not using Caddy on the far end? Translate the same
+"domain → this host:port" rule into nginx/Traefik/whatever config format that proxy uses.
 
 Switching modes later (`--local-proxy` to switch back, or just `--external-proxy` again
 after having used local) is safe — `npm run deploy` detects the change and stops the
@@ -276,23 +313,30 @@ them.
 
 If you'd rather run the server directly (e.g. on a platform-as-a-service that builds Node
 apps for you), skip the Dockerfile/Caddy stack and put your own TLS termination in front
-(the platform's load balancer, typically) instead:
+(the platform's load balancer, typically) instead.
 
-```bash
-npm --workspace=server run build   # tsc -> server/dist
-npm --workspace=server run db:deploy   # prisma migrate deploy — safe to run repeatedly, never destructive
-node server/dist/index.js
-```
-
-`db:deploy` (`prisma migrate deploy`) only applies migrations already committed under
-`server/prisma/migrations` — it never generates a new one or prompts interactively, which
-is exactly what you want in a deploy pipeline (`prisma migrate dev`, used locally while
-authoring schema changes, is not safe to run unattended).
-
-This path needs the same "survives you logging out" plan the Docker stack gets for free —
-run it under a process manager (systemd, pm2) or your platform's own process supervisor,
-not directly in a terminal, for the same reason described in
-[Dev stack vs. production stack](#dev-stack-vs-production-stack--dont-run-one-thinking-its-the-other) above.
+1. Set every variable in [Required environment variables](#required-environment-variables)
+   below however your host expects (platform env vars, a secret manager, etc).
+2. Build:
+   ```bash
+   npm --workspace=server run build   # tsc -> server/dist
+   ```
+3. Apply migrations:
+   ```bash
+   npm --workspace=server run db:deploy   # prisma migrate deploy — safe to run repeatedly, never destructive
+   ```
+   This only applies migrations already committed under `server/prisma/migrations` — it
+   never generates a new one or prompts interactively, which is exactly what you want in a
+   deploy pipeline (`prisma migrate dev`, used locally while authoring schema changes, is
+   not safe to run unattended).
+4. Start it, under a process manager (systemd, pm2) or your platform's own process
+   supervisor — **not** directly in a terminal, for the same "survives you logging out"
+   reason described in
+   [Dev stack vs. production stack](#dev-stack-vs-production-stack--dont-run-one-thinking-its-the-other)
+   above:
+   ```bash
+   node server/dist/index.js
+   ```
 
 ## Required environment variables
 
@@ -371,7 +415,22 @@ Three distinct things, easy to conflate:
    update`) for JS/asset-only changes to an *already-installed* build, vs. a brand new
    build (this section, again) for anything touching native code.
 
-### How `EXPO_PUBLIC_API_URL` gets into a real build
+### Step 1: One-time setup
+
+```bash
+npm i -g eas-cli
+cd app
+eas login
+eas build:configure
+```
+
+`eas build:configure` asks a few questions (platforms to support) and writes `app/eas.json`
+with default `development`/`preview`/`production` profiles, plus links the project to an
+EAS project (writing `extra.eas.projectId` into `app.json` — the same field
+`eas update:configure` uses for [OTA updates](./development.md#ota-updates), so you only
+need to link the project once regardless of which you set up first).
+
+### Step 2: Point the build at your server
 
 Local dev reads `app/.env` live, every time you start Metro. A build is different: EAS
 Build runs on Expo's servers, not your machine, and whatever `EXPO_PUBLIC_*` values were
@@ -380,8 +439,9 @@ on your machine for it to read, and no way to change it after the fact without a
 build (an OTA update can't change this either, since it's baked into the bundle the OTA
 update itself would be diffed against).
 
-The fix: set it in `app/eas.json` (created in the next step), per build profile, so it's
-explicit and versioned rather than depending on whatever happened to be in your shell:
+The fix: set it in the `app/eas.json` step 1 just created, per build profile, so it's
+explicit and versioned rather than depending on whatever happened to be in your shell.
+Add an `env` block to whichever profile(s) you'll actually build with:
 
 ```jsonc
 // app/eas.json
@@ -403,58 +463,48 @@ need to bake in a real secret for some other variable, use [EAS's environment
 variables](https://docs.expo.dev/eas/environment-variables/) — `eas env:create` — instead
 of putting it in `eas.json`.)
 
-### One-time setup
-
-```bash
-npm i -g eas-cli
-cd app
-eas login
-eas build:configure
-```
-
-`eas build:configure` asks a few questions (platforms to support) and writes `app/eas.json`
-with default `development`/`preview`/`production` profiles, plus links the project to an
-EAS project (writing `extra.eas.projectId` into `app.json` — the same field
-`eas update:configure` uses for [OTA updates](./development.md#ota-updates), so you only
-need to link the project once regardless of which you set up first).
-
-Add the `env` block from above to whichever profile(s) you'll actually build with.
-
-### Building
+### Step 3: Build
 
 ```bash
 eas build --platform android --profile preview
 ```
 
-- **Android** is the easy path: no developer account needed for internal distribution.
-  The build finishes with a download link — open it on the phone (or scan the QR code
-  EAS prints) and install directly. Android will warn about installing from an unknown
-  source the first time; that's expected for a non-Play-Store install.
-- **iOS** needs an [Apple Developer Program](https://developer.apple.com/programs/)
-  membership ($99/year) before EAS can produce anything installable on a real device —
-  there's no way around this, it's an Apple platform requirement, not an Expo one. You'll
-  also need to register the specific device(s) you want to install on:
-  ```bash
-  eas device:create   # follow the prompt; registers a device's UDID with Apple
-  eas build --platform ios --profile preview
-  ```
-  EAS handles provisioning-profile/certificate creation for you interactively the first
-  time. The resulting build installs via TestFlight or a direct install link, depending
-  on the profile's `distribution` setting.
-
 Use the `preview` profile (`"distribution": "internal"` by default from
 `build:configure`) for this — `production` is meant for an actual store submission (see
-below) and may be configured for that instead (e.g. an `.aab` for Play Store rather than
-an installable `.apk`).
+[Going further](#going-further-an-actual-app-store--play-store-release) below) and may be
+configured for that instead (e.g. an `.aab` for Play Store rather than an installable
+`.apk`).
 
-### After the first build
+**iOS only:** you also need an [Apple Developer Program](https://developer.apple.com/programs/)
+membership ($99/year) before EAS can produce anything installable on a real device —
+there's no way around this, it's an Apple platform requirement, not an Expo one — and you
+need to register the specific device(s) you want to install on, *before* building:
+
+```bash
+eas device:create   # follow the prompt; registers a device's UDID with Apple
+eas build --platform ios --profile preview
+```
+
+EAS handles provisioning-profile/certificate creation for you interactively the first
+time.
+
+### Step 4: Install it
+
+- **Android**: no developer account needed for internal distribution. The build finishes
+  with a download link — open it on the phone (or scan the QR code EAS prints) and
+  install directly. Android will warn about installing from an unknown source the first
+  time; that's expected for a non-Play-Store install.
+- **iOS**: installs via TestFlight or a direct install link, depending on the profile's
+  `distribution` setting.
+
+### Step 5: Keeping it updated
 
 - **JS/asset-only change** (a new screen, a bug fix, anything not touching native
   dependencies or `app.json`'s native-affecting config): ship it as an
   [OTA update](./development.md#ota-updates) — `eas update` — no new build, no
   reinstalling anything.
 - **Native change** (a new native dependency, an Expo SDK upgrade, a change to
-  permissions/icons/etc. in `app.json`): repeat the `eas build` step above and reinstall.
+  permissions/icons/etc. in `app.json`): repeat [Step 3](#step-3-build) and reinstall.
 
 ### Going further: an actual App Store / Play Store release
 

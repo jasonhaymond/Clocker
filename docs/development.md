@@ -2,45 +2,61 @@
 
 ## Prerequisites
 
-- Node.js 20+ (the repo was built/tested on 24.x)
-- Docker Desktop (for local Postgres) — optional if you point `DATABASE_URL` at your own
-  Postgres instance instead
-- Expo Go on a phone, and/or Xcode/Android Studio for a simulator, to run the app
+- [ ] Node.js 20+ installed (the repo was built/tested on 24.x) — `node --version`
+- [ ] Docker Desktop installed and running — `docker --version` (optional; skip if you'll
+      point `DATABASE_URL` at your own Postgres instance instead)
+- [ ] Expo Go installed on a phone, and/or Xcode/Android Studio for a simulator, to
+      actually run the app
 
 ## First run
 
-```bash
-npm run setup
-```
+1. Clone the repo and `cd` into it, if you haven't already:
+   ```bash
+   git clone https://github.com/<you>/Clocker.git
+   cd Clocker
+   ```
+2. Run the setup script:
+   ```bash
+   npm run setup
+   ```
+3. Confirm it finished cleanly — the last line should say something like "Setup complete."
+   with no `✗`/error lines above it. If a step warned (`!`) rather than failed, that's
+   expected for some non-critical steps (see the Known Issues below) and setup still
+   succeeded.
 
-This is `scripts/setup.mjs`. It, in order:
+`npm run setup` is `scripts/setup.mjs`. What it does, in order, so you know what to expect
+(and what to check if a step fails):
 
 1. `npm install` at the repo root (an npm workspaces monorepo — this installs both
    `app/` and `server/`'s dependencies in one pass; there's no separate install step per
-   workspace)
-2. picks a port for Postgres and one for the API — reusing whatever's already configured
+   workspace).
+2. Picks a port for Postgres and one for the API — reusing whatever's already configured
    in `server/.env` if it's still actually free, otherwise scanning upward from 5433/3001
    for the first one that is — see [Automatic port selection](#automatic-port-selection).
    Writes/updates `server/.env` with those ports, generating a 96-character random hex
    `JWT_SECRET` (`crypto.randomBytes(48)`) the first time only — an existing secret is
    never touched.
-3. runs `docker compose up -d` (skipped with a warning if Docker isn't installed), then
-   polls `pg_isready` for up to 30s
-4. runs `prisma migrate deploy` and `prisma generate` against that database
+3. Runs `docker compose up -d` (skipped with a warning if Docker isn't installed), then
+   polls `pg_isready` for up to 30s.
+4. Runs `prisma migrate deploy` and `prisma generate` against that database.
 
 Every step is idempotent — re-running `npm run setup` on an already-set-up machine just
-confirms everything's in place and exits cleanly.
+confirms everything's in place and exits cleanly. Run it again any time something seems
+off before troubleshooting further; it's the reset-to-known-good command.
 
 ## Staying up to date
 
-```bash
-npm run update
-```
+1. Make sure your working tree is clean (`git status`) — commit or stash anything
+   in-progress first. `npm run update` refuses to pull over uncommitted changes rather
+   than risk overwriting them, so this step avoids it stopping partway through.
+2. ```bash
+   npm run update
+   ```
 
 `scripts/update.mjs`: `git pull --ff-only` (skipped entirely, with instructions, if your
-working tree has uncommitted changes — it will never pull over local edits), then
-`npm install`, then re-applies migrations the same way `setup` does. Use this instead of
-`git pull` by hand when you want dependency and migration drift handled for you.
+working tree has uncommitted changes), then `npm install`, then re-applies migrations the
+same way `setup` does. Use this instead of `git pull` by hand when you want dependency and
+migration drift handled for you.
 
 Both scripts are plain Node (`scripts/lib.mjs` has the shared `run`/`step`/`warn`/`fail`
 helpers) — no extra dependency needed to run them, and they degrade gracefully rather than
@@ -50,17 +66,23 @@ prints a `!` warning and continues instead of aborting the whole script.
 
 ## Running things day to day
 
-```bash
-npm run dev:server   # tsx watch — restarts on save; prints the actual port on startup
-npm run dev:app      # expo start — press i/a/w, or scan the QR code with Expo Go
-```
+1. Start the server (leave this running in its own terminal):
+   ```bash
+   npm run dev:server   # tsx watch — restarts on save; prints the actual port on startup
+   ```
+2. In a second terminal, start the app:
+   ```bash
+   npm run dev:app      # expo start — press i/a/w, or scan the QR code with Expo Go
+   ```
+3. Confirm the app can reach the server — see [Environment variables](#environment-variables)
+   below (`EXPO_PUBLIC_API_URL`) if it can't.
 
 `dev:server`'s port is whatever `npm run setup` picked (see
 [Automatic port selection](#automatic-port-selection)) — check `server/.env`'s `PORT`, or
 just read it from the "Server listening at" line the command prints.
 
 Running `dev:app` on a different machine than your phone (e.g. a remote dev box)? Use
-`npm run start:tunnel` (from `app/`) instead — see
+`npm run start:tunnel` (from `app/`) instead of step 2 above — see
 [Running the dev server from a remote machine](#running-the-dev-server-from-a-remote-machine).
 
 Other useful commands, run from the repo root:
@@ -146,23 +168,30 @@ Two implementation details worth knowing:
 ### Changing a port
 
 There's no dedicated flag for this — edit the file and let `setup` pick up and persist
-your choice:
+your choice. If you're setting this up somewhere the conventional ports are free, skip
+this entirely — `3001`/`5433` are just what gets picked and nothing here applies to you.
 
-- **API port**: edit `PORT` in `server/.env` to the port you want, then run `npm run
-  setup` again. It checks that port is actually free (not just "different from before")
-  and, if so, keeps your exact choice from then on — every future `setup` run reuses it
-  rather than picking a new one, as long as it stays free. If the port you asked for
-  turns out to be taken, `setup` tells you so and picks a different one instead of
-  silently ignoring your edit.
-- **Postgres port**: same idea, but edit `POSTGRES_PORT` in the root `.env` (not
-  `server/.env`'s `DATABASE_URL` directly — `setup` treats the root `.env` as the source
-  of truth for this one and will overwrite a `DATABASE_URL` port that disagrees with it).
-  Run `npm run setup` again afterward; if Postgres is currently running, stop it first
-  (`docker compose down`) so the new port actually takes effect on the next
-  `docker compose up -d` inside `setup`.
+**To change the API port:**
 
-If you're setting this up somewhere the conventional ports are free, none of this changes
-anything for you — `3001`/`5433` are just what gets picked.
+1. Edit `PORT` in `server/.env` to the port you want.
+2. Run `npm run setup` again.
+
+`setup` checks that port is actually free (not just "different from before") and, if so,
+keeps your exact choice from then on — every future `setup` run reuses it rather than
+picking a new one, as long as it stays free. If the port you asked for turns out to be
+taken, `setup` tells you so and picks a different one instead of silently ignoring your
+edit.
+
+**To change the Postgres port:**
+
+1. Edit `POSTGRES_PORT` in the root `.env` (not `server/.env`'s `DATABASE_URL` directly —
+   `setup` treats the root `.env` as the source of truth for this one and will overwrite a
+   `DATABASE_URL` port that disagrees with it).
+2. If Postgres is currently running, stop it first so the new port actually takes effect:
+   ```bash
+   docker compose down
+   ```
+3. Run `npm run setup` again.
 
 ## Known issue: `@types/react` version pin
 
@@ -176,9 +205,15 @@ error TS2786: 'View' cannot be used as a JSX component.
 ```
 
 This reproduces even in a completely untouched `npx create-expo-app@latest` output, so
-it's an upstream regression, not anything specific to this codebase. If you ever bump this
-dependency, run `npx tsc --noEmit -p app/tsconfig.json` before trusting the new version —
-if the errors above come back, roll back to a version confirmed clean the same way.
+it's an upstream regression, not anything specific to this codebase.
+
+**If you ever bump this dependency:**
+
+1. ```bash
+   cd app && npx tsc --noEmit -p tsconfig.json
+   ```
+2. If the errors above come back, roll back to a version confirmed clean the same way
+   (re-run step 1 after rolling back to verify).
 
 ## Known issue: Prisma client generation on Windows
 
@@ -191,9 +226,16 @@ EPERM: operation not permitted, rename '...\.prisma\client\query_engine-windows.
 This is a file lock on the query engine binary from another running process (a lingering
 `tsx watch`, an editor's TypeScript server, antivirus scanning) — not a broken schema.
 `scripts/setup.mjs` and `scripts/update.mjs` treat this step as non-fatal for exactly this
-reason. If it happens, close anything that might be holding the file (stop `npm run
-dev:server`, restart your editor's TS server) and re-run `npm run db:generate
---workspace=server`.
+reason.
+
+**If it happens:**
+
+1. Close anything that might be holding the file — stop `npm run dev:server`, restart
+   your editor's TypeScript server.
+2. Re-run generation:
+   ```bash
+   npm run db:generate --workspace=server
+   ```
 
 ## Web support: blocked on an upstream Expo bug
 
@@ -246,10 +288,14 @@ issue above — Expo Go can end up just spinning and never loading the app. That
 default "LAN" connection mode: it advertises the *server's* local IP in the QR code, which
 your phone can't route to unless it's genuinely on the same network.
 
-```bash
-cd app
-npm run start:tunnel   # or: npx expo start --tunnel
-```
+**Fix:**
+
+1. ```bash
+   cd app
+   npm run start:tunnel   # or: npx expo start --tunnel
+   ```
+2. Scan the new QR code — it's a different URL than plain `npm run dev:app` printed, so
+   scanning an old/cached QR code from a previous run won't work.
 
 Tunnel mode relays through Expo's own infrastructure instead, so it works regardless of
 which networks the server and your phone are each on (at the cost of a bit of latency).
@@ -258,8 +304,7 @@ Expo would otherwise offer to install it *globally* on first use, which fails wi
 permissions error on plenty of Linux setups (Node installed via a system package manager
 rather than something like `nvm`, so the global `node_modules` isn't user-writable).
 Having it locally means `npm install` is all that's ever needed; nothing to install
-globally or `sudo`. Scan the new QR code; it'll be a different URL than plain
-`npm run dev:app` printed.
+globally or `sudo`.
 
 If your phone genuinely *is* on the same LAN as the server and it's still not loading,
 that's more likely a firewall blocking Metro's port (8081) than a connection-mode issue.
@@ -268,25 +313,32 @@ that's more likely a firewall blocking Metro's port (8081) than a connection-mod
 
 `expo-updates` is installed and the app checks for updates on launch/foreground (see
 `app/src/updates`), but publishing an update requires linking the app to an EAS project —
-a one-time step tied to your own Expo account, so it isn't automated by `npm run setup`:
+a one-time step tied to your own Expo account, so it isn't automated by `npm run setup`.
 
-```bash
-npm i -g eas-cli
-cd app
-eas login
-eas update:configure   # writes extra.eas.projectId + updates.url into app.json
-```
+### One-time setup
 
-After that, ship a JS-only change (no native module changes) without an app-store release:
+1. ```bash
+   npm i -g eas-cli
+   cd app
+   eas login
+   ```
+2. ```bash
+   eas update:configure   # writes extra.eas.projectId + updates.url into app.json
+   ```
+
+Until this has been run, the Settings screen's update section always reads "Updates
+aren't available in this build" — this is expected in Expo Go and any local dev build, not
+a bug.
+
+### Shipping an update
+
+Whenever you want to ship a JS-only change (no native module changes) without an
+app-store release:
 
 ```bash
 cd app
 eas update --branch production --message "Describe the change"
 ```
-
-Until `eas update:configure` has been run, the Settings screen's update section always
-reads "Updates aren't available in this build" — this is expected in Expo Go and any local
-dev build, not a bug.
 
 This covers *updating* an already-installed build. For producing that build in the first
 place — EAS Build, internal distribution, installing on a real device — see
