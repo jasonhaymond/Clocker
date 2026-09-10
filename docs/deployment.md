@@ -207,8 +207,9 @@ configuration, but they can't both use the same Postgres port unless you've stop
 If you already run a reverse proxy — a separate Caddy (possibly on a different machine,
 already fronting other services), nginx, Traefik, whatever — you don't need the bundled
 one from the Quick start above fighting it for ports 80/443. `PROXY_MODE=external` skips
-it entirely: Postgres and the server still run in Docker here, but instead of a `caddy`
-container, the server's own port is published for *your* proxy to reach.
+it entirely: Postgres, the server, and the web client still run in Docker here, but
+instead of a `caddy` container, the server's and web client's own ports are each
+published for *your* proxy to reach.
 
 ### Steps
 
@@ -216,13 +217,15 @@ container, the server's own port is published for *your* proxy to reach.
    ```bash
    npm run deploy -- your-domain.com --external-proxy
    ```
-2. **Firewall the published server port to your proxy's specific IP** — this is the
-   important step, not optional (see the security note below):
+2. **Firewall both published ports to your proxy's specific IP** — this is the important
+   step, not optional (see the security note below):
    ```bash
    ufw allow from <proxy-ip> to any port <SERVER_PORT>
+   ufw allow from <proxy-ip> to any port <WEB_PORT>
    ```
-   (`<SERVER_PORT>` is whatever the deploy script printed/wrote to `.env.prod` — see
-   [Automatic port selection](./development.md#automatic-port-selection).)
+   (`<SERVER_PORT>`/`<WEB_PORT>` are whatever the deploy script printed/wrote to
+   `.env.prod` — see [Automatic port selection](./development.md#automatic-port-selection);
+   `WEB_PORT` is always picked *after* `SERVER_PORT` so the two can never collide.)
 3. Copy the Caddy site block the deploy script printed at the end, add it to your other
    proxy's own config, and reload it (`caddy reload` or your proxy's equivalent). See
    [What the deploy script prints](#what-the-deploy-script-prints) below for the exact
@@ -230,10 +233,14 @@ container, the server's own port is published for *your* proxy to reach.
 4. Verify from *outside* this machine, through your actual proxy:
    ```bash
    curl https://your-domain.com/health
+   curl https://your-domain.com/
    ```
-   Expect: `{"ok":true}`. If it doesn't work, re-check step 3 (site block actually added
-   and reloaded, domain's DNS points at *that* proxy) before assuming this stack is at
-   fault — see the [Troubleshooting](#troubleshooting) table above.
+   Expect `{"ok":true}` from the first (the API) and real HTML back from the second (the
+   web client) — both under the *same* domain, since your proxy path-routes between them
+   the same way the bundled Caddyfile does. If either doesn't work, re-check step 3 (site
+   block actually added and reloaded, domain's DNS points at *that* proxy) before
+   assuming this stack is at fault — see the [Troubleshooting](#troubleshooting) table
+   above.
 
 ### What's different from the default (local) mode
 
@@ -242,36 +249,54 @@ container, the server's own port is published for *your* proxy to reach.
 - Auto-picks a free host port for the server (starting at 3001, the same
   scan-and-persist logic `npm run setup` uses for local dev — see
   [Automatic port selection](./development.md#automatic-port-selection)), published as
-  `SERVER_PORT` in `.env.prod`. Re-verified on every run, so a port that's since been
-  claimed by something else on this machine gets replaced automatically, same as dev.
-- Publishes that port on `SERVER_BIND` (default `0.0.0.0`, i.e. every interface) since
-  your proxy might be reachable only from elsewhere on the network — **this means the
-  server is reachable as plain HTTP on that port from anywhere that can reach this
-  machine's IP, not just your proxy**, until you complete step 2 above. Optionally also
-  set `SERVER_BIND` in `.env.prod` to a private/internal IP this host has (e.g. a
-  VPC-internal address, a Tailscale IP) if you have one your proxy can reach, instead of
-  leaving it bound to every interface — the firewall rule in step 2 is still the important
-  part regardless.
+  `SERVER_PORT` in `.env.prod`, then a free port for the web client *starting after
+  whatever `SERVER_PORT` ended up being* (so they never collide), published as
+  `WEB_PORT`. Both re-verified on every run, so a port that's since been claimed by
+  something else on this machine gets replaced automatically, same as dev.
+- Publishes both ports on `SERVER_BIND`/`WEB_BIND` (default `0.0.0.0`, i.e. every
+  interface) since your proxy might be reachable only from elsewhere on the network —
+  **this means the server and web client are each reachable as plain HTTP on their port
+  from anywhere that can reach this machine's IP, not just your proxy**, until you
+  complete step 2 above. Optionally also set `SERVER_BIND`/`WEB_BIND` in `.env.prod` to a
+  private/internal IP this host has (e.g. a VPC-internal address, a Tailscale IP) if you
+  have one your proxy can reach, instead of leaving them bound to every interface — the
+  firewall rule in step 2 is still the important part regardless.
 - Skips the DNS-must-resolve-for-Let's-Encrypt check and the "reach it over HTTPS through
   Caddy" verification — nothing here handles TLS or knows your domain's DNS state, so it
-  instead confirms the server answers directly over plain HTTP
-  (`http://localhost:<SERVER_PORT>/health`) on this machine. Reaching it through *your*
-  proxy is what step 4 above checks separately.
+  instead confirms the server and web client each answer directly over plain HTTP
+  (`http://localhost:<SERVER_PORT>/health`, `http://localhost:<WEB_PORT>/`) on this
+  machine. Reaching them through *your* proxy, on one domain, is what step 4 above checks
+  separately.
 
 ### What the deploy script prints
 
-At the end of a successful run, with your real domain and port already filled in:
+At the end of a successful run, with your real domain and both ports already filled in —
+the same path-based routing (API's fixed set of routes to `server`, everything else to
+`web`) as the bundled Caddyfile, just written for your proxy's config instead:
 
 ```caddyfile
 your-domain.com {
-    reverse_proxy <this-machine's-address>:<server-port>
+    handle /health {
+        reverse_proxy <this-machine's-address>:<server-port>
+    }
+    handle /auth/* {
+        reverse_proxy <this-machine's-address>:<server-port>
+    }
+    handle /sync/* {
+        reverse_proxy <this-machine's-address>:<server-port>
+    }
+    handle {
+        reverse_proxy <this-machine's-address>:<web-port>
+    }
 }
 ```
 
 Replace `<this-machine's-address>` with whatever your proxy can use to reach this host
 (its LAN IP, a private network hostname, a VPN/Tailscale address) — that's the one value
 the script can't know for you. Not using Caddy on the far end? Translate the same
-"domain → this host:port" rule into nginx/Traefik/whatever config format that proxy uses.
+"path → this host:port" rules into nginx/Traefik/whatever config format that proxy uses
+(nginx: `location` blocks; Traefik: path-prefix routers) — the routing logic is identical,
+just different syntax.
 
 Switching modes later (`--local-proxy` to switch back, or just `--external-proxy` again
 after having used local) is safe — `npm run deploy` detects the change and stops the
@@ -280,19 +305,17 @@ both running at once under the same project name.
 
 Re-run `npm run deploy` (no flags needed once a mode is chosen) any time you want to
 rebuild and restart with the latest code — it reuses the domain, generated
-password/secret, mode, and port already in `.env.prod`.
+password/secret, mode, and both ports already in `.env.prod`.
 
 ## How the stack fits together
 
-- **`Caddyfile`** — the proxy config, two site blocks. The first forwards everything to
-  the `server` container on port 3001 — fixed, unlike local dev's port (see
+- **`Caddyfile`** — the proxy config, one site block for `$DOMAIN` that path-routes: the
+  API's fixed set of routes (`/health`, `/auth/*`, `/sync/*`) go to the `server`
+  container on port 3001 — fixed, unlike local dev's port (see
   [Automatic port selection](./development.md#automatic-port-selection)), since this
-  container never publishes that port to the host at all; only Caddy is reachable from
-  outside, so there's nothing for it to collide with. The hostname comes from the
-  `DOMAIN` environment variable. The second, keyed by `WEB_DOMAIN`, forwards to the `web`
-  container (see [Deploying the web client](#deploying-the-web-client) above) — present
-  whether or not you ever start that container; it just 502s for that hostname until you
-  do.
+  container never publishes that port to the host at all — and everything else falls
+  through to the `web` container. Only Caddy is reachable from outside, so neither
+  internal port has anything to collide with.
 - **`server/Dockerfile`** — multi-stage build (installs, `prisma generate`, `tsc`), and
   runs `prisma migrate deploy` before starting on every container start (idempotent — a
   no-op once the database is current, so restarts never re-run migrations destructively).
@@ -302,14 +325,14 @@ password/secret, mode, and port already in `.env.prod`.
   Final stage is a small Caddy (`web/Caddyfile`) just serving the static build — no Node
   runtime in the shipped image.
 - **`docker-compose.prod.yml`** — wires up Postgres (no host port published — only the
-  `server` container can reach it), `server` (built from `server/Dockerfile`), `caddy`
-  (the only container exposed, on 80/443), and `web` (built from `web/Dockerfile`, only
-  started when you pass `--profile web`). Used for `PROXY_MODE=local` (the default).
+  `server` container can reach it), `server` and `web` (neither publishes a host port —
+  only `caddy` can reach them, over the compose network), and `caddy` (the only container
+  exposed, on 80/443). Used for `PROXY_MODE=local` (the default); all four containers
+  start on a plain `up`, no flag needed.
 - **`docker-compose.prod.external-proxy.yml`** — the alternate stack for
   `PROXY_MODE=external` (see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)):
-  same Postgres + server, no `caddy` service, and the server's port is published to the
-  host instead of only being reachable internally. Does not yet include a `web` service —
-  see [Deploying the web client](#deploying-the-web-client)'s note on `PROXY_MODE=external`.
+  same Postgres + server + web, no `caddy` service, and the server's and web client's
+  ports are each published to the host instead of only being reachable internally.
 - **`.env.prod.example`** — the template `.env.prod` is copied from.
 
 `DOMAIN` defaults to `localhost` if you leave `.env.prod`'s value empty and just want to
@@ -381,9 +404,9 @@ yours to supply. Running the server directly, set all of these however your host
   port/interface the server is published on for your own proxy to reach. Auto-picked and
   auto-set by `npm run deploy`; see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)
   for the security note on `SERVER_BIND`.
-- **`WEB_DOMAIN`** (Compose path, `PROXY_MODE=local` only, and only if you deploy the web
-  client) — the web client's own hostname. Not set by `npm run deploy` — see
-  [Deploying the web client](#deploying-the-web-client), a manual step.
+- **`WEB_PORT`** / **`WEB_BIND`** (Compose path, `external` mode only) — same idea as
+  `SERVER_PORT`/`SERVER_BIND`, for the web client. Auto-picked *after* `SERVER_PORT` so
+  the two never collide, and auto-set by `npm run deploy`.
 
 ## Security gaps to close before this is public
 
@@ -391,12 +414,12 @@ The current code is fine for "one person, their own devices, their own network o
 trusted host" and does **not** currently have:
 
 - **CORS restricted to specific origins** — it's registered as `{ origin: true }`
-  (reflects any request's `Origin`). This mattered less when the only client was mobile
-  (native requests aren't really subject to CORS the way a browser is), but now that
-  `web/` is a real browser client, tighten this (`server/src/index.ts`) to your actual
-  `WEB_DOMAIN` before this is genuinely public — right now any website could make
-  authenticated-looking requests from a visitor's browser if it somehow obtained their
-  token, since nothing here restricts *which* origins the API accepts.
+  (reflects any request's `Origin`). Deploying `web/` on the *same domain* as the API
+  (see [Deploying the web client](#deploying-the-web-client)) means its own requests are
+  same-origin and wouldn't need CORS to be permissive at all — this setting only matters
+  for a browser on some *other* origin, which currently gets waved through. Tighten this
+  (`server/src/index.ts`) to your actual domain (or drop it entirely, since nothing
+  legitimate needs a cross-origin browser request here) before this is genuinely public.
 - **Rate limiting** on `/auth/login` or `/auth/register` — nothing currently prevents a
   brute-force credential-stuffing attempt against those endpoints.
 - **A refresh-token flow** — tokens are long-lived (180 days, see
@@ -414,74 +437,57 @@ mattering the moment the server is reachable from the open internet.
 
 The web client (`web/`) is a thin, server-dependent React app with no offline story — see
 [`architecture.md`](./architecture.md#two-frontend-clients-one-api) for why it's built
-that way instead of as a third Expo target. Its production build (`npm run build
---workspace=web`) is a handful of static files (`web/dist`) with zero server-side
-requirements beyond reaching the existing API — deploy them however you like (Netlify,
-Cloudflare Pages, GitHub Pages, S3+CDN, ...).
+that way instead of as a third Expo target. **It deploys automatically, on the same
+domain as the API, every time you run `npm run deploy`** — there's no separate step or
+flag. `web/dist`'s static build has zero server-side requirements beyond reaching the
+API, so if you'd rather host it elsewhere instead (Netlify, Cloudflare Pages, GitHub
+Pages, S3+CDN, ...), that works too — nothing below is required, just the option that's
+wired up and tested.
 
-This section covers the one option that's actually wired up and tested: hosting it
-alongside the API, using the Caddy (or your own reverse proxy) that's already there. It's
-**opt-in** — a plain `npm run deploy` never builds or starts it; pass `--web` when you
-want it. Works with either `PROXY_MODE`.
+**Same domain, path-routed**: the API keeps its fixed, small set of routes (`/health`,
+`/auth/*`, `/sync/*` — see `server/src/index.ts`/`server/src/routes/*.ts`) on `$DOMAIN`;
+every other path on that same domain serves the web app instead. This is why
+`EXPO_PUBLIC_API_URL` (the mobile app) and a browser visiting `$DOMAIN` hit the exact same
+host — one domain, one certificate, no second DNS record to manage. See the root
+[`Caddyfile`](../Caddyfile) for the bundled version of this routing, or
+[What the deploy script prints](#what-the-deploy-script-prints) below for the
+external-proxy equivalent.
 
-### Steps (`PROXY_MODE=local`, the default)
+`PROXY_MODE=local` (the default) needs nothing extra — `npm run deploy -- your-domain.com`
+already builds and starts `web` alongside `postgres`/`server`/`caddy`, and the [Quick
+start](#quick-start-production-deployment-caddy--docker-compose) verification steps check
+both `https://your-domain.com/health` and `https://your-domain.com/`.
 
-1. Point DNS at this same server for a second hostname (e.g. `app.your-domain.com`) — a
-   separate A/AAAA record, the same way `DOMAIN` needed one (see
-   [Prerequisites](#prerequisites) above).
-2. Deploy with `--web`, passing the new hostname as `WEB_DOMAIN`:
-   ```bash
-   WEB_DOMAIN=app.your-domain.com npm run deploy -- your-domain.com --web
-   ```
-   (Or set `WEB_DOMAIN=app.your-domain.com` directly in `.env.prod` first, then just
-   `npm run deploy -- your-domain.com --web` — same as `DOMAIN`, whichever's more
-   convenient.) This builds `web/Dockerfile` (context is the *monorepo root*, not `web/`
-   alone — it needs the sibling `shared` workspace, see that file's own comment), bakes
-   `VITE_API_URL=https://$DOMAIN` into the build (Vite inlines it at build time, same
-   constraint EAS builds have — see [Step 2: Point the build at your server](#step-2-point-the-build-at-your-server)
-   below), starts it alongside the rest of the stack, and checks
-   `https://$WEB_DOMAIN/` the same way it already checks `https://$DOMAIN/health`.
-3. `--web` persists in `.env.prod` (`DEPLOY_WEB=true`) — every later `npm run deploy`
-   keeps rebuilding/restarting it too, no flag needed again. Pass `--no-web` once to turn
-   it back off.
-
-Skip `WEB_DOMAIN` and it defaults to `web.localhost` — fine for a local smoke test (see
-[Verified locally](#verified-locally) below), not reachable from the real internet.
-
-### Steps (`PROXY_MODE=external`, your own reverse proxy)
-
-Same `--web` flag; the difference is what gets printed, matching how the API's own
-external-proxy path works (see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)):
-
-```bash
-npm run deploy -- your-domain.com --external-proxy --web
-```
-
-This auto-picks a free `WEB_PORT` (starting at 3002, same scan-and-persist logic as
-`SERVER_PORT`) and prints a *second* ready-to-paste site-block snippet at the end,
-alongside the API's — add both to your own proxy, each with its own hostname.
+`PROXY_MODE=external` additionally auto-picks a `WEB_PORT` (starting at 3002, scanned to
+land *after* whatever `SERVER_PORT` ends up being, so the two can never collide) and
+prints a combined site-block snippet path-routing both under your domain — see
+[Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)
+above, which now covers the web client too.
 
 ### Doing it by hand instead
 
-Equivalent manual command, either mode, once `.env.prod` already has whatever
-`WEB_DOMAIN`/`WEB_PORT` you want:
+Equivalent manual command, either mode:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
 ### Verified locally
 
-Built and ran the full stack this way against `DOMAIN=localhost` /
-`WEB_DOMAIN=web.localhost` (Caddy's local self-signed CA, same smoke-test pattern
-described in [How the stack fits together](#how-the-stack-fits-together)): all four
-containers came up, `https://localhost/health` and `https://web.localhost/` both resolved
-correctly through the one Caddy instance, and the served bundle had the right
-`VITE_API_URL` baked in. The `--web`/`--no-web`/`PROXY_MODE=external` automation in
-`scripts/deploy.mjs` itself has been read through carefully but not yet run end-to-end the
-way the manual compose command above was — the external-proxy `--web` path in particular
-is worth a real dry run before trusting it blindly. Not yet exercised against a real
-domain/Let's Encrypt or alongside a real mobile client pointed at the same server.
+Built and ran the full local-mode stack this way against `DOMAIN=localhost` (Caddy's
+local self-signed CA, same smoke-test pattern described in [How the stack fits
+together](#how-the-stack-fits-together)): all four containers came up, and the *same*
+Caddy site block correctly path-routed `/health`, `/auth/login`, and `/sync/pull` to the
+server (real JSON validation errors and a 401 came back, not the SPA) while `/` and its
+static assets served the web app, with the served bundle's `VITE_API_URL` correctly baked
+in to `https://localhost`.
+
+Also specifically reproduced and confirmed the fix for the port-collision bug this
+section used to have: held port 3001 open with a throwaway listener to force
+`SERVER_PORT`'s scan to move to 3002, then ran the external-proxy deploy — `WEB_PORT`
+correctly scanned past the server's port and landed on 3003 instead of also picking 3002,
+and both containers were reachable directly on their own ports. Not yet exercised against
+a real domain/Let's Encrypt or alongside a real mobile client pointed at the same server.
 
 ## Deploying the Expo app
 

@@ -7,25 +7,25 @@
 # Defaults to localhost so `docker compose -f docker-compose.prod.yml up` also works
 # untouched for a quick local smoke test (Caddy uses its internal CA for localhost,
 # not a real Let's Encrypt certificate).
+#
+# One domain, two upstreams: the API's own fixed set of routes (/health, /auth/*,
+# /sync/*, see server/src/index.ts and server/src/routes/*.ts) goes to `server`;
+# everything else — the web client's app shell and static assets — goes to `web`. This is
+# what "same domain" means here: the mobile app's EXPO_PUBLIC_API_URL and a browser
+# visiting this domain hit the same host, just different paths.
 {$DOMAIN:localhost} {
-	reverse_proxy server:3001
-
-	encode gzip
-
-	log {
-		output stdout
-		format console
+	handle /health {
+		reverse_proxy server:3001
 	}
-}
-
-# The web client (see docs/deployment.md#deploying-the-web-client) — only reachable if
-# you also start the `web` service (`docker compose --profile web up -d`). Defaults to
-# `web.localhost`, distinct from DOMAIN's own `localhost` default above, so the two site
-# blocks never collide before either is configured with a real hostname. Routing here
-# still works even if the `web` service isn't running — this block just 502s for
-# WEB_DOMAIN's hostname until it is, without affecting the API's own site block above.
-{$WEB_DOMAIN:web.localhost} {
-	reverse_proxy web:80
+	handle /auth/* {
+		reverse_proxy server:3001
+	}
+	handle /sync/* {
+		reverse_proxy server:3001
+	}
+	handle {
+		reverse_proxy web:80
+	}
 
 	encode gzip
 

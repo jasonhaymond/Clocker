@@ -1,14 +1,14 @@
 # Alternate production stack for when you already run your own reverse proxy (a separate
 # Caddy, nginx, Traefik, etc. — possibly on a different machine) and just want to add
 # Clocker's site to it, rather than using the bundled Caddy from docker-compose.prod.yml.
-# Same Postgres + server as that file; no caddy service, and the server's port is
-# published to the host so your external proxy can reach it. See
-# docs/deployment.md#deploying-behind-your-own-reverse-proxy for the full walkthrough and
-# a ready-to-paste Caddy site block. The `web` service (opt-in, --profile web) is the same
-# idea for the web client — see docs/deployment.md#deploying-the-web-client.
+# Same Postgres + server + web as that file; no caddy service, and the server's and web
+# client's ports are each published to the host so your external proxy can reach them —
+# see docs/deployment.md#deploying-behind-your-own-reverse-proxy for the full walkthrough
+# and a ready-to-paste Caddy site block that path-routes both under one domain the same
+# way the bundled Caddyfile does.
 #
-# Usage: npm run deploy -- your-domain.com --external-proxy [--web]
-# (or directly: docker compose -f docker-compose.prod.external-proxy.yml --env-file .env.prod [--profile web] up -d --build)
+# Usage: npm run deploy -- your-domain.com --external-proxy
+# (or directly: docker compose -f docker-compose.prod.external-proxy.yml --env-file .env.prod up -d --build)
 #
 # `name` matches docker-compose.prod.yml's on purpose — these two files are alternate
 # configurations of the *same* deployment, never meant to run at once. Tear one down
@@ -43,10 +43,11 @@ services:
       # specific private/internal IP if this host has one your proxy can use instead.
       - "${SERVER_BIND:-0.0.0.0}:${SERVER_PORT:-3001}:3001"
 
-  # Static build of the web client (see web/Dockerfile) — opt-in, same as
-  # docker-compose.prod.yml's `web` service, via `docker compose --profile web up`. Its
-  # own port/bind pair mirrors `server`'s above, for the exact same reason: your external
-  # proxy needs to reach it, so it's published to the host rather than kept internal-only.
+  # Static build of the web client (see web/Dockerfile). Its own port/bind pair mirrors
+  # `server`'s above, for the exact same reason: your external proxy needs to reach it, so
+  # it's published to the host rather than kept internal-only. `npm run deploy` picks
+  # WEB_PORT *after* SERVER_PORT and never lets them collide (see scripts/deploy.mjs) —
+  # if you set both by hand instead, make sure they're different.
   web:
     build:
       context: .
@@ -54,7 +55,6 @@ services:
       args:
         VITE_API_URL: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
     restart: unless-stopped
-    profiles: ["web"]
     ports:
       - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3002}:80"
 

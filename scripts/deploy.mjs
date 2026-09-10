@@ -7,14 +7,11 @@
 //   external  — you already run your own reverse proxy (a separate Caddy/nginx/Traefik,
 //               possibly on a different machine) and just want to add Clocker to it.
 //               Uses docker-compose.prod.external-proxy.yml instead: no bundled Caddy,
-//               the server's own port is published for your proxy to reach, and this
-//               script prints a ready-to-paste Caddy site block at the end.
-// Pass --web to also build and start the web client (opt-in, persisted in .env.prod as
-// DEPLOY_WEB same as PROXY_MODE) — --no-web turns it back off. Works with either proxy
-// mode: local gets a second Caddy site block on WEB_DOMAIN, external gets its own
-// published port (WEB_PORT/WEB_BIND, same idea as SERVER_PORT/SERVER_BIND).
-// See docs/deployment.md for the full walkthrough, including the external-proxy and
-// web-client paths.
+//               the server's and web client's own ports are published for your proxy to
+//               reach, and this script prints a ready-to-paste Caddy site block (both
+//               under one domain, path-routed) at the end.
+// The web client always deploys alongside the API in both modes — see
+// docs/deployment.md for the full walkthrough, including the external-proxy path.
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,8 +35,6 @@ const envProdPath = join(rootDir, ".env.prod");
 const args = process.argv.slice(2);
 const wantsExternal = args.includes("--external-proxy");
 const wantsLocal = args.includes("--local-proxy");
-const wantsWeb = args.includes("--web");
-const wantsNoWeb = args.includes("--no-web");
 const domainArg = args.find((a) => !a.startsWith("--"));
 
 function composeFileFor(mode) {
@@ -69,6 +64,7 @@ if (!domain) {
 }
 upsertEnvLine(envProdPath, "DOMAIN", domain);
 step(`Domain: ${domain}`);
+step("The web client deploys on this same domain (path-routed alongside the API).");
 
 const previousProxyMode = readEnvValue(envProdPath, "PROXY_MODE");
 let proxyMode = wantsExternal ? "external" : wantsLocal ? "local" : previousProxyMode || "local";
@@ -81,14 +77,9 @@ step(`Proxy mode: ${proxyMode}${proxyMode === "external" ? " (your own reverse p
 if (previousProxyMode && previousProxyMode !== proxyMode) {
   section("Switching proxy mode");
   step(`Stopping the previous "${previousProxyMode}" stack before starting "${proxyMode}"...`);
-  run(`docker compose -f ${composeFileFor(previousProxyMode)} --env-file .env.prod --profile web down`, { cwd: rootDir, optional: true });
+  run(`docker compose -f ${composeFileFor(previousProxyMode)} --env-file .env.prod down --remove-orphans`, { cwd: rootDir, optional: true });
 }
 upsertEnvLine(envProdPath, "PROXY_MODE", proxyMode);
-
-const previousDeployWeb = readEnvValue(envProdPath, "DEPLOY_WEB") === "true";
-const deployWeb = wantsWeb ? true : wantsNoWeb ? false : previousDeployWeb;
-upsertEnvLine(envProdPath, "DEPLOY_WEB", String(deployWeb));
-step(`Web client: ${deployWeb ? "deploying" : "not deploying"} (pass --web / --no-web to change)`);
 
 let postgresPassword = readEnvValue(envProdPath, "POSTGRES_PASSWORD");
 if (postgresPassword) {
@@ -109,13 +100,14 @@ if (jwtSecret) {
 upsertEnvLine(envProdPath, "JWT_SECRET", jwtSecret);
 
 let serverPort = null;
+let webPort = null;
 if (proxyMode === "external") {
-  const configured = readEnvValue(envProdPath, "SERVER_PORT");
-  if (configured && (await isPortFree(Number(configured)))) {
-    serverPort = configured;
+  const configuredServer = readEnvValue(envProdPath, "SERVER_PORT");
+  if (configuredServer && (await isPortFree(Number(configuredServer)))) {
+    serverPort = configuredServer;
     step(`Using existing server port ${serverPort}`);
   } else {
-    if (configured) warn(`Configured server port ${configured} is now in use by something else on this machine — picking a new one.`);
+    if (configuredServer) warn(`Configured server port ${configuredServer} is now in use by something else on this machine — picking a new one.`);
     serverPort = String(await findFreePort(3001));
     step(`Port 3001+ scanned — selected ${serverPort} for the server`);
   }
@@ -124,40 +116,30 @@ if (proxyMode === "external") {
     upsertEnvLine(envProdPath, "SERVER_BIND", "0.0.0.0");
     step("SERVER_BIND not set — defaulting to 0.0.0.0 (all interfaces); see .env.prod.example to restrict it.");
   }
-}
 
-let webDomain = null;
-let webPort = null;
-if (deployWeb) {
-  if (proxyMode === "local") {
-    webDomain = readEnvValue(envProdPath, "WEB_DOMAIN");
-    if (!webDomain) {
-      webDomain = "web.localhost";
-      warn(`WEB_DOMAIN isn't set — the web client will only be reachable as https://${webDomain} (not on the`);
-      warn("internet). Set WEB_DOMAIN in .env.prod to a real hostname with its own DNS record before relying on this.");
-      upsertEnvLine(envProdPath, "WEB_DOMAIN", webDomain);
-    } else {
-      step(`Web domain: ${webDomain}`);
-    }
+  // Scanned starting *after* whatever was just picked for the server, and re-checked
+  // even when a previously-configured WEB_PORT still looks free — a stale WEB_PORT that
+  // happens to equal the server's newly-picked port would otherwise cause "port already
+  // allocated" at `docker compose up` time, since nothing is actually bound yet at the
+  // moment either port is merely written to .env.prod.
+  const configuredWeb = readEnvValue(envProdPath, "WEB_PORT");
+  if (configuredWeb && configuredWeb !== serverPort && (await isPortFree(Number(configuredWeb)))) {
+    webPort = configuredWeb;
+    step(`Using existing web port ${webPort}`);
   } else {
-    const configured = readEnvValue(envProdPath, "WEB_PORT");
-    if (configured && (await isPortFree(Number(configured)))) {
-      webPort = configured;
-      step(`Using existing web port ${webPort}`);
-    } else {
-      if (configured) warn(`Configured web port ${configured} is now in use by something else on this machine — picking a new one.`);
-      webPort = String(await findFreePort(3002));
-      step(`Port 3002+ scanned — selected ${webPort} for the web client`);
-    }
-    upsertEnvLine(envProdPath, "WEB_PORT", webPort);
-    if (!readEnvValue(envProdPath, "WEB_BIND")) {
-      upsertEnvLine(envProdPath, "WEB_BIND", "0.0.0.0");
-      step("WEB_BIND not set — defaulting to 0.0.0.0 (all interfaces); see .env.prod.example to restrict it.");
-    }
+    if (configuredWeb === serverPort) warn(`Configured web port ${configuredWeb} collides with the server's port — picking a new one.`);
+    else if (configuredWeb) warn(`Configured web port ${configuredWeb} is now in use by something else on this machine — picking a new one.`);
+    webPort = String(await findFreePort(Number(serverPort) + 1));
+    step(`Port ${Number(serverPort) + 1}+ scanned — selected ${webPort} for the web client`);
+  }
+  upsertEnvLine(envProdPath, "WEB_PORT", webPort);
+  if (!readEnvValue(envProdPath, "WEB_BIND")) {
+    upsertEnvLine(envProdPath, "WEB_BIND", "0.0.0.0");
+    step("WEB_BIND not set — defaulting to 0.0.0.0 (all interfaces); see .env.prod.example to restrict it.");
   }
 }
 
-const composeFlags = `-f ${composeFileFor(proxyMode)} --env-file .env.prod${deployWeb ? " --profile web" : ""}`;
+const composeFlags = `-f ${composeFileFor(proxyMode)} --env-file .env.prod`;
 
 if (proxyMode === "local") {
   section("Checking DNS");
@@ -168,27 +150,18 @@ if (proxyMode === "local") {
     warn(`Couldn't resolve ${domain} from this machine. If DNS hasn't propagated yet, Caddy`);
     warn(`will keep retrying its certificate request on its own — check \`docker compose ${composeFlags} logs caddy\` if it's taking a while.`);
   }
-  if (deployWeb && webDomain !== "web.localhost") {
-    const webResolved = captureOutput(`dig +short ${webDomain}`) || captureOutput(`getent hosts ${webDomain}`)?.split(/\s+/)[0] || null;
-    if (webResolved) {
-      step(`${webDomain} currently resolves to ${webResolved.split("\n")[0]}`);
-    } else {
-      warn(`Couldn't resolve ${webDomain} from this machine either — same DNS-propagation caveat as above.`);
-    }
-  }
 }
 
 section("Building and starting the stack");
-run(`docker compose ${composeFlags} up -d --build`, { cwd: rootDir });
+// --remove-orphans cleans up containers from a previous compose file/config that no
+// longer matches this one (e.g. a stale service left over from before a profile or
+// service was renamed) — without it they linger and can hold ports/names the new
+// containers need.
+run(`docker compose ${composeFlags} up -d --build --remove-orphans`, { cwd: rootDir });
 
 section("Verifying");
-const expectedServices = [
-  "postgres",
-  "server",
-  ...(proxyMode === "local" ? ["caddy"] : []),
-  ...(deployWeb ? ["web"] : []),
-];
-step(`Waiting for ${expectedServices.length === 1 ? "the" : "all"} ${expectedServices.length} container${expectedServices.length === 1 ? "" : "s"} to report running...`);
+const expectedServices = proxyMode === "local" ? ["postgres", "server", "web", "caddy"] : ["postgres", "server", "web"];
+step(`Waiting for all ${expectedServices.length} containers to report running...`);
 let allRunning = false;
 const runningDeadline = Date.now() + 60_000;
 while (Date.now() < runningDeadline) {
@@ -224,22 +197,20 @@ if (!allRunning) {
     warn("or — if this server is behind home NAT — an inability to reach its own public IP");
     warn("(try curling from another machine instead). See docs/deployment.md#troubleshooting.");
   }
-  if (deployWeb) {
-    step("Checking the web client through Caddy...");
-    let webHealthy = false;
-    const webDeadline = Date.now() + 30_000;
-    while (Date.now() < webDeadline) {
-      if (captureOutput(`curl -sf https://${webDomain}/`) !== null) {
-        webHealthy = true;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+  step("Checking the web client through Caddy (same domain, different path)...");
+  let webHealthy = false;
+  const webDeadline = Date.now() + 30_000;
+  while (Date.now() < webDeadline) {
+    if (captureOutput(`curl -sf https://${domain}/`) !== null) {
+      webHealthy = true;
+      break;
     }
-    if (webHealthy) {
-      step(`Reached https://${webDomain}/ successfully.`);
-    } else {
-      warn(`Couldn't reach https://${webDomain}/ yet — same possible causes as the API above.`);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  if (webHealthy) {
+    step(`Reached https://${domain}/ successfully.`);
+  } else {
+    warn(`Couldn't reach https://${domain}/ yet — same possible causes as the API above.`);
   }
 } else {
   step("All containers running. Checking the server directly (not through your external proxy)...");
@@ -258,30 +229,29 @@ if (!allRunning) {
     warn(`Couldn't reach http://localhost:${serverPort}/health on this machine — the server itself may still be starting or failing.`);
     warn(`  docker compose ${composeFlags} logs server`);
   }
-  if (deployWeb) {
-    step("Checking the web client directly (not through your external proxy)...");
-    let webHealthy = false;
-    const webDeadline = Date.now() + 20_000;
-    while (Date.now() < webDeadline) {
-      if (captureOutput(`curl -sf http://localhost:${webPort}/`) !== null) {
-        webHealthy = true;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+  step("Checking the web client directly (not through your external proxy)...");
+  let webHealthy = false;
+  const webDeadline = Date.now() + 20_000;
+  while (Date.now() < webDeadline) {
+    if (captureOutput(`curl -sf http://localhost:${webPort}/`) !== null) {
+      webHealthy = true;
+      break;
     }
-    if (webHealthy) {
-      step(`Reached http://localhost:${webPort}/ successfully.`);
-    } else {
-      warn(`Couldn't reach http://localhost:${webPort}/ on this machine — the web container may still be starting or failing.`);
-      warn(`  docker compose ${composeFlags} logs web`);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  if (webHealthy) {
+    step(`Reached http://localhost:${webPort}/ successfully.`);
+  } else {
+    warn(`Couldn't reach http://localhost:${webPort}/ on this machine — the web container may still be starting or failing.`);
+    warn(`  docker compose ${composeFlags} logs web`);
   }
 }
 
 section("Done");
 if (proxyMode === "local") {
   console.log(`
-Server: https://${domain}${deployWeb ? `\nWeb client: https://${webDomain}` : ""}
+Server: https://${domain}
+Web client: https://${domain}/
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status
@@ -289,42 +259,40 @@ Useful commands:
   docker compose ${composeFlags} down      # stop everything (add -v to also wipe the database)
 
 Re-run \`npm run deploy\` any time to rebuild and restart with the latest code — it reuses
-the domain/password/secret${deployWeb ? "/web settings" : ""} already in .env.prod rather than generating new ones.
+the domain/password/secret already in .env.prod rather than generating new ones.
 `);
 } else {
-  const webBlock = deployWeb
-    ? `
-
-The web client is running the same way, published on port ${webPort}. Add its own site
-block to your reverse proxy too (a different hostname than the API's, e.g.
-app.${domain}):
-
---- paste into your Caddy config ---
-app.${domain} {
-    reverse_proxy <this-machine's-address>:${webPort}
-}
--------------------------------------
-`
-    : "";
   console.log(`
-The server is running on this machine, published on port ${serverPort} — not reachable
-from the internet by itself. Add this to your own reverse proxy's config, pointed at
-this machine:
+The server and web client are running on this machine, published on ports ${serverPort}
+and ${webPort} respectively — not reachable from the internet by themselves. Add this to
+your own reverse proxy's config, pointed at this machine, so both are reachable under one
+domain the same way the bundled Caddyfile routes them:
 
 --- paste into your Caddy config ---
 ${domain} {
-    reverse_proxy <this-machine's-address>:${serverPort}
+    handle /health {
+        reverse_proxy <this-machine's-address>:${serverPort}
+    }
+    handle /auth/* {
+        reverse_proxy <this-machine's-address>:${serverPort}
+    }
+    handle /sync/* {
+        reverse_proxy <this-machine's-address>:${serverPort}
+    }
+    handle {
+        reverse_proxy <this-machine's-address>:${webPort}
+    }
 }
 -------------------------------------
-${webBlock}
+
 Replace <this-machine's-address> with whatever your proxy can use to reach this host —
 its LAN IP, a private network hostname, a VPN/Tailscale address, etc. (this script can't
 know which, since your proxy runs elsewhere). Not using Caddy on the other end? Translate
-that same "domain -> this host:port" rule into your proxy's own config format.
+the same "path -> this host:port" rules into your proxy's own config format.
 
-Make sure ${deployWeb ? `ports ${serverPort} and ${webPort} are` : `port ${serverPort} is`} actually reachable from your proxy's
-machine — a firewall rule scoped to its specific IP is safer than leaving it open to
-everything. See docs/deployment.md#deploying-behind-your-own-reverse-proxy.
+Make sure ports ${serverPort} and ${webPort} are actually reachable from your proxy's machine —
+a firewall rule scoped to its specific IP is safer than leaving it open to everything. See
+docs/deployment.md#deploying-behind-your-own-reverse-proxy.
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status
@@ -332,6 +300,6 @@ Useful commands:
   docker compose ${composeFlags} down      # stop everything (add -v to also wipe the database)
 
 Re-run \`npm run deploy\` any time to rebuild and restart with the latest code — it reuses
-the domain/password/secret/port${deployWeb ? "/web settings" : ""} already in .env.prod rather than generating new ones.
+the domain/password/secret/ports already in .env.prod rather than generating new ones.
 `);
 }

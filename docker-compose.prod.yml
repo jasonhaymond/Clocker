@@ -1,12 +1,11 @@
-# Production stack: Postgres + the Fastify server + Caddy as a reverse proxy handling
-# TLS automatically. See docs/deployment.md for the full walkthrough. The `web` service
-# (opt-in, --profile web) hosts the web client the same way — see
-# docs/deployment.md#deploying-the-web-client.
+# Production stack: Postgres + the Fastify server + the web client + Caddy as a reverse
+# proxy handling TLS automatically, routing both API and web traffic under the same
+# DOMAIN by path (see the root Caddyfile). See docs/deployment.md for the full
+# walkthrough.
 #
 # Usage:
 #   cp .env.prod.example .env.prod   # fill in POSTGRES_PASSWORD, JWT_SECRET, DOMAIN
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod --profile web up -d --build   # + web client
 #
 # `name` is set explicitly (rather than defaulting to the directory name) so this never
 # collides with docker-compose.yml's dev stack if both are ever run on the same machine —
@@ -37,6 +36,17 @@ services:
     depends_on:
       - postgres
 
+  # Static build of the web client (see web/Dockerfile), served by its own small Caddy —
+  # not published to the host itself; the main `caddy` service below reaches it over the
+  # compose network and is the only thing exposed outside this stack.
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_URL: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
+    restart: unless-stopped
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -49,22 +59,9 @@ services:
       - caddy-config:/config
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
-      WEB_DOMAIN: ${WEB_DOMAIN:-web.localhost}
     depends_on:
       - server
-
-  # Static build of the web client, served by its own small Caddy (see web/Dockerfile) —
-  # the main `caddy` service above proxies WEB_DOMAIN to it. Opt-in (not started by a
-  # plain `docker compose up`) since not every deployment wants the web client hosted
-  # here — see docs/deployment.md#deploying-the-web-client.
-  web:
-    build:
-      context: .
-      dockerfile: web/Dockerfile
-      args:
-        VITE_API_URL: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
-    restart: unless-stopped
-    profiles: ["web"]
+      - web
 
 volumes:
   clocker-postgres-prod:
