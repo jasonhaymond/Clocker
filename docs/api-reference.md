@@ -15,10 +15,27 @@ Authorization: Bearer <token>
 ```
 
 `<token>` is the JWT returned by register/login. It's an `HS256` JWT signed with
-`JWT_SECRET`, payload `{ userId }`, expiring after **180 days** (`server/src/lib/auth.ts`).
-There is no refresh flow — a fresh sign-in via `/auth/login` is how a client gets a new
-one. A missing or invalid/expired token gets a `401` with `{ "error": "..." }` from the
-`requireAuth` preHandler, which runs on the whole `/sync/*` route group.
+`JWT_SECRET`, payload `{ userId }`. Its lifetime depends on the `rememberMe` flag sent at
+sign-in (`server/src/lib/auth.ts`): `true` (the default, and what both clients check by
+default) produces a token with no `exp` claim at all — it never expires; `false` produces
+a 1-day token. There is no refresh flow — a fresh sign-in via `/auth/login` is how a
+client gets a new one. A missing or invalid/expired token gets a `401` with
+`{ "error": "..." }` from the `requireAuth` preHandler, which runs on the whole `/sync/*`
+route group.
+
+Both `/auth/register` and `/auth/login` are rate-limited (10 requests / 15 minutes per
+IP) and require a CAPTCHA answer, obtained from `GET /auth/captcha`:
+
+```json
+→ 200 { "id": "<uuid>", "question": "What is 4 + 7?" }
+```
+
+`id` is single-use — pass it back as `captchaId` with the numeric answer as
+`captchaAnswer` on the very next register/login call. It's consumed (and must be
+re-fetched) whether the answer was right or wrong, and it also expires 5 minutes after
+being issued. This is a self-hosted, no-external-dependency check (no reCAPTCHA/Turnstile
+account needed) meant to filter generic bots, not stop a targeted attacker —
+`server/src/lib/captcha.ts` has the full rationale.
 
 ### `GET /health`
 
@@ -31,16 +48,26 @@ No auth. Liveness check.
 ### `POST /auth/register`
 
 ```json
-{ "email": "jane@example.com", "password": "at-least-8-chars" }
+{
+  "email": "jane@example.com",
+  "password": "at-least-8-chars",
+  "captchaId": "<uuid from GET /auth/captcha>",
+  "captchaAnswer": 11,
+  "rememberMe": true
+}
 ```
 
 - `email` — must pass `zod`'s `.email()` check
 - `password` — minimum 8 characters (no other complexity rule enforced)
+- `captchaId` / `captchaAnswer` — from `GET /auth/captcha`; see [Authentication](#authentication)
+- `rememberMe` — optional, defaults to `true`; controls the issued token's lifetime
 
 ```json
 → 201 { "token": "<jwt>", "userId": "<uuid>" }
 → 400 { "error": { "fieldErrors": {...}, "formErrors": [...] } }   // zod validation failure
+→ 400 { "error": "Incorrect answer to the verification question — fetch a new one and try again." }
 → 409 { "error": "Email already registered" }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
 ```
 
 ### `POST /auth/login`
@@ -50,7 +77,9 @@ Same body shape as register.
 ```json
 → 200 { "token": "<jwt>", "userId": "<uuid>" }
 → 400 { "error": {...} }          // validation failure (same shape as above)
+→ 400 { "error": "Incorrect answer to the verification question — fetch a new one and try again." }
 → 401 { "error": "Invalid email or password" }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
 ```
 
 ## Sync
@@ -183,10 +212,13 @@ The exact sequence used to verify this API end-to-end during development (adjust
 to match `PORT` in your own `server/.env`):
 
 ```bash
-# register and capture the token
+# fetch a captcha, answer it, then register and capture the token
+curl -s http://localhost:3001/auth/captcha
+# → { "id": "<uuid>", "question": "What is 4 + 7?" }
+
 curl -s -X POST http://localhost:3001/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"password123"}'
+  -d '{"email":"you@example.com","password":"password123","captchaId":"<uuid>","captchaAnswer":11}'
 
 TOKEN="<paste the token from above>"
 

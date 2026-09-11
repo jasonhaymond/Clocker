@@ -2,11 +2,17 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import * as api from "../sync/api";
 import { getToken, setToken } from "./tokenStore";
 
+interface SignInOptions {
+  captchaId: string;
+  captchaAnswer: number;
+  rememberMe: boolean;
+}
+
 interface AuthState {
   isReady: boolean;
   isSignedIn: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, options: SignInOptions) => Promise<void>;
+  signUp: (email: string, password: string, options: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -27,14 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       isReady,
       isSignedIn,
-      signIn: async (email, password) => {
-        const { token } = await api.login(email, password);
-        await setToken(token);
+      signIn: async (email, password, { captchaId, captchaAnswer, rememberMe }) => {
+        const { token } = await api.login({ email, password, captchaId, captchaAnswer, rememberMe });
+        await setToken(token, rememberMe);
         setIsSignedIn(true);
       },
-      signUp: async (email, password) => {
-        const { token } = await api.register(email, password);
-        await setToken(token);
+      signUp: async (email, password, { captchaId, captchaAnswer, rememberMe }) => {
+        const { token } = await api.register({ email, password, captchaId, captchaAnswer, rememberMe });
+        await setToken(token, rememberMe);
         setIsSignedIn(true);
       },
       signOut: async () => {

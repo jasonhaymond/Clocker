@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { clearToken, getToken, login, register, setToken } from "./api";
+import { useEffect, useState } from "react";
+import { clearToken, getCaptcha, getToken, login, register, setToken } from "./api";
 import { StoreProvider, useStore } from "./store";
 import { ClockScreen } from "./screens/ClockScreen";
 import { JobsScreen } from "./screens/JobsScreen";
@@ -12,19 +12,34 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [captcha, setCaptcha] = useState<{ id: string; question: string } | null>(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  function refreshCaptcha() {
+    setCaptchaAnswer("");
+    getCaptcha()
+      .then(setCaptcha)
+      .catch(() => setCaptcha(null));
+  }
+
+  useEffect(refreshCaptcha, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!captcha) return;
     setBusy(true);
     setError(null);
     try {
-      const result = mode === "login" ? await login(email, password) : await register(email, password);
-      setToken(result.token);
+      const credentials = { email, password, captchaId: captcha.id, captchaAnswer: Number(captchaAnswer), rememberMe };
+      const result = mode === "login" ? await login(credentials) : await register(credentials);
+      setToken(result.token, rememberMe);
       onSignedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      refreshCaptcha();
     } finally {
       setBusy(false);
     }
@@ -43,8 +58,27 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
           minLength={8}
           required
         />
+        {captcha && (
+          <div className="captcha-row">
+            <span>{captcha.question}</span>
+            <input
+              type="number"
+              placeholder="Answer"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value)}
+              required
+            />
+          </div>
+        )}
+        <div className="switch-row">
+          <div className="row-title">Remember me</div>
+          <label className="switch">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            <span className="switch-track" />
+          </label>
+        </div>
         {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || !captcha || !captchaAnswer}>
           {mode === "login" ? "Sign In" : "Create Account"}
         </button>
       </form>

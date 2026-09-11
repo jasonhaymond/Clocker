@@ -454,11 +454,17 @@ trusted host" and does **not** currently have:
   for a browser on some *other* origin, which currently gets waved through. Tighten this
   (`server/src/index.ts`) to your actual domain (or drop it entirely, since nothing
   legitimate needs a cross-origin browser request here) before this is genuinely public.
-- **Rate limiting** on `/auth/login` or `/auth/register` — nothing currently prevents a
-  brute-force credential-stuffing attempt against those endpoints.
-- **A refresh-token flow** — tokens are long-lived (180 days, see
-  [`api-reference.md`](./api-reference.md#authentication)) with no revocation mechanism
-  short of rotating `JWT_SECRET` (which logs out every device at once, not just one).
+- **A refresh-token flow** — a "remember me" token (the default; see
+  [`api-reference.md`](./api-reference.md#authentication)) never expires, with no
+  revocation mechanism short of rotating `JWT_SECRET` (which logs out every device at
+  once, not just one). Unchecking "remember me" gets a 1-day token instead, which bounds
+  the exposure but still isn't a real revocation story.
+
+`/auth/login` and `/auth/register` **are** rate-limited (10 requests / 15 min per IP,
+`@fastify/rate-limit`) and gated behind a self-hosted arithmetic CAPTCHA
+(`/auth/captcha`) — enough to blunt generic credential-stuffing/signup-spam bots without
+depending on a third-party service (reCAPTCHA/Turnstile). It won't stop a determined,
+targeted attacker; nothing here is meant to.
 
 HTTPS termination itself **is** handled by default if you use the Caddy stack above; it's
 only a gap if you run the server directly and skip putting anything in front of it (Fastify

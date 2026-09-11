@@ -9,16 +9,24 @@ import type { Break, Job, JobManager, Manager, RateTier, RateVersion, Shift } fr
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 const TOKEN_KEY = "clocker.token";
 
+// "Remember me" checked -> localStorage (survives closing the tab/browser). Unchecked ->
+// sessionStorage (gone once the tab closes), paired server-side with a short-lived token
+// (see server/src/lib/auth.ts) so declining to be remembered actually means something.
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setToken(token: string, rememberMe: boolean): void {
+  if (rememberMe) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    sessionStorage.setItem(TOKEN_KEY, token);
+  }
 }
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
 }
 
 class ApiError extends Error {
@@ -50,12 +58,24 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   return data as T;
 }
 
-export function register(email: string, password: string) {
-  return request<{ token: string; userId: string }>("/auth/register", { method: "POST", body: { email, password } });
+export function getCaptcha() {
+  return request<{ id: string; question: string }>("/auth/captcha");
 }
 
-export function login(email: string, password: string) {
-  return request<{ token: string; userId: string }>("/auth/login", { method: "POST", body: { email, password } });
+export interface Credentials {
+  email: string;
+  password: string;
+  captchaId: string;
+  captchaAnswer: number;
+  rememberMe: boolean;
+}
+
+export function register(credentials: Credentials) {
+  return request<{ token: string; userId: string }>("/auth/register", { method: "POST", body: credentials });
+}
+
+export function login(credentials: Credentials) {
+  return request<{ token: string; userId: string }>("/auth/login", { method: "POST", body: credentials });
 }
 
 export interface PushPayload {

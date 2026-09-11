@@ -103,6 +103,14 @@ hr {
   flex-direction: column;
   gap: 8px;
 }
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.captcha-row input {
+  width: 80px;
+}
 
 /* App shell */
 .app-shell {

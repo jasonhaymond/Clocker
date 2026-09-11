@@ -10,8 +10,13 @@ export interface AuthTokenPayload {
   userId: string;
 }
 
-export function signToken(payload: AuthTokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: "180d" });
+// "Remember me" (checked by default on both clients) means the token never expires —
+// jsonwebtoken simply omits the `exp` claim when `expiresIn` isn't passed at all, which
+// is valid per the JWT spec. Unchecking it falls back to a short-lived token instead, so
+// declining to be remembered actually means something rather than just changing where
+// the token is stored client-side.
+export function signToken(payload: AuthTokenPayload, rememberMe: boolean): string {
+  return rememberMe ? jwt.sign(payload, JWT_SECRET as string) : jwt.sign(payload, JWT_SECRET as string, { expiresIn: "1d" });
 }
 
 declare module "fastify" {

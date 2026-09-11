@@ -12,9 +12,12 @@ export async function getToken(): Promise<string | null> {
   return cachedToken;
 }
 
-export async function setToken(token: string | null): Promise<void> {
+// `persist` mirrors "remember me": false keeps the token in the in-memory cache only
+// (so the app stays signed in until it's fully closed/reloaded) without writing it to
+// AsyncStorage, so a relaunch doesn't come back signed in.
+export async function setToken(token: string | null, persist = true): Promise<void> {
   cachedToken = token;
-  if (token) {
+  if (token && persist) {
     await AsyncStorage.setItem(TOKEN_KEY, token);
   } else {
     await AsyncStorage.removeItem(TOKEN_KEY);

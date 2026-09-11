@@ -33,12 +33,24 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   return data as T;
 }
 
-export function register(email: string, password: string) {
-  return request<{ token: string; userId: string }>("/auth/register", { method: "POST", body: { email, password } });
+export function getCaptcha() {
+  return request<{ id: string; question: string }>("/auth/captcha");
 }
 
-export function login(email: string, password: string) {
-  return request<{ token: string; userId: string }>("/auth/login", { method: "POST", body: { email, password } });
+export interface Credentials {
+  email: string;
+  password: string;
+  captchaId: string;
+  captchaAnswer: number;
+  rememberMe: boolean;
+}
+
+export function register(credentials: Credentials) {
+  return request<{ token: string; userId: string }>("/auth/register", { method: "POST", body: credentials });
+}
+
+export function login(credentials: Credentials) {
+  return request<{ token: string; userId: string }>("/auth/login", { method: "POST", body: credentials });
 }
 
 export interface PushPayload {

@@ -15,6 +15,10 @@ and fixed, the web client got a global error banner, `CLAUDE.md` now requires th
 be kept current at the end of every work session (this amendment is that policy's first
 real use), and full shift/break time editing shipped on both clients (§3).
 
+**Amended again:** same day, later session — self-hosted CAPTCHA + rate limiting +
+"remember me" shipped on both clients (§3), closing two of the three items in
+`docs/deployment.md#security-gaps-to-close-before-this-is-public` (§4).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -111,6 +115,24 @@ Verified present in the repo (code + docs, not just described in memory):
   including the "set clock-out on a previously-open shift" path) plus clean typecheck and
   builds on both clients — not yet clicked through by hand in either a real browser or a
   mobile device/simulator.
+- **Self-hosted CAPTCHA + rate limiting + "remember me", both clients**: `/auth/login` and
+  `/auth/register` now require a numeric answer to a `GET /auth/captcha`-issued arithmetic
+  question (single-use, 5-minute TTL, in-memory — `server/src/lib/captcha.ts`) and are
+  rate-limited to 10 requests/15min per IP (`@fastify/rate-limit`, `server/src/index.ts`).
+  Deliberately no third-party CAPTCHA service (no reCAPTCHA/Turnstile account) per explicit
+  instruction. Both login screens (`app/src/screens/LoginScreen.tsx`,
+  `web/src/App.tsx`'s `AuthForm`) fetch/display the question and a "Remember me" checkbox,
+  checked by default. `rememberMe: true` (the default) issues a JWT with no `exp` claim —
+  never expires; `false` issues a 1-day token (`server/src/lib/auth.ts`). Mobile stores the
+  token in AsyncStorage only when remembered (`app/src/auth/tokenStore.ts`'s `persist`
+  param), otherwise keeps it in the module-level cache only (gone on app relaunch); web
+  uses `localStorage` vs `sessionStorage` the same way (`web/src/api.ts`). Verified against
+  a real running local server: captcha issue/consume/expire, wrong-answer rejection,
+  correct-answer register+login, decoded JWTs confirmed with/without `exp` for both
+  `rememberMe` values, and rate limiting actually returning 429 after 10 attempts. All
+  three workspaces (`server`, `app`, `web`) typecheck clean. Not yet clicked through by
+  hand in a real browser or mobile simulator (no browser-automation/emulator access from
+  this session).
 
 ## 4. Known gaps / open work
 
@@ -122,12 +144,14 @@ Verified present in the repo (code + docs, not just described in memory):
   pass `--non-interactive` for this reason (see commit `d69b080`). If Jason has since done
   this himself outside a Claude session, re-check `app/app.json` before assuming this gap
   still stands.
-- **JWT refresh isn't implemented** — 180-day fixed expiry, no revocation short of
-  rotating `JWT_SECRET` (logs out every device). Accepted as fine for personal/single-user
-  use; flagged as a real gap in `docs/deployment.md#security-gaps-to-close-before-this-is-public`.
-- **No rate limiting on `/auth/login` or `/auth/register`**, and CORS is `{ origin: true }`
-  (permissive) — both flagged in the same security-gaps doc section as pre-public-launch
-  work, not yet done.
+- **JWT refresh isn't implemented** — a "remember me" token (default) never expires, with
+  no revocation short of rotating `JWT_SECRET` (logs out every device). Accepted as fine
+  for personal/single-user use; flagged as a real gap in
+  `docs/deployment.md#security-gaps-to-close-before-this-is-public`.
+- **CORS is still `{ origin: true }`** (permissive) — flagged in the same security-gaps
+  doc section as pre-public-launch work, not yet done. (Rate limiting and a bot-filtering
+  CAPTCHA on `/auth/login`/`/auth/register`, previously listed here as gaps, shipped this
+  session — see §3.)
 - **Web client's real-browser click-through pass** — parity work was verified by
   typecheck + production build + a scripted store-action replay against a real local
   server, not yet by a human actually clicking through in a browser. Worth doing before
