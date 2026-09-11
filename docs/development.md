@@ -254,7 +254,15 @@ reason.
 
 Web is a separate, thin client (Vite + React), not a third Expo target — see
 [`architecture.md`](./architecture.md#two-frontend-clients-one-api) for why. It has no
-local database and no offline story: every action calls the server directly.
+local database and no offline story: every action calls the server directly. Per
+[`../CLAUDE.md`](../CLAUDE.md), it carries the same feature set as the mobile app — Jobs
+(rate tiers, overtime, rounding, timesheet settings), Clock (multi-job, breaks, "At...",
+notes), History (multi-select delete), Timesheets, Export, and Managers — adapted to what
+a browser can actually do (a download + clipboard copy where mobile has a native share
+sheet/mail composer; no OTA-update concept, since a page reload always serves the latest
+deploy). `web/src/store.tsx` is the single place every screen reads/writes through — each
+mutation there pushes one change and re-pulls, the same pattern as `app/src/db/database.ts`
+minus the local SQLite/outbox layer.
 
 1. Copy the env template and point it at your server:
    ```bash
@@ -281,12 +289,19 @@ Other useful commands, run from `web/`:
 | `npm run preview` | Serves that production build locally, to sanity-check it before deploying |
 | `npm run typecheck` | Typecheck only, no build output |
 
-Known gaps, since this is a scaffold proving the client/server split works, not yet at
-feature parity with the mobile app: only auth, jobs, and clock in/out are wired up so far
-— no rate tiers, overtime, Timesheets, Export, or Managers UI yet. Add them the same way:
-call `pushChanges`/`pullAll` from `web/src/api.ts` directly (no outbox to route through),
-reusing `@clocker/shared`'s types and calculation functions so the numbers agree with the
-mobile app.
+Verified end to end against a real running server: every mutation `web/src/store.tsx`
+sends (job creation with rate tiers, clock in/out, breaks, shift notes, manager creation
+and assignment, overtime/rounding/timesheet-settings updates, deletes) was replayed
+directly against `/sync/push`/`/sync/pull` and round-tripped correctly, on top of a clean
+typecheck and production build. Not yet exercised by hand in an actual browser — do a
+quick pass there per this project's manual-verification standard before trusting it
+blindly, the same as any other UI-facing change.
+
+Known adaptations from the mobile app, not gaps — see `CLAUDE.md`'s feature-parity
+policy for why these differ in mechanism but not in what you can do: CSV export and
+Timesheet submission download a file and copy formatted text to the clipboard instead of
+using a native share sheet/mail composer (`web/src/lib/download.ts`), and there's no
+OTA-update concept (a page reload always serves the latest deploy).
 
 ## Known issue: React Native DevTools error on a headless Linux box
 

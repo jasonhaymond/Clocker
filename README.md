@@ -2,7 +2,9 @@
 
 A personal timeclock app for tracking hours across multiple jobs — clock in/out, breaks,
 history, and CSV export. Built as an offline-first React Native (Expo) mobile app, plus a
-thin web client, both backed by a small Fastify + PostgreSQL server.
+web client, both backed by a small Fastify + PostgreSQL server. **Both clients carry the
+full feature set** (see `CLAUDE.md`) — they differ in storage architecture, not in what
+you can do on each.
 
 ## How it works
 
@@ -12,7 +14,9 @@ thin web client, both backed by a small Fastify + PostgreSQL server.
 - **Web client** (`web/`): Vite + React + TypeScript. No local database — a thin client
   that calls the server directly on every action. Deliberately *not* offline-first; see
   [Architecture](./docs/architecture.md#two-frontend-clients-one-api) for why the two
-  clients differ this much.
+  clients differ this much even while covering the same features. Where a browser
+  genuinely can't do what a native app can (a share sheet, a mail composer), it adapts —
+  a file download and a clipboard copy — rather than dropping the feature.
 - **Shared** (`shared/`): framework-free TypeScript (types + pay/rounding/period/export
   calculations) imported by both clients, so they agree on every number.
 - **Server** (`server/`): Fastify + Prisma + PostgreSQL. Exposes email/password auth and
@@ -215,9 +219,12 @@ dependencies, and applies any new migrations.
 
 - Editing a shift's clock-in/clock-out time from the History screen isn't wired up yet
   (delete + re-create is the current workaround; notes/comments are editable, though).
-- Export is iOS/Android only for now (`expo-sharing`/`expo-mail-composer` have no web
-  support), and HTML email formatting is "not working perfectly on Android" per
-  `expo-mail-composer`'s own docs — richest on iOS Mail and most desktop clients.
+- Export/Timesheet submission works on both clients, via different mechanisms per
+  platform (see `CLAUDE.md`): mobile opens a native email draft via `expo-mail-composer`
+  (HTML formatting there is "not working perfectly on Android" per that library's own
+  docs — richest on iOS Mail and most desktop clients); web downloads a CSV and copies
+  formatted text to the clipboard, then opens a `mailto:` link, since browsers have
+  neither a share sheet nor a mail composer to call into.
 - Overtime is calculated only over the shifts in whatever date range you export — pass a
   full calendar week (e.g. "This Week") for an exactly correct weekly overtime total.
 - The JWT has a 180-day expiry and there's no refresh flow — fine for a personal app,
