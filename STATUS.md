@@ -50,10 +50,12 @@ pay calculation, CSV/email export). Two clients, one API:
 - **`server/`** — Fastify + Prisma + PostgreSQL. Email/password auth, `/sync/push` and
   `/sync/pull` (both clients call these; mobile opportunistically, web on every mutation).
 
-npm workspaces monorepo (`shared`, `app`, `server`, `web`). No CHANGELOG.md exists —
-version/change history lives only in `git log` (see §7). `app/package.json` and
-`web/package.json`/`shared/package.json` are at `1.0.0`; `server/package.json` is at
-`0.1.0`.
+npm workspaces monorepo (`shared`, `app`, `server`, `web`). **`CHANGELOG.md` started
+2026-09-11** (Keep a Changelog format) after the user asked to make version-tracking
+default practice — earlier history isn't backfilled, only `git log`/§7 cover that.
+`app/package.json`, `web/package.json`, `shared/package.json`, and `app/app.json` are at
+`1.1.0`; `server/package.json` is at `0.2.0`. Going forward, a version bump + CHANGELOG
+entry should land with each shipping commit, not after the fact.
 
 **Project policy (see `CLAUDE.md` at repo root, authoritative — not duplicated here):**
 every client must expose the same feature set; architecture can differ per platform
@@ -326,7 +328,8 @@ and "security gaps" sections — read it before touching production).
 
 ## 7. Recent history highlights
 
-No CHANGELOG.md — full history is `git log` (currently 42 commits, `c0b8dad` scaffold to
+`CHANGELOG.md` covers `1.1.0` onward (started 2026-09-11); full detailed history for
+everything before that is `git log` only (currently 42 commits, `c0b8dad` scaffold to
 `76f54e8` most recent). Newest-first highlights from `git log --oneline -60`:
 
 1. `76f54e8` Add full BorgBackup support (config, schedule, archives, restore)
