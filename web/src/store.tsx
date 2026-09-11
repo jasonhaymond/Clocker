@@ -40,6 +40,7 @@ function nowIso(): string {
 
 interface StoreActions {
   refresh(): Promise<void>;
+  clearError(): void;
 
   createJob(input: { name: string; colorHex: string; initialHourlyRateCents: number | null }): Promise<Job>;
   updateJobDetails(job: Job, patch: { name?: string; colorHex?: string }): Promise<void>;
@@ -115,9 +116,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const actions = useMemo<StoreActions>(
-    () => ({
+  // Every action below can throw (a network error, a 4xx/5xx from the server) — without
+  // this, a screen that calls one without its own try/catch (most of them, e.g. "Add
+  // Job") sees the failure go nowhere: an unhandled promise rejection in the console,
+  // nothing on screen, "the button does nothing." This wraps every action (except
+  // refresh, which already manages state.error itself) so a failure always becomes a
+  // visible message via the error banner in App.tsx, in addition to still rejecting the
+  // promise normally for any caller that does want to handle it locally.
+  function guarded<Args extends unknown[], R>(fn: (...args: Args) => Promise<R>): (...args: Args) => Promise<R> {
+    return async (...args: Args) => {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        setState((s) => ({ ...s, error: err instanceof Error ? err.message : "Something went wrong" }));
+        throw err;
+      }
+    };
+  }
+
+  const actions = useMemo<StoreActions>(() => {
+    const raw: StoreActions = {
       refresh,
+      clearError() {
+        setState((s) => ({ ...s, error: null }));
+      },
 
       async createJob({ name, colorHex, initialHourlyRateCents }) {
         const now = nowIso();
@@ -282,9 +304,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await pushChanges({ breaks: [{ ...brk, end: endTime ?? nowIso(), updatedAt: nowIso() }] });
         await refresh();
       },
-    }),
-    [refresh],
-  );
+    };
+    const unguarded = new Set(["refresh", "clearError"]);
+    const entries = Object.entries(raw).map(([key, fn]) => [
+      key,
+      unguarded.has(key) ? fn : guarded(fn as (...a: unknown[]) => Promise<unknown>),
+    ]);
+    return Object.fromEntries(entries) as StoreActions;
+  }, [refresh]);
 
   const value = useMemo(() => ({ ...state, ...actions }), [state, actions]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

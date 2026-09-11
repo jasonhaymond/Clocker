@@ -54,6 +54,23 @@ hr {
 .error {
   color: #dc2626;
 }
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  border-bottom: 1px solid #fecaca;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.error-banner span {
+  flex: 1;
+}
+.error-banner .link-button {
+  color: #991b1b;
+  text-decoration: underline;
+}
 .muted {
   color: #888;
 }

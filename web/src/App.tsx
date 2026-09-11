@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { clearToken, getToken, login, register, setToken } from "./api";
-import { StoreProvider } from "./store";
+import { StoreProvider, useStore } from "./store";
 import { ClockScreen } from "./screens/ClockScreen";
 import { JobsScreen } from "./screens/JobsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
@@ -65,6 +65,25 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "settings", label: "Settings" },
 ];
 
+// Every store action's failure sets store.error (see store.tsx's `guarded` wrapper) —
+// this is the one place that's actually shown, visible above whichever tab is active, so
+// a failed action never just "does nothing" with the only trace in the browser console.
+function ErrorBanner() {
+  const { error, refresh, clearError } = useStore();
+  if (!error) return null;
+  return (
+    <div className="error-banner">
+      <span>{error}</span>
+      <button className="link-button" onClick={() => refresh()}>
+        Retry
+      </button>
+      <button className="link-button muted" onClick={clearError}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("clock");
 
@@ -81,6 +100,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             </button>
           ))}
         </nav>
+        <ErrorBanner />
         <main className="app-main">
           {tab === "clock" && <ClockScreen />}
           {tab === "jobs" && <JobsScreen />}

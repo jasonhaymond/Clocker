@@ -32,7 +32,6 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
         <button className="secondary-button" onClick={() => store.refresh()} disabled={store.loading}>
           {store.loading ? "Refreshing…" : "Refresh"}
         </button>
-        {store.error && <p className="error">{store.error}</p>}
       </section>
 
       <section>
