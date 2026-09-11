@@ -10,6 +10,7 @@ web-build/
 .env
 .env.local
 .env.prod
+backups/
 server/.env
 server/dist/
 server/generated/

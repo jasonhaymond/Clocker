@@ -348,6 +348,30 @@ internal (self-signed, not Let's Encrypt) CA, which your phone/browser won't tru
 default, but confirms the containers wire up correctly before pointing a real domain at
 them.
 
+## Database backups
+
+Every `npm run deploy` run takes an unconditional `pg_dump` snapshot to
+`backups/clocker-<timestamp>.sql` (gitignored) *before* touching anything — independent of
+any other backup mechanism, and skipped gracefully on a brand-new deployment where
+there's no existing database yet. This is cheap insurance, not a full backup strategy: it
+only runs at deploy time, only lives on this one host's disk, and there's no retention
+policy pruning old ones — copy them somewhere else (another machine, object storage) for
+anything that actually matters, and prune `backups/` yourself periodically.
+
+To restore one:
+
+```bash
+cat backups/clocker-<timestamp>.sql | docker compose -f <compose-file> --env-file .env.prod exec -T postgres psql -U clocker clocker
+```
+
+(`<compose-file>` is whichever of `docker-compose.prod.yml` / `docker-compose.prod.external-proxy.yml`
+matches your current `PROXY_MODE`.) The dump includes `DROP ... IF EXISTS` before each
+object (`pg_dump --clean --if-exists`), so this is safe to run whether the target already
+has the schema (the common "just lost some rows" case) or is a completely fresh, empty
+database. Verified end to end: created a real row, redeployed to snapshot it, deliberately
+truncated the table, restored from the snapshot, and confirmed the exact row came back —
+zero errors either way.
+
 ## Running the server without Docker
 
 If you'd rather run the server directly (e.g. on a platform-as-a-service that builds Node

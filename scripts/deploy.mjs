@@ -18,6 +18,7 @@
 // backend-only iteration); a JS-only change between full deploys should usually go out
 // via `npm run deploy:app` (an OTA update) instead of a full rebuild here.
 import { randomBytes } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -180,6 +181,41 @@ if (proxyMode === "local") {
     warn(`Couldn't resolve ${domain} from this machine. If DNS hasn't propagated yet, Caddy`);
     warn(`will keep retrying its certificate request on its own — check \`docker compose ${composeFlags} logs caddy\` if it's taking a while.`);
   }
+}
+
+section("Snapshotting the database");
+// Unconditional, independent of any other backup mechanism — see the global dev-standards
+// doc's backup guidance. Every deploy changes what's running (a new image at minimum),
+// and it's cheap insurance against exactly the kind of "why is the database suddenly
+// empty" surprise a bad interaction between an unrelated change and Docker's own
+// recreate-on-config-change behavior can cause — this is the one thing that makes such a
+// surprise recoverable instead of catastrophic. Skipped gracefully on a brand-new
+// deployment, where there's no existing database yet to snapshot.
+const postgresRunning = captureOutput(`docker compose ${composeFlags} ps --status running --services`, { cwd: rootDir })
+  ?.split("\n")
+  .includes("postgres");
+if (postgresRunning) {
+  const backupsDir = join(rootDir, "backups");
+  mkdirSync(backupsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = join(backupsDir, `clocker-${stamp}.sql`);
+  // --clean --if-exists: prefixes each object with a DROP IF EXISTS, so restoring is
+  // safe whether the target already has the schema (the common "just lost some rows"
+  // case) or is completely empty (a fresh volume) — without this, restoring onto an
+  // intact schema spams "already exists" errors for every table/index/constraint
+  // (harmless — psql keeps going and the data still restores — but alarming to see
+  // during a real incident, and worth avoiding).
+  const dumped = run(`docker compose ${composeFlags} exec -T postgres pg_dump -U clocker --clean --if-exists clocker > "${backupPath}"`, {
+    cwd: rootDir,
+    optional: true,
+  });
+  if (dumped) {
+    step(`Saved to ${backupPath}`);
+  } else {
+    warn(`Couldn't snapshot the database — see the error above. Continuing anyway, but there's no rollback point for this deploy.`);
+  }
+} else {
+  step("No database running yet (first deploy) — nothing to snapshot.");
 }
 
 section("Building and starting the stack");
