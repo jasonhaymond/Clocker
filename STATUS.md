@@ -219,23 +219,25 @@ and "security gaps" sections — read it before touching production).
 
 ## 7. Recent history highlights
 
-No CHANGELOG.md — full history is `git log` (currently 32 commits, `c0b8dad` scaffold to
-`ab55f88` most recent). Newest-first highlights from `git log --oneline -60`:
+No CHANGELOG.md — full history is `git log` (currently 34 commits, `c0b8dad` scaffold to
+`f157682` most recent). Newest-first highlights from `git log --oneline -60`:
 
-1. `ab55f88` Add STATUS.md and the policy to keep it current (this file; note that its
+1. `f157682` Add full shift editing (times, breaks, notes) on both clients
+2. `fbc3d9f` Restore STATUS.md's prior content, destroyed by my own last commit
+3. `ab55f88` Add STATUS.md and the policy to keep it current (this file; note that its
    very first update overwrote this same file's own prior content without reading it
-   first — recovered from git history and merged back in as this amendment)
-2. `d55fcc8` Surface store action failures via a global error banner
-3. (not a commit) Manually fixed the external proxy's stale port config on `nextcloud` —
+   first — recovered from git history and merged back in via `fbc3d9f`)
+4. `d55fcc8` Surface store action failures via a global error banner
+5. (not a commit) Manually fixed the external proxy's stale port config on `nextcloud` —
    see §4/§5
-4. `9004c7d` Add mandatory pre-deploy database snapshot, per the global backup standard
-5. `d69b080` Fix two real deploy bugs: incrementing ports on redeploy, and EAS non-interactive
-6. `db897b0` Bring web client to full feature parity with the mobile app
-7. `cb18a21` Fold mobile app builds into `npm run deploy`; add feature-parity policy
-8. `5886a91` Deploy web on the same domain as the API, always, path-routed
-9. `68e5fda` Wire web client into external-proxy compose + `npm run deploy`; fix EAS monorepo build
-10. `60a57e0` Split web into its own thin client; extract shared logic; drop in-Expo web target
-11. Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
+6. `9004c7d` Add mandatory pre-deploy database snapshot, per the global backup standard
+7. `d69b080` Fix two real deploy bugs: incrementing ports on redeploy, and EAS non-interactive
+8. `db897b0` Bring web client to full feature parity with the mobile app
+9. `cb18a21` Fold mobile app builds into `npm run deploy`; add feature-parity policy
+10. `5886a91` Deploy web on the same domain as the API, always, path-routed
+11. `68e5fda` Wire web client into external-proxy compose + `npm run deploy`; fix EAS monorepo build
+12. `60a57e0` Split web into its own thin client; extract shared logic; drop in-Expo web target
+13. Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
     export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log` for
     the rest.
 
