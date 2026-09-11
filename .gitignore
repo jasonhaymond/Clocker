@@ -11,6 +11,9 @@ web-build/
 .env.local
 .env.prod
 backups/
+.backup-config.json
+.backup-runs.json
+.backup-ssh/
 server/.env
 server/dist/
 server/generated/

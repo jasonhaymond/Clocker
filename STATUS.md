@@ -20,10 +20,19 @@ real use), and full shift/break time editing shipped on both clients (§3).
 `docs/deployment.md#security-gaps-to-close-before-this-is-public` (§4).
 
 **Amended again:** same day, later session — an in-app "Update Server" button shipped on
-both clients, backed by a new host-side process (`scripts/updater-service.mjs`, §3/§5).
+both clients, backed by a new host-side process (`scripts/host-agent.mjs`, §3/§5).
 Not yet run against a real production host from this session (no SSH access) — the auth
 and dirty-tree-refusal guards were verified locally, but the actual `git pull`/`docker
 compose` sequence it triggers has not been exercised end-to-end.
+
+**Amended again:** same day, later session — full BorgBackup support (config, manual
+trigger, scheduling, archive browser, typed-confirmation restore) shipped on both clients,
+built into the same `scripts/host-agent.mjs` process rather than a new one (§3/§5). Caught
+and fixed a real bug during this session's own verification: a config-validation guard
+that threw outside its try/catch crashed the entire host agent process (both backup AND
+update capability) on the very first un-configured trigger — see §3 for detail. `borg`
+itself was never exercised (not installed on the dev machine this was built on); only the
+surrounding HTTP/config/guard layer was verified for real.
 
 ## 1. What this is
 
@@ -142,13 +151,13 @@ Verified present in the repo (code + docs, not just described in memory):
 - **In-app "Update Server" button, both clients**: Settings has a button that triggers
   `git pull --ff-only && npm install && npm run deploy -- --skip-app` on the deploy host,
   polling a status endpoint for progress/result. Backed by a new standalone process,
-  `scripts/updater-service.mjs` — deliberately NOT inside the `server` Docker container
+  `scripts/host-agent.mjs` — deliberately NOT inside the `server` Docker container
   (which has no host/Docker-socket access by design, chosen over the alternative of
   mounting those into the container, per explicit instruction); it runs directly on the
   host, started via pm2 (auto, from `npm run deploy`) or documented systemd instructions,
   and survives the very container restarts it triggers. Reached under the same domain via
   a new `/update*` Caddy route (bundled: `host.docker.internal`; external: added to the
-  printed proxy snippet) on a new auto-picked `UPDATER_PORT`/`UPDATER_BIND`. Auth reuses
+  printed proxy snippet) on a new auto-picked `HOST_AGENT_PORT`/`HOST_AGENT_BIND`. Auth reuses
   the existing `JWT_SECRET`/bearer token — no separate secret. Refuses to run if the host's
   working tree is dirty or an update is already in progress. Verified locally: auth
   (401 without/with-bad token), status shape, and — using this session's own genuinely
@@ -157,6 +166,36 @@ Verified present in the repo (code + docs, not just described in memory):
   from ever executing a real `git pull`/deploy against this repo). The actual
   pull-and-redeploy sequence has **not** been exercised end-to-end against a real host —
   only the HTTP layer and its guards.
+- **Full BorgBackup support, both clients**: Settings → Backups (`app/src/screens/BackupsScreen.tsx`,
+  `web/src/screens/BackupsScreen.tsx`) — repo URL/passphrase/retention/schedule config, a
+  dedicated generate-once Ed25519 SSH key (for a remote repo, `.backup-ssh/`), manual
+  "Back Up Now" + live log, a plain-language schedule picker (Off/Daily/Weekly/Monthly)
+  converted to/from cron in one place (`scripts/host-agent.mjs`'s `buildCron`/`parseCron`,
+  not duplicated per client), an archive browser (`borg list --json`), and a restore flow
+  requiring the archive name to be typed to confirm before enabling the button — mirrors
+  Haydrop's own admin backup UI, adapted for Clocker's stricter host/container separation
+  (settings live in a host-local JSON file, `.backup-config.json`, not a Postgres table,
+  since the containerized server has no host access to act on them anyway). Built into the
+  same `scripts/host-agent.mjs` process as the update button (one pm2 process, one port,
+  `/backup*` routed alongside `/update*`) rather than a second service.
+  - **Real bug caught and fixed during this session's own verification**: the config
+    validation guard (`if (!cfg.repoUrl || !cfg.passphrase) throw ...`) in both
+    `runBackupNow` and `restoreBackup` originally sat *outside* their own try/catch. Since
+    both are invoked via `setImmediate` from the HTTP handler (fire-and-forget, so nothing
+    upstream catches a throw that escapes them), triggering a backup before configuring a
+    repo threw an uncaught exception that crashed the **entire host agent process** —
+    taking down the update button too, not just backups. Caught by actually POSTing
+    `/backup/run` against a locally-running instance, not by reading the code. Fixed by
+    moving both guards inside their try blocks and adding a synchronous pre-check in the
+    HTTP handler (belt and suspenders — the handler now returns a clean `400` before ever
+    reaching the async path). Re-verified after the fix: clean 400, process survives.
+  - Also exercised for real: the full `runBackupNow` pipeline through the actual
+    `docker compose exec postgres pg_dump` step (failed cleanly — a throwaway test
+    `.env.prod` had no `DOMAIN`/`POSTGRES_PASSWORD`, unrelated to Borg itself — and the
+    failure was correctly caught, logged, and recorded in run history without crashing).
+  - **Never exercised**: the actual `borg` binary (`init`/`create`/`list`/`extract`/`prune`)
+    — not installed on the Windows dev machine this was built on. First real backup and
+    first real restore on production should be watched closely, not trusted blind.
 
 ## 4. Known gaps / open work
 
@@ -179,10 +218,15 @@ Verified present in the repo (code + docs, not just described in memory):
 - **The "Update Server" button has never triggered a real deploy** — verified locally
   against a scratch/dirty-tree setup only (see §3), never against the actual `nextcloud`
   host or a genuinely clean repo. First real use should be watched closely (check
-  `pm2 logs clocker-updater` or the in-app log viewer) rather than trusted blind. Also
+  `pm2 logs clocker-host-agent` or the in-app log viewer) rather than trusted blind. Also
   untested: whether the bundled Caddy's `host.docker.internal` route actually resolves on
   the real host's Docker version/OS (added `extra_hosts: host-gateway` for Linux, but this
   wasn't verified against a running container — only that Docker Compose accepted the config).
+- **BorgBackup has never run against a real `borg` binary** — not installed on the dev
+  machine this was built on (see §3 for exactly what *was* verified: the HTTP/config/guard
+  layer, and a real crash bug caught and fixed in it). Needs `apt install borgbackup` (or
+  equivalent) on the real host before Settings → Backups can do anything beyond configure
+  itself. First real backup and first real restore should both be watched closely.
 - **Web client's real-browser click-through pass** — parity work was verified by
   typecheck + production build + a scripted store-action replay against a real local
   server, not yet by a human actually clicking through in a browser. Worth doing before
@@ -232,11 +276,14 @@ and "security gaps" sections — read it before touching production).
 - **Web is deployed unconditionally alongside the server**, same domain, path-routed by
   Caddy (`/health`, `/auth/*`, `/sync/*` → server; everything else → web's static build) —
   not a separate subdomain, not opt-in.
-- **`npm run deploy` now also starts/restarts a host-side `clocker-updater` pm2 process**
-  (`scripts/updater-service.mjs`), auto-picking `UPDATER_PORT`/`UPDATER_BIND` and routing
-  `/update*` alongside the other paths, so the in-app "Update Server" button (§3) works.
-  Falls back to printing manual pm2/systemd instructions if pm2 isn't installed on the
-  host — nothing here has been confirmed against the real `nextcloud` host yet (§4).
+- **`npm run deploy` now also starts/restarts a host-side `clocker-host-agent` pm2 process**
+  (`scripts/host-agent.mjs`), auto-picking `HOST_AGENT_PORT`/`HOST_AGENT_BIND` and routing
+  `/update*` and `/backup*` alongside the other paths, so the in-app "Update Server" and
+  Settings → Backups (§3) work. Falls back to printing manual pm2/systemd instructions if
+  pm2 isn't installed on the host — nothing here has been confirmed against the real
+  `nextcloud` host yet (§4). Requires `borg` installed on the host separately (`apt install
+  borgbackup`) for the backup half specifically — the host agent itself starts fine
+  without it, just warns and fails backup/restore attempts until it's present.
 - **Ports are now stable across redeploys** (fixed in `d69b080`, 2026-09-11): a port is
   only scanned-for-free the *first* time a deploy runs (`SERVER_PORT`/`WEB_PORT` unset in
   `.env.prod`); once written, it's reused unconditionally on every later redeploy, never

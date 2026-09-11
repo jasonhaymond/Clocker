@@ -145,12 +145,87 @@ export interface UpdateStatus {
   log: string;
 }
 
-// Hits the host-side update-trigger service (scripts/updater-service.mjs), routed through
-// the same domain/token as everything else — see docs/deployment.md#triggering-an-update-from-the-app.
+// Hits the host-side host agent (scripts/host-agent.mjs), routed through
+// the same domain/token as everything else — see docs/deployment.md#the-host-agent.
 export function triggerServerUpdate() {
   return request<{ started: true }>("/update", { method: "POST", auth: true });
 }
 
 export function getServerUpdateStatus() {
   return request<UpdateStatus>("/update/status", { auth: true });
+}
+
+export interface BackupSchedule {
+  frequency: "daily" | "weekly" | "monthly";
+  hour: number;
+  minute: number;
+  weekday: number | null;
+  dayOfMonth: number | null;
+}
+
+export interface BackupConfig {
+  repoUrl: string | null;
+  passphraseSet: boolean;
+  retentionCount: number | null;
+  schedule: BackupSchedule | null;
+  sshPublicKey: string | null;
+}
+
+export interface BackupConfigUpdate {
+  repoUrl?: string;
+  passphrase?: string; // "" clears it
+  retentionCount?: number | null;
+  schedule?: Omit<BackupSchedule, "weekday" | "dayOfMonth"> & { weekday?: number; dayOfMonth?: number } | null;
+}
+
+export interface BackupOpStatus {
+  running: boolean;
+  kind: "backup" | "restore" | null;
+  archiveName: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  log: string;
+}
+
+export interface BackupRun {
+  kind: "backup" | "restore";
+  status: "success" | "error";
+  archiveName: string | null;
+  message: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface BackupArchive {
+  name: string;
+  time: string;
+}
+
+export function getBackupConfig() {
+  return request<BackupConfig>("/backup/config", { auth: true });
+}
+
+export function updateBackupConfig(patch: BackupConfigUpdate) {
+  return request<BackupConfig>("/backup/config", { method: "PATCH", body: patch, auth: true });
+}
+
+export function triggerBackup() {
+  return request<{ started: true }>("/backup/run", { method: "POST", auth: true });
+}
+
+export function getBackupStatus() {
+  return request<BackupOpStatus>("/backup/status", { auth: true });
+}
+
+export function getBackupRuns() {
+  return request<{ runs: BackupRun[] }>("/backup/runs", { auth: true });
+}
+
+export function getBackupArchives() {
+  return request<{ archives: BackupArchive[] }>("/backup/archives", { auth: true });
+}
+
+export function restoreBackup(archiveName: string, restoreDb: boolean, restoreEnv: boolean) {
+  return request<{ started: true }>("/backup/restore", { method: "POST", body: { archiveName, restoreDb, restoreEnv }, auth: true });
 }

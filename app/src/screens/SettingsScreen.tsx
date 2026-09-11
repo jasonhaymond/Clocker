@@ -10,6 +10,7 @@ import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from ".
 import { synchronize } from "../sync/sync";
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
+import { BackupsScreen } from "./BackupsScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
 
@@ -43,6 +44,7 @@ export function SettingsScreen() {
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
   const [showServerLog, setShowServerLog] = useState(false);
+  const [showBackups, setShowBackups] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
@@ -79,8 +81,8 @@ export function SettingsScreen() {
         setServerUpdate(status);
         if (status.running) pollRef.current = setInterval(pollServerUpdateStatus, 3000);
       })
-      // Silently ignored: most likely the update-trigger service just isn't deployed yet
-      // (see docs/deployment.md#triggering-an-update-from-the-app) — not worth alarming a
+      // Silently ignored: most likely the host agent just isn't deployed yet
+      // (see docs/deployment.md#the-host-agent) — not worth alarming a
       // user who never asked for this on first opening Settings.
       .catch(() => {});
     return stopPolling;
@@ -207,6 +209,12 @@ export function SettingsScreen() {
         </View>
       </View>
 
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.syncButton} onPress={() => setShowBackups(true)}>
+          <Text style={styles.syncButtonText}>Backups</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         style={styles.signOutButton}
         onPress={() => Alert.alert("Sign out", "You can sign back in any time; your data stays on the server.", [
@@ -216,6 +224,8 @@ export function SettingsScreen() {
       >
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
+
+      {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
     </View>
   );
 }

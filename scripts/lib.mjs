@@ -99,3 +99,11 @@ export function readEnvValue(filePath, key) {
   const match = readFileSync(filePath, "utf8").match(new RegExp(`^${key}=(.*)$`, "m"));
   return match ? match[1].trim().replace(/^"|"$/g, "") : null;
 }
+
+// Shared between scripts/deploy.mjs (which picks the mode) and scripts/host-agent.mjs
+// (which needs the same compose file later to run `exec postgres pg_dump`/`pg_restore`
+// for backups) — one place so they can never disagree about which file a given
+// PROXY_MODE maps to.
+export function composeFileFor(mode) {
+  return mode === "external" ? "docker-compose.prod.external-proxy.yml" : "docker-compose.prod.yml";
+}

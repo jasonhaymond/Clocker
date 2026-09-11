@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import {
   captureOutput,
   commandExists,
+  composeFileFor,
   fail,
   findFreePort,
   readEnvValue,
@@ -63,10 +64,6 @@ for (const flag of valueFlags) {
   }
 }
 const domainArg = args.find((a, i) => !a.startsWith("--") && !consumedIndices.has(i));
-
-function composeFileFor(mode) {
-  return mode === "external" ? "docker-compose.prod.external-proxy.yml" : "docker-compose.prod.yml";
-}
 
 section("Checking prerequisites");
 if (!commandExists("docker --version")) {
@@ -170,36 +167,36 @@ if (proxyMode === "external") {
   }
 }
 
-section("Configuring the update-trigger service");
-// Independent of PROXY_MODE — the updater is a host process either way (never a Docker
-// container, see scripts/updater-service.mjs for why), so it needs a real host port
+section("Configuring the host agent");
+// Independent of PROXY_MODE — the host agent is a host process either way (never a Docker
+// container, see scripts/host-agent.mjs for why), so it needs a real host port
 // regardless of whether the bundled Caddy or an external one is reaching it. Same
 // "scanned once, then reused forever" rule as SERVER_PORT/WEB_PORT above.
-let updaterPort = readEnvValue(envProdPath, "UPDATER_PORT");
-if (updaterPort) {
-  step(`Using configured updater port ${updaterPort} (not re-scanned on redeploy)`);
+let hostAgentPort = readEnvValue(envProdPath, "HOST_AGENT_PORT");
+if (hostAgentPort) {
+  step(`Using configured host agent port ${hostAgentPort} (not re-scanned on redeploy)`);
 } else {
-  updaterPort = String(await findFreePort(4001));
-  step(`Port 4001+ scanned — selected ${updaterPort} for the update-trigger service`);
+  hostAgentPort = String(await findFreePort(4001));
+  step(`Port 4001+ scanned — selected ${hostAgentPort} for the host agent`);
 }
-upsertEnvLine(envProdPath, "UPDATER_PORT", updaterPort);
-if (!readEnvValue(envProdPath, "UPDATER_BIND")) {
-  upsertEnvLine(envProdPath, "UPDATER_BIND", "0.0.0.0");
+upsertEnvLine(envProdPath, "HOST_AGENT_PORT", hostAgentPort);
+if (!readEnvValue(envProdPath, "HOST_AGENT_BIND")) {
+  upsertEnvLine(envProdPath, "HOST_AGENT_BIND", "0.0.0.0");
 }
 
 if (!commandExists("pm2 --version")) {
-  warn("pm2 isn't installed — the in-app \"Update Server\" button won't work until the updater service is running.");
+  warn("pm2 isn't installed — the in-app \"Update Server\"/\"Back Up Now\" buttons won't work until the host agent is running.");
   warn("Install pm2 (`npm install -g pm2`) then run:");
-  warn(`  pm2 start scripts/updater-service.mjs --name clocker-updater --cwd "${rootDir}" && pm2 save`);
-  warn("Or run it under systemd instead — see docs/deployment.md#triggering-an-update-from-the-app for a ready-to-paste unit file.");
+  warn(`  pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}" && pm2 save`);
+  warn("Or run it under systemd instead — see docs/deployment.md#the-host-agent for a ready-to-paste unit file.");
 } else {
-  const alreadyManaged = captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-updater"');
+  const alreadyManaged = captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-host-agent"');
   if (alreadyManaged) {
-    step("Restarting the already-running clocker-updater pm2 process...");
-    run("pm2 restart clocker-updater", { cwd: rootDir, optional: true });
+    step("Restarting the already-running clocker-host-agent pm2 process...");
+    run("pm2 restart clocker-host-agent", { cwd: rootDir, optional: true });
   } else {
-    step("Starting the clocker-updater pm2 process for the first time...");
-    run(`pm2 start scripts/updater-service.mjs --name clocker-updater --cwd "${rootDir}"`, { cwd: rootDir, optional: true });
+    step("Starting the clocker-host-agent pm2 process for the first time...");
+    run(`pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}"`, { cwd: rootDir, optional: true });
   }
   run("pm2 save", { cwd: rootDir, optional: true });
 }
@@ -392,9 +389,9 @@ const appBuildLine = appBuildStarted
   : wantsSkipApp
     ? "Mobile app: skipped (--skip-app)."
     : "Mobile app: not built this run — see the warning above for why, and how to include it next time.";
-const updaterManaged = commandExists("pm2 --version") && captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-updater"');
+const updaterManaged = commandExists("pm2 --version") && captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-host-agent"');
 const updaterLine = updaterManaged
-  ? "Update-trigger service: running under pm2 as \"clocker-updater\" — the in-app \"Update Server\" button is live."
+  ? "Update-trigger service: running under pm2 as \"clocker-host-agent\" — the in-app \"Update Server\" button is live."
   : "Update-trigger service: NOT running — see the warning above to start it before the in-app \"Update Server\" button will work.";
 if (proxyMode === "local") {
   console.log(`
@@ -430,7 +427,10 @@ ${domain} {
         reverse_proxy <this-machine's-address>:${serverPort}
     }
     handle /update* {
-        reverse_proxy <this-machine's-address>:${updaterPort}
+        reverse_proxy <this-machine's-address>:${hostAgentPort}
+    }
+    handle /backup* {
+        reverse_proxy <this-machine's-address>:${hostAgentPort}
     }
     handle {
         reverse_proxy <this-machine's-address>:${webPort}
@@ -443,7 +443,7 @@ its LAN IP, a private network hostname, a VPN/Tailscale address, etc. (this scri
 know which, since your proxy runs elsewhere). Not using Caddy on the other end? Translate
 the same "path -> this host:port" rules into your proxy's own config format.
 
-Make sure ports ${serverPort}, ${webPort}, and ${updaterPort} are actually reachable from your
+Make sure ports ${serverPort}, ${webPort}, and ${hostAgentPort} are actually reachable from your
 proxy's machine — a firewall rule scoped to its specific IP is safer than leaving it open
 to everything. See docs/deployment.md#deploying-behind-your-own-reverse-proxy.
 

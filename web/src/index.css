@@ -123,6 +123,78 @@ hr {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.screen-header {
+  margin-bottom: 12px;
+}
+.screen section label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin: 10px 0 4px;
+}
+.screen section select {
+  font: inherit;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.archive-row {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 0;
+}
+.archive-row:last-child {
+  border-bottom: none;
+}
+.archive-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.restore-panel {
+  margin-top: 10px;
+  padding: 10px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.checkbox-row input {
+  width: auto;
+}
+.run-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+}
+.run-row:last-child {
+  border-bottom: none;
+}
+.run-status {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.run-status-success {
+  background: #dcfce7;
+  color: #166534;
+}
+.run-status-error {
+  background: #fef2f2;
+  color: #991b1b;
+}
 
 /* App shell */
 .app-shell {

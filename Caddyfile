@@ -23,12 +23,15 @@
 	handle /sync/* {
 		reverse_proxy server:3001
 	}
-	# The update-trigger service (scripts/updater-service.mjs) runs on the host, not as a
+	# The host agent (scripts/host-agent.mjs) runs on the host, not as a
 	# service in this compose stack, so it's reached via host.docker.internal (mapped in
 	# docker-compose.prod.yml) rather than a service name — see
-	# docs/deployment.md#triggering-an-update-from-the-app.
+	# docs/deployment.md#the-host-agent.
 	handle /update* {
-		reverse_proxy host.docker.internal:{$UPDATER_PORT:4001}
+		reverse_proxy host.docker.internal:{$HOST_AGENT_PORT:4001}
+	}
+	handle /backup* {
+		reverse_proxy host.docker.internal:{$HOST_AGENT_PORT:4001}
 	}
 	handle {
 		reverse_proxy web:80

@@ -231,6 +231,10 @@ dependencies, and applies any new migrations.
 - A "remember me" JWT (checked by default) never expires and there's no refresh/revocation
   flow beyond rotating `JWT_SECRET` (logs out every device) — fine for a personal app,
   worth revisiting if this ever gets multi-user.
-- Settings' "Update Server" button reuses the app's own auth token against a separate
-  host-side service (`scripts/updater-service.mjs`) rather than a dedicated admin role —
-  same reasoning as above, fine for one user.
+- Settings' "Update Server" button and Backups screen both reuse the app's own auth token
+  against a separate host-side service (`scripts/host-agent.mjs`) rather than a dedicated
+  admin role — same reasoning as above, fine for one user.
+- Settings → Backups needs `borg` installed on the deploy host (`apt install borgbackup`)
+  to actually create/restore anything — the config UI itself works without it, but a
+  backup attempt will fail until it's present. See
+  [`docs/deployment.md#backups-borgbackup`](./docs/deployment.md#backups-borgbackup).

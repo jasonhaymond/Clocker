@@ -348,50 +348,48 @@ internal (self-signed, not Let's Encrypt) CA, which your phone/browser won't tru
 default, but confirms the containers wire up correctly before pointing a real domain at
 them.
 
-## Triggering an update from the app
+## The host agent
 
-Settings on both clients has an "Update Server" button — tap it and the server pulls the
-latest committed code and redeploys (`git pull --ff-only && npm install && npm run deploy
--- --skip-app`), without you having to SSH in. It deliberately skips the mobile app build
-(a UI button shouldn't silently kick off an EAS cloud build); a full rebuild including the
-app still goes through `npm run deploy` by hand, or `npm run deploy:app` for a JS-only OTA
-update.
+**Why this exists.** The server itself runs inside Docker, so it has no access to the
+host's git repo, Docker socket, or arbitrary host filesystem paths by design — giving it
+that access would let a compromised server container control the whole Docker host.
+Two features need exactly that kind of host access anyway: triggering a full redeploy,
+and taking a real Borg backup (which needs `docker compose exec` to reach Postgres, plus
+the host's `.env.prod` for the secrets half of a backup). Rather than punch a hole in the
+container for either, `npm run deploy` also starts a small script,
+`scripts/host-agent.mjs`, directly on the host (never inside a container), exposing a
+handful of HTTP endpoints both clients' Settings screens call. Because it runs on the
+host, it keeps running (and can report status) even while an update it triggers rebuilds
+and restarts every container, the API server included.
 
-**Why this needs a separate process.** The server itself runs inside Docker, so it has no
-access to the host's git repo or Docker socket by design — giving it that access would let
-a compromised server container control the whole Docker host. Instead, `npm run deploy`
-also starts a small script, `scripts/updater-service.mjs`, directly on the host (never
-inside a container) that exposes one HTTP endpoint for this. Because it runs on the host,
-it keeps running (and can report status) even while the update it triggers rebuilds and
-restarts every container, the API server included.
+**Auth** reuses `JWT_SECRET` from `.env.prod` for every endpoint below — the host agent
+verifies the same bearer token the app already sends to `/sync/*`, rather than a separate
+secret to configure per device. This is appropriate for a personal single-user app (any
+signed-in device can already read/write all of that user's data); it would need real
+access control before use by more than one trusted person.
 
-**Auth** reuses `JWT_SECRET` from `.env.prod` — the updater verifies the same bearer token
-the app already sends to `/sync/*`, rather than a separate secret to configure per device.
-This is appropriate for a personal single-user app (any signed-in device can already
-read/write all of that user's data); it would need real access control before use by more
-than one trusted person.
-
-**Reachability**: `npm run deploy` auto-picks `UPDATER_PORT`/`UPDATER_BIND` in `.env.prod`
-(same "scanned once, then reused forever" rule as `SERVER_PORT`/`WEB_PORT`) and routes
-`/update*` to it under the same domain as everything else — the bundled Caddyfile reaches
-it via `host.docker.internal`; the external-proxy snippet gets its own `handle /update*`
-block alongside `/health`/`/auth/*`/`/sync/*`. If you're on `PROXY_MODE=external`, re-paste
-the updated snippet into your proxy after your first deploy with this feature.
+**Reachability**: `npm run deploy` auto-picks `HOST_AGENT_PORT`/`HOST_AGENT_BIND` in
+`.env.prod` (same "scanned once, then reused forever" rule as `SERVER_PORT`/`WEB_PORT`)
+and routes `/update*` and `/backup*` to it under the same domain as everything else — the
+bundled Caddyfile reaches it via `host.docker.internal`; the external-proxy snippet gets
+its own `handle` blocks for both, alongside `/health`/`/auth/*`/`/sync/*`. If you're on
+`PROXY_MODE=external`, re-paste the updated snippet into your proxy after your first
+deploy with this feature.
 
 **Starting the service**: `npm run deploy` starts/restarts it under pm2 automatically if
 pm2 is installed (`npm install -g pm2`) and prints a warning with the manual command if
 not. To run it under systemd instead:
 
 ```ini
-# /etc/systemd/system/clocker-updater.service
+# /etc/systemd/system/clocker-host-agent.service
 [Unit]
-Description=Clocker update-trigger service
+Description=Clocker host agent
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=/path/to/Clocker
-ExecStart=/usr/bin/node scripts/updater-service.mjs
+ExecStart=/usr/bin/node scripts/host-agent.mjs
 Restart=on-failure
 User=<your-deploy-user>
 
@@ -399,14 +397,91 @@ User=<your-deploy-user>
 WantedBy=multi-user.target
 ```
 
-then `systemctl enable --now clocker-updater`. Either way, `npm run deploy` still manages
-everything else (containers, DB snapshot, EAS build) the same as before — the updater is
-the one piece that has to live outside that, on the host.
+then `systemctl enable --now clocker-host-agent`. Either way, `npm run deploy` still
+manages everything else (containers, DB snapshot, EAS build) the same as before — the
+host agent is the one piece that has to live outside that, on the host.
+
+### Triggering an update from the app
+
+Settings on both clients has an "Update Server" button — tap it and the server pulls the
+latest committed code and redeploys (`git pull --ff-only && npm install && npm run deploy
+-- --skip-app`), without you having to SSH in. It deliberately skips the mobile app build
+(a UI button shouldn't silently kick off an EAS cloud build); a full rebuild including the
+app still goes through `npm run deploy` by hand, or `npm run deploy:app` for a JS-only OTA
+update. Refuses to run if the host's working tree has uncommitted changes, or if an update
+is already in progress.
 
 **Limits, deliberately not addressed**: no rollback if the pulled commit is broken (same
-as running `npm run deploy` by hand); no queue (a second tap while one is running is
-rejected with a "already running" error, not queued); refuses to run if the host's working
-tree has uncommitted changes, same as `scripts/update.mjs`.
+as running `npm run deploy` by hand); no queue (a second tap while one is running, or while
+a backup/restore is running, is rejected with an "already running" error, not queued).
+
+### Backups (BorgBackup)
+
+Settings → Backups on both clients configures and triggers encrypted, deduplicated
+backups via [BorgBackup](https://borgbackup.readthedocs.io/), instead of relying only on
+the plain `pg_dump` snapshot `npm run deploy` already takes before every deploy (that one
+stays — it's a quick pre-deploy rollback point, not a retained backup history). Requires
+`borg` installed on the host (`apt install borgbackup` on Debian/Ubuntu; the host agent
+logs a warning at startup if it's missing).
+
+**What's backed up, and how**: each run stages a `pg_dump -Fc` (custom format) of the
+database plus a copy of `.env.prod` (the secrets a database-only backup can't recover —
+per the global backup standard, a restore that only brings back the database still leaves
+the app unable to start) into a temp directory, then `borg create --compression zstd
+<repo>::clocker-<timestamp> .`. If a retention count is set, `borg prune --keep-last N`
+runs afterward — a single most-recent-N count, not tiered daily/weekly/monthly retention.
+
+**Where it's configured**: unlike everything else in `.env.prod`, backup settings
+(repo URL, passphrase, retention, schedule) live in their own file on the host,
+`.backup-config.json` (gitignored), managed entirely through the app's Settings → Backups
+screen — there's nothing to hand-edit. This is deliberate: the main server has no host
+filesystem access (same reason the host agent exists at all), so it can't be the thing
+storing these settings in its own database the way a less-sandboxed app might.
+
+**Repository location** — either:
+- **A local path** on the same disk (e.g. `/mnt/backups/clocker`), simplest to set up but
+  — per the global backup standard — doesn't protect against this host itself failing.
+- **A remote SSH target** (`user@host:path`), which does. The host agent generates a
+  dedicated Ed25519 keypair on first use (`.backup-ssh/`, gitignored, isolated from any
+  ambient SSH identity on this host) — copy its public key (shown at the top of Settings →
+  Backups) into the **backup server's** `authorized_keys`, restricted to exactly this:
+  ```
+  command="borg serve --restrict-to-repository /srv/clocker-backup/repositories/clocker",restrict ssh-ed25519 AAAA... clocker-backup
+  ```
+  Create that repository directory on the backup server (`mkdir -p
+  /srv/clocker-backup/repositories/clocker`) before the first backup runs — Borg
+  initializes the repo itself (`borg init --encryption repokey-blake2`) the first time it's
+  used, but the directory and the restricted `authorized_keys` entry are yours to set up
+  (this is exactly the kind of system-level, another-host config this project won't
+  automate — see the global standard's automation risk-tiering).
+
+**The passphrase is genuinely unrecoverable if lost** — repokey-blake2 encryption derives
+the key from it, and it's stored write-only (Settings never redisplays it, only whether
+one is set). Save it somewhere real (a password manager) the moment you set it; there's no
+recovery path in this app if it's lost, only for-the-future rotation.
+
+**Restoring**: pick an archive in Settings → Backups, choose database and/or secrets, type
+the archive's name to confirm (matches Haydrop's own restore-confirmation pattern), and
+restore. Before touching anything, the host agent takes its own quick pre-restore
+`pg_dump --clean --if-exists` safety snapshot to `backups/` — independent of Borg
+entirely — so a bad restore is itself recoverable. Restoring secrets that changed
+`JWT_SECRET` signs every device out; restoring the database always runs `pg_restore
+--clean --if-exists`, which drops and recreates existing objects rather than merging.
+
+**Scheduling**: the plain-language picker (Off/Daily/Weekly/Monthly + time) is converted
+to a cron string by the host agent itself (`node-cron`) — no cron syntax to write by hand,
+and no separate reboot-persistent cron entry to maintain, since the schedule re-arms
+automatically whenever the host agent (re)starts or the schedule is saved.
+
+**Never verified against a real `borg` binary from any Claude session** (no `borg`
+installed on the Windows dev machine this was built on) — the HTTP layer, config
+persistence, cron round-tripping, and the crash this exact gap already caused once (a
+config-validation guard that threw outside its own try/catch, taking down the whole host
+agent process on the very first un-configured trigger — fixed, and now covered by the
+synchronous pre-check on both trigger routes) were all exercised for real. The actual
+`borg create`/`list`/`extract` invocations were not. Treat the first real backup and the
+first real restore on production as the actual test of this feature, not a formality —
+watch `pm2 logs clocker-host-agent` or the in-app log viewer closely.
 
 ## Database backups
 
@@ -416,7 +491,9 @@ any other backup mechanism, and skipped gracefully on a brand-new deployment whe
 there's no existing database yet. This is cheap insurance, not a full backup strategy: it
 only runs at deploy time, only lives on this one host's disk, and there's no retention
 policy pruning old ones — copy them somewhere else (another machine, object storage) for
-anything that actually matters, and prune `backups/` yourself periodically.
+anything that actually matters, and prune `backups/` yourself periodically. For an actual
+retained, encrypted, optionally off-host backup history — the thing that "actually
+matters" above is pointing at — see [Backups (BorgBackup)](#backups-borgbackup).
 
 To restore one:
 

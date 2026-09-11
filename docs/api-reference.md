@@ -4,7 +4,7 @@ Base URL is whatever `EXPO_PUBLIC_API_URL` points at on the client (default
 `http://localhost:3001`, though the actual port on your machine depends on what
 `npm run setup` picked — see [Automatic port selection](./development.md#automatic-port-selection)).
 The examples below use `3001`; substitute your own. All request/response bodies are JSON.
-Source: `server/src/routes/*.ts`, except [Deployment](#deployment) (`scripts/updater-service.mjs`,
+Source: `server/src/routes/*.ts`, except [Deployment](#deployment) (`scripts/host-agent.mjs`,
 a separate process — see that section for why).
 
 ## Authentication
@@ -210,8 +210,8 @@ Save `serverTimestamp` as the new cursor for the next call's `since`.
 ## Deployment
 
 Not served by `server/` at all — routed to a separate host process
-(`scripts/updater-service.mjs`) under the same domain. Full rationale:
-[`deployment.md#triggering-an-update-from-the-app`](./deployment.md#triggering-an-update-from-the-app).
+(`scripts/host-agent.mjs`) under the same domain. Full rationale:
+[`deployment.md#the-host-agent`](./deployment.md#the-host-agent).
 
 ### `POST /update`
 
@@ -241,6 +241,104 @@ Same auth. Poll this after a `202` from `POST /update` until `running` is `false
 
 `log` is a capped tail (last 500 lines) of the triggered command's combined
 stdout/stderr, reset at the start of each run.
+
+All endpoints below require the same `Authorization: Bearer <token>`. Full rationale and
+setup: [`deployment.md#backups-borgbackup`](./deployment.md#backups-borgbackup).
+
+### `GET /backup/config`
+
+```json
+→ 200 {
+  "repoUrl": "/mnt/backups/clocker",
+  "passphraseSet": true,
+  "retentionCount": 14,
+  "schedule": { "frequency": "daily", "hour": 3, "minute": 0, "weekday": null, "dayOfMonth": null },
+  "sshPublicKey": "ssh-ed25519 AAAA... clocker-backup"
+}
+```
+
+`passphraseSet` is the only signal about the passphrase — it's never returned.
+`sshPublicKey` is generated once on first use and always present.
+
+### `PATCH /backup/config`
+
+Every field optional; only what's sent is changed.
+
+```json
+{
+  "repoUrl": "/mnt/backups/clocker",
+  "passphrase": "correct horse battery staple",   // "" clears it
+  "retentionCount": 14,                             // null = never auto-prune
+  "schedule": { "frequency": "daily", "hour": 3, "minute": 0 }   // null = off
+}
+```
+
+```json
+→ 200 <same shape as GET /backup/config>
+```
+
+### `POST /backup/run`
+
+Body: none.
+
+```json
+→ 202 { "started": true }
+→ 400 { "error": "Backup repo/passphrase aren't configured yet — set them in Settings first." }
+→ 409 { "error": "Another operation is already running" }
+```
+
+### `GET /backup/status`
+
+Poll after a `202` from `POST /backup/run` or `POST /backup/restore` until `running` is `false`.
+
+```json
+→ 200 {
+  "running": false,
+  "kind": "backup",
+  "archiveName": "clocker-2026-09-11T18-59-01-483Z",
+  "startedAt": "2026-09-11T18:59:01.483Z",
+  "finishedAt": "2026-09-11T18:59:02.035Z",
+  "exitCode": 0,
+  "log": "[backup] Staging database dump and secrets...\n..."
+}
+```
+
+### `GET /backup/runs`
+
+Recent run history (most recent first, capped at 50), independent of `borg list` — this is
+for at-a-glance troubleshooting, not the source of truth for what's restorable.
+
+```json
+→ 200 { "runs": [ { "kind": "backup", "status": "success", "archiveName": "clocker-...",
+                     "message": "Archive clocker-... created",
+                     "startedAt": "...", "finishedAt": "..." } ] }
+```
+
+### `GET /backup/archives`
+
+Runs `borg list --json` against the configured repo — the actual source of truth for
+what's restorable.
+
+```json
+→ 200 { "archives": [ { "name": "clocker-2026-09-11T18-59-01-483Z", "time": "..." } ] }
+→ 400 { "error": "..." }   // repo/passphrase not configured, or borg itself failed
+```
+
+### `POST /backup/restore`
+
+```json
+{ "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false }
+```
+
+At least one of `restoreDb`/`restoreEnv` is required. Takes its own pre-restore safety
+snapshot before touching anything — see the deployment doc.
+
+```json
+→ 202 { "started": true }
+→ 400 { "error": "archiveName is required" }
+→ 400 { "error": "Choose at least one of restoreDb/restoreEnv" }
+→ 409 { "error": "Another operation is already running" }
+```
 
 ## Manual smoke test
 

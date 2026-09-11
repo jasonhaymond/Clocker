@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
 import { getPromptForNotesOnClockOut, setPromptForNotesOnClockOut } from "../lib/preferences";
 import { useStore } from "../store";
+import { BackupsScreen } from "./BackupsScreen";
 
 export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
+  const [showBackups, setShowBackups] = useState(false);
   const [promptForNotes, setPromptForNotes] = useState(getPromptForNotesOnClockOut());
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
@@ -36,8 +38,8 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
         setServerUpdate(status);
         if (status.running) pollRef.current = setInterval(pollStatus, 3000);
       })
-      // Silently ignored: most likely the update-trigger service just isn't deployed yet
-      // (see docs/deployment.md#triggering-an-update-from-the-app).
+      // Silently ignored: most likely the host agent just isn't deployed yet
+      // (see docs/deployment.md#the-host-agent).
       .catch(() => {});
     return stopPolling;
   }, [pollStatus, stopPolling]);
@@ -56,6 +58,10 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
     } finally {
       setTriggering(false);
     }
+  }
+
+  if (showBackups) {
+    return <BackupsScreen onClose={() => setShowBackups(false)} />;
   }
 
   return (
@@ -109,6 +115,12 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
             {showLog && <pre className="update-log">{serverUpdate.log}</pre>}
           </>
         )}
+      </section>
+
+      <section>
+        <button className="secondary-button" onClick={() => setShowBackups(true)}>
+          Backups
+        </button>
       </section>
 
       <section>
