@@ -15,6 +15,7 @@ import {
   setRateTierArchived,
   updateJobDetails,
   updateJobOvertime,
+  updateJobPromptForNotes,
   updateJobRounding,
   updateJobTimesheetSettings,
 } from "../db/database";
@@ -221,6 +222,7 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
     mode: job.roundingMode,
     incrementMinutes: job.roundingIncrementMinutes,
   });
+  const [promptForNotes, setPromptForNotes] = useState(job.promptForNotesOnClockOut);
   const [timesheet, setTimesheet] = useState({
     periodType: job.timesheetPeriodType,
     weekStartDay: job.timesheetWeekStartDay,
@@ -241,6 +243,11 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
   async function saveRounding(next: typeof rounding) {
     setRounding(next);
     await updateJobRounding(job.id, { roundingEnabled: next.enabled, roundingMode: next.mode, roundingIncrementMinutes: next.incrementMinutes });
+  }
+
+  async function savePromptForNotes(value: boolean) {
+    setPromptForNotes(value);
+    await updateJobPromptForNotes(job.id, value);
   }
 
   async function saveTimesheet(next: typeof timesheet) {
@@ -411,6 +418,12 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
           Rounds each clock-in/out to the nearest increment before computing hours and pay, like a physical
           timeclock. The actual punch times you recorded are never changed.
         </Text>
+
+        <View style={styles.overtimeHeader}>
+          <Text style={styles.sectionLabel}>Prompt for notes on clock out</Text>
+          <Switch value={promptForNotes} onValueChange={savePromptForNotes} />
+        </View>
+        <Text style={styles.hint}>Shows a quick note field right after clocking out of this job.</Text>
 
         <Text style={styles.sectionLabel}>Timesheet period</Text>
         <View style={styles.chipRow}>

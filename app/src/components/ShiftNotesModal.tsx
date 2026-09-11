@@ -3,7 +3,8 @@ import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "reac
 import { updateShiftTimes } from "../db/database";
 
 // Shared between History (editing an existing note) and the Clock screen (optionally
-// prompting for one right after clocking out — see preferences.ts).
+// prompting for one right after clocking out, per the job's promptForNotesOnClockOut
+// setting).
 export function ShiftNotesModal({
   shiftId,
   initialNotes,

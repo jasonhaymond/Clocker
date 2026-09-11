@@ -13,7 +13,6 @@ import {
   listRateTiers,
   startBreak,
 } from "../db/database";
-import { getPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
@@ -33,13 +32,8 @@ export function ClockScreen() {
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [, setTick] = useState(0);
-  const [promptForNotes, setPromptForNotes] = useState(false);
   const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
   const { pick, modal } = useDateTimePicker();
-
-  useEffect(() => {
-    getPromptForNotesOnClockOut().then(setPromptForNotes);
-  }, []);
 
   const load = useCallback(() => {
     listJobs(false).then(setJobs);
@@ -106,7 +100,8 @@ export function ClockScreen() {
   async function handleClockOut(shift: Shift, customTime?: Date) {
     await clockOut(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
-    if (promptForNotes) setNotesPrompt({ shiftId: shift.id, notes: shift.notes });
+    const job = jobs.find((j) => j.id === shift.jobId);
+    if (job?.promptForNotesOnClockOut) setNotesPrompt({ shiftId: shift.id, notes: shift.notes });
   }
 
   async function handleClockOutAt(shift: Shift) {

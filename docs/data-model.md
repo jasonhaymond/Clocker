@@ -76,12 +76,12 @@ the `Job` row.
 
 ## Timesheet periods, submission settings, and rounding (per job)
 
-Every job carries its own Timesheets-tab configuration directly as fields on the `Job` row
-— unlike `promptForNotesOnClockOut` (a genuine device-only preference), this is real job
-data other devices need to see the same way, so it's synced like everything else on `Job`
-rather than living in `app/src/lib/preferences.ts`/AsyncStorage. Different jobs can
-legitimately pay on different schedules and report to different people, which is why this
-is per-job rather than one app-wide setting.
+Every job carries its own Timesheets-tab configuration (and its rounding/notes-prompt
+settings) directly as fields on the `Job` row — this is real job data other devices need
+to see the same way, so it's synced like everything else on `Job` rather than living in a
+device-local preference/AsyncStorage. Different jobs can legitimately pay on different
+schedules, report to different people, or want a note prompt on one but not another,
+which is why this is per-job rather than one app-wide setting.
 
 - **Period definition** — `timesheetPeriodType` (`"weekly"` | `"biweekly"` | `"monthly"`),
   `timesheetWeekStartDay` (0=Sun..6=Sat, used by weekly/biweekly), `timesheetBiweeklyAnchor`
@@ -95,13 +95,18 @@ is per-job rather than one app-wide setting.
   managers (via `JobManager`). All configured from `JobDetailModal`.
 - **Time entry rounding** — `roundingEnabled`, `roundingMode` (`"up"` | `"down"` |
   `"nearest"`), and `roundingIncrementMinutes` (5/10/15/20/30/60/120). When enabled,
-  `app/src/lib/rounding.ts`'s `roundedWorkedMillis` rounds a *closed* shift's clock-in and
-  clock-out to the nearest increment before computing worked time — the same way a
-  physical timeclock rounds punches. The shift's stored `clockIn`/`clockOut` are never
-  altered; rounding only affects computed hours/pay, applied consistently everywhere
-  hours are calculated (`groupShiftsByJob` in `exportFormat.ts`, used by both the Export
-  and Timesheets tabs, and `HistoryScreen`'s own pay/duration calculations). A still-open
-  shift is never rounded. Breaks are never rounded, only the shift's own start/end.
+  `shared/src/rounding.ts`'s `roundedWorkedMillis` rounds a shift's clock-in and its
+  clock-out (or "now", for a still-open shift) to the nearest increment before computing
+  worked time — the same way a physical timeclock rounds punches. The shift's stored
+  `clockIn`/`clockOut` are never altered; rounding only affects computed hours/pay, applied
+  consistently everywhere an hours figure is shown (`groupShiftsByJob` in
+  `exportFormat.ts` for Export/Timesheets, and `HistoryScreen`'s own duration
+  calculations) — the one deliberate exception is the live elapsed-time stopwatch on the
+  Clock screen, which uses raw `workedMillis` instead so it doesn't visibly jump between
+  rounding increments. Breaks are never rounded, only the shift's own start/end-or-now.
+- **Prompt for notes on clock out** — `promptForNotesOnClockOut` (per job, default
+  `false`). Used to be a single device-local preference covering every job (never
+  synced); moved here since different jobs legitimately want different behavior.
 
 ## Server schema (PostgreSQL / Prisma)
 
@@ -132,6 +137,7 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `roundingEnabled` | `Boolean` | default `false` |
 | | `roundingMode` | `String` | `"up"` \| `"down"` \| `"nearest"` (default) |
 | | `roundingIncrementMinutes` | `Int` | default `15`; one of 5/10/15/20/30/60/120 |
+| | `promptForNotesOnClockOut` | `Boolean` | default `false` |
 | | `createdAt` / `updatedAt` | `DateTime` | `updatedAt` is Prisma's `@updatedAt` — server-set on every write, and the field sync pulls by |
 | | `deletedAt` | `DateTime?` | soft delete (tombstone) — see sync protocol |
 | **RateTier** | `id` | `String` (uuid) | primary key, **client-generated** |

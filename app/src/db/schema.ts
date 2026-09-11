@@ -129,9 +129,22 @@ CREATE TABLE IF NOT EXISTS job_managers (
 CREATE INDEX IF NOT EXISTS idx_job_managers_job_id ON job_managers (job_id);
 `;
 
-export const SCHEMA_VERSION = 4;
+// Version 5 — moves "prompt for notes on clock out" from a single device-local preference
+// (AsyncStorage) to a per-job, synced setting, since different jobs legitimately want
+// different behavior.
+const V5_JOB_PROMPT_FOR_NOTES_SQL = `
+ALTER TABLE jobs ADD COLUMN prompt_for_notes_on_clock_out INTEGER NOT NULL DEFAULT 0;
+`;
+
+export const SCHEMA_VERSION = 5;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
 // EXISTS), index 1 is version 2, and so on.
-export const MIGRATIONS: string[] = [BASELINE_SQL, V2_RATE_TIERS_SQL, V3_MANAGERS_SQL, V4_JOB_TIMESHEET_SQL];
+export const MIGRATIONS: string[] = [
+  BASELINE_SQL,
+  V2_RATE_TIERS_SQL,
+  V3_MANAGERS_SQL,
+  V4_JOB_TIMESHEET_SQL,
+  V5_JOB_PROMPT_FOR_NOTES_SQL,
+];

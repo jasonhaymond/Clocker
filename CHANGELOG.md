@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.2.0] - 2026-09-11
+
+### Added
+
+- "Prompt for notes on clock out" is now a per-job setting (each job's settings modal)
+  instead of one device-local preference covering every job.
+
+### Fixed
+
+- Timesheets/Export/History showed unrounded hours for a still-open (not yet clocked out)
+  shift even when the job had rounding enabled — the live Clock screen stopwatch is
+  unaffected (it deliberately never rounds).
+- Android: the login screen's password field text could become invisible against the OS's
+  autofill highlight.
+
 ## [1.1.0] - 2026-09-11
 
 ### Added

@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
-import { getPromptForNotesOnClockOut, setPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../sync/api";
 import { synchronize } from "../sync/sync";
@@ -39,7 +38,6 @@ export function SettingsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(updateState.get());
-  const [promptForNotes, setPromptForNotes] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
@@ -53,9 +51,6 @@ export function SettingsScreen() {
   useDbRefresh(load);
 
   useEffect(() => updateState.subscribe(setUpdate), []);
-  useEffect(() => {
-    getPromptForNotesOnClockOut().then(setPromptForNotes);
-  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -108,11 +103,6 @@ export function SettingsScreen() {
       { text: "Cancel", style: "cancel" },
       { text: "Update", onPress: updateServer },
     ]);
-  }
-
-  async function togglePromptForNotes(value: boolean) {
-    setPromptForNotes(value);
-    await setPromptForNotesOnClockOut(value);
   }
 
   async function syncNow() {
@@ -200,13 +190,9 @@ export function SettingsScreen() {
       </View>
 
       <View style={styles.card}>
-        <View style={styles.preferenceRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.preferenceLabel}>Prompt for notes when clocking out</Text>
-            <Text style={styles.preferenceHint}>Asks for an optional note right after you clock out of a shift.</Text>
-          </View>
-          <Switch value={promptForNotes} onValueChange={togglePromptForNotes} />
-        </View>
+        <Text style={styles.preferenceHint}>
+          "Prompt for notes when clocking out" is now a per-job setting — open a job's settings (Timesheets tab) to configure it.
+        </Text>
       </View>
 
       <View style={styles.card}>

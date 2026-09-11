@@ -66,6 +66,7 @@ function rowToJob(row: any): Job {
     roundingEnabled: !!row.rounding_enabled,
     roundingMode: row.rounding_mode,
     roundingIncrementMinutes: row.rounding_increment_minutes,
+    promptForNotesOnClockOut: !!row.prompt_for_notes_on_clock_out,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -255,6 +256,17 @@ export async function updateJobRounding(
     patch.roundingEnabled ? 1 : 0,
     patch.roundingMode,
     patch.roundingIncrementMinutes,
+    nowIso(),
+    id,
+  ]);
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
+export async function updateJobPromptForNotes(id: string, promptForNotesOnClockOut: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE jobs SET prompt_for_notes_on_clock_out = ?, updated_at = ? WHERE id = ?", [
+    promptForNotesOnClockOut ? 1 : 0,
     nowIso(),
     id,
   ]);
@@ -683,8 +695,8 @@ export async function upsertLocalJob(job: Job): Promise<void> {
     "INSERT INTO jobs (id, name, color_hex, archived, overtime_multiplier, overtime_weekly_threshold_hours, " +
       "timesheet_period_type, timesheet_week_start_day, timesheet_biweekly_anchor, timesheet_monthly_start_day, " +
       "timesheet_format, timesheet_include_earnings, timesheet_include_notes, timesheet_include_times, " +
-      "rounding_enabled, rounding_mode, rounding_increment_minutes, updated_at, deleted_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "rounding_enabled, rounding_mode, rounding_increment_minutes, prompt_for_notes_on_clock_out, updated_at, deleted_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(id) DO UPDATE SET name = excluded.name, color_hex = excluded.color_hex, archived = excluded.archived, " +
       "overtime_multiplier = excluded.overtime_multiplier, overtime_weekly_threshold_hours = excluded.overtime_weekly_threshold_hours, " +
       "timesheet_period_type = excluded.timesheet_period_type, timesheet_week_start_day = excluded.timesheet_week_start_day, " +
@@ -692,7 +704,9 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       "timesheet_format = excluded.timesheet_format, timesheet_include_earnings = excluded.timesheet_include_earnings, " +
       "timesheet_include_notes = excluded.timesheet_include_notes, timesheet_include_times = excluded.timesheet_include_times, " +
       "rounding_enabled = excluded.rounding_enabled, rounding_mode = excluded.rounding_mode, " +
-      "rounding_increment_minutes = excluded.rounding_increment_minutes, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+      "rounding_increment_minutes = excluded.rounding_increment_minutes, " +
+      "prompt_for_notes_on_clock_out = excluded.prompt_for_notes_on_clock_out, " +
+      "updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [
       job.id,
       job.name,
@@ -711,6 +725,7 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       job.roundingEnabled ? 1 : 0,
       job.roundingMode,
       job.roundingIncrementMinutes,
+      job.promptForNotesOnClockOut ? 1 : 0,
       job.updatedAt,
       job.deletedAt,
     ],

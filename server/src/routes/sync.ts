@@ -36,6 +36,7 @@ const jobInput = z.object({
     z.literal(60),
     z.literal(120),
   ]).optional(),
+  promptForNotesOnClockOut: z.boolean().optional(),
 });
 
 const rateTierInput = z.object({

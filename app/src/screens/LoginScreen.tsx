@@ -100,7 +100,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#fff" },
   title: { fontSize: 32, fontWeight: "700", textAlign: "center", marginBottom: 8 },
   subtitle: { textAlign: "center", color: "#666", marginBottom: 32 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 14, marginBottom: 12, fontSize: 16 },
+  // color/backgroundColor set explicitly (not just relying on defaults) because Android's
+  // autofill can tint a recognized login field's background — without an explicit text
+  // color here, the typed characters can end up the same color as that OS-applied tint
+  // and become invisible even though they're really there.
+  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 14, marginBottom: 12, fontSize: 16, color: "#111", backgroundColor: "#fff" },
   captchaRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 },
   captchaQuestion: { flex: 1, fontSize: 15, color: "#333" },
   captchaInput: { flex: 0, width: 90, marginBottom: 8 },

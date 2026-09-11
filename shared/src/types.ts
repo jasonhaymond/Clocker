@@ -26,6 +26,10 @@ export interface Job {
   roundingEnabled: boolean;
   roundingMode: RoundingMode;
   roundingIncrementMinutes: number;
+  // Per-job: prompt for an optional note right after clocking out of this job. Used to be
+  // a single device-local preference covering every job; different jobs legitimately want
+  // different behavior, so it moved here alongside the job's other settings.
+  promptForNotesOnClockOut: boolean;
   updatedAt: string;
   deletedAt: string | null;
 }

@@ -2,7 +2,6 @@ import { formatClock, formatDuration, workedMillis, type Break, type Shift } fro
 import { useEffect, useState } from "react";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { useDateTimePrompt } from "../lib/useDateTimePrompt";
-import { getPromptForNotesOnClockOut } from "../lib/preferences";
 import { useStore } from "../store";
 
 export function ClockScreen() {
@@ -12,7 +11,6 @@ export function ClockScreen() {
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const [notesPromptShift, setNotesPromptShift] = useState<Shift | null>(null);
-  const promptForNotes = getPromptForNotesOnClockOut();
 
   const openShifts = store.shifts.filter((s) => !s.clockOut);
   const openJobIds = new Set(openShifts.map((s) => s.jobId));
@@ -53,7 +51,8 @@ export function ClockScreen() {
 
   async function handleClockOut(shift: Shift, customTime?: Date) {
     await store.clockOut(shift, customTime?.toISOString());
-    if (promptForNotes) setNotesPromptShift(shift);
+    const job = store.jobs.find((j) => j.id === shift.jobId);
+    if (job?.promptForNotesOnClockOut) setNotesPromptShift(shift);
   }
 
   async function handleClockOutAt(shift: Shift) {

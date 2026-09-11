@@ -310,6 +310,21 @@ export function JobEditor({ job, onClose }: { job: Job; onClose: () => void }) {
             punch times you recorded are never changed.
           </p>
 
+          <div className="switch-row">
+            <div>
+              <h4>Prompt for notes on clock out</h4>
+              <p className="hint">Shows a quick note field right after clocking out of this job.</p>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={job.promptForNotesOnClockOut}
+                onChange={(e) => store.updateJobPromptForNotes(job, e.target.checked)}
+              />
+              <span className="switch-track" />
+            </label>
+          </div>
+
           <h4>Timesheet period</h4>
           <div className="chip-row">
             {PERIOD_TYPES.map((p) => (

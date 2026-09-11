@@ -41,6 +41,7 @@ function jobFromRow(row: any): Job {
     roundingEnabled: !!row.rounding_enabled,
     roundingMode: row.rounding_mode,
     roundingIncrementMinutes: row.rounding_increment_minutes,
+    promptForNotesOnClockOut: !!row.prompt_for_notes_on_clock_out,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };

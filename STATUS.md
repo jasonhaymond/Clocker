@@ -34,6 +34,16 @@ update capability) on the very first un-configured trigger — see §3 for detai
 itself was never exercised (not installed on the dev machine this was built on); only the
 surrounding HTTP/config/guard layer was verified for real.
 
+**Amended again:** same day, later session — started real version tracking
+(`CHANGELOG.md`, versions bumped to `1.1.0`/`0.2.0`) per explicit instruction to make this
+default practice on every project (§1). Fixed a real rounding bug found via a user
+screenshot: `roundedWorkedMillis` skipped rounding entirely for a still-open shift, so a
+job's "Timesheets"/"Export" hours weren't rounded until you actually clocked out, even
+though the pay-calculation pipeline itself was correct (§3). Moved "prompt for notes on
+clock out" from a single device-local preference to a per-job synced setting (§3). Fixed
+an Android-only bug: the login password field's text could become invisible against the
+OS's autofill highlight, since the input style never set an explicit text color (§3).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -198,6 +208,33 @@ Verified present in the repo (code + docs, not just described in memory):
   - **Never exercised**: the actual `borg` binary (`init`/`create`/`list`/`extract`/`prune`)
     — not installed on the Windows dev machine this was built on. First real backup and
     first real restore on production should be watched closely, not trusted blind.
+- **Rounding fix: a still-open shift's hours are now rounded too.** User reported (with a
+  screenshot) that Timesheets showed unrounded hours (e.g. "4h 17m") for a job with
+  rounding enabled. Traced to `shared/src/rounding.ts`'s `roundedWorkedMillis`: it
+  explicitly skipped rounding whenever a shift had no `clockOut` yet, falling back to raw
+  elapsed time — correct for the live ClockScreen stopwatch (which uses a *different*
+  function, `workedMillis`, on purpose) but wrong for History/Timesheets/Export's "hours"
+  figures, which the user expected to reflect rounding even mid-shift. Fixed by rounding
+  the end (clockOut, or "now" if still open) the same way the start already was. Verified
+  directly: an open shift started 4h17m ago now reports exactly 4.25h with 15-min
+  "nearest" rounding, vs. the unfixed 4.2833h; disabling rounding still returns the raw
+  value. Confirmed via the actual investigation, not a guess — first checked that the
+  calculation engine and the server's push/pull round-trip were both already correct
+  (they were) before finding the real defect in the open-shift branch.
+- **"Prompt for notes on clock out" moved from a device-local preference to a per-job
+  synced setting.** `Job.promptForNotesOnClockOut` (new Postgres migration
+  `20260911191746_add_job_prompt_for_notes`, new SQLite migration V5,
+  `SCHEMA_VERSION` bumped to `5`). Configured from each job's settings modal
+  (`JobDetailModal`/`JobEditor`) next to rounding/overtime; `app/src/lib/preferences.ts`
+  and `web/src/lib/preferences.ts` (which held only this one preference) are deleted.
+  Verified the field round-trips through a real push/pull against a running local server.
+- **Android login password field text was invisible.** User-reported with a screenshot:
+  Android's autofill highlighted the field a pale yellow, and since
+  `LoginScreen.tsx`'s input style never set an explicit `color`, the typed characters
+  ended up effectively the same color as that OS-applied tint. Fixed by setting an
+  explicit `color`/`backgroundColor` on the shared input style. Not yet re-verified on a
+  real Android device from this session (no device/emulator access) — worth confirming
+  the actual fix looks right, not just that it compiles.
 
 ## 4. Known gaps / open work
 

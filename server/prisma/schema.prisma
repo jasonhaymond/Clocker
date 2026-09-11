@@ -63,6 +63,11 @@ model Job {
   roundingEnabled              Boolean    @default(false)
   roundingMode                 String     @default("nearest") // "up" | "down" | "nearest"
   roundingIncrementMinutes     Int        @default(15)
+  // Per-job: whether clocking out of this job prompts for an optional note. Used to be a
+  // single device-local preference covering every job; moved here since different jobs
+  // legitimately want different behavior (e.g. always add a note for client billing on
+  // one job, never bothered for another) — see app/src/lib/preferences.ts's old comment.
+  promptForNotesOnClockOut    Boolean    @default(false)
   createdAt                   DateTime   @default(now())
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?

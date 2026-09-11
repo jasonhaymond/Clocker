@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
-import { getPromptForNotesOnClockOut, setPromptForNotesOnClockOut } from "../lib/preferences";
 import { useStore } from "../store";
 import { BackupsScreen } from "./BackupsScreen";
 
 export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
   const [showBackups, setShowBackups] = useState(false);
-  const [promptForNotes, setPromptForNotes] = useState(getPromptForNotesOnClockOut());
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -67,26 +65,9 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   return (
     <div className="screen">
       <section>
-        <div className="switch-row">
-          <div>
-            <div className="row-title">Prompt for notes on clock out</div>
-            <div className="hint">Shows a quick note field right after clocking out of any job.</div>
-          </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={promptForNotes}
-              onChange={(e) => {
-                setPromptForNotes(e.target.checked);
-                setPromptForNotesOnClockOut(e.target.checked);
-              }}
-            />
-            <span className="switch-track" />
-          </label>
-        </div>
-      </section>
-
-      <section>
+        <p className="hint">
+          "Prompt for notes on clock out" is now a per-job setting — open a job's ⚙ Settings (Timesheets tab) to configure it.
+        </p>
         <button className="secondary-button" onClick={() => store.refresh()} disabled={store.loading}>
           {store.loading ? "Refreshing…" : "Refresh"}
         </button>
