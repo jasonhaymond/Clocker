@@ -25,7 +25,6 @@ import {
   commandExists,
   fail,
   findFreePort,
-  isPortFree,
   readEnvValue,
   run,
   section,
@@ -129,12 +128,22 @@ upsertEnvLine(envProdPath, "JWT_SECRET", jwtSecret);
 let serverPort = null;
 let webPort = null;
 if (proxyMode === "external") {
-  const configuredServer = readEnvValue(envProdPath, "SERVER_PORT");
-  if (configuredServer && (await isPortFree(Number(configuredServer)))) {
-    serverPort = configuredServer;
-    step(`Using existing server port ${serverPort}`);
+  // Only scanned for a free port the *first* time (when unset) — once chosen, a port is
+  // reused unconditionally on every later deploy, never re-verified. This is a deliberate
+  // "new deployment vs. routine update" distinction (see the global dev-standards doc's
+  // port-selection guidance): re-checking on every run is actively wrong here, because
+  // the thing that would normally be "using" this port is this exact stack's own
+  // already-running server/web container — a plain socket-bind freshness check can't
+  // distinguish "taken by something else" from "taken by the container this same command
+  // is about to reuse," so it always reports the port busy and picks a new one, forever
+  // incrementing on every redeploy. If a configured port is ever genuinely unavailable
+  // (something unrelated grabbed it while this stack was down), `docker compose up` fails
+  // with a clear "port already allocated" error — fix it by hand then (edit .env.prod),
+  // the same pattern as changing a dev port in docs/development.md.
+  serverPort = readEnvValue(envProdPath, "SERVER_PORT");
+  if (serverPort) {
+    step(`Using configured server port ${serverPort} (not re-scanned on redeploy — see .env.prod.example if you need to change it)`);
   } else {
-    if (configuredServer) warn(`Configured server port ${configuredServer} is now in use by something else on this machine — picking a new one.`);
     serverPort = String(await findFreePort(3001));
     step(`Port 3001+ scanned — selected ${serverPort} for the server`);
   }
@@ -144,18 +153,12 @@ if (proxyMode === "external") {
     step("SERVER_BIND not set — defaulting to 0.0.0.0 (all interfaces); see .env.prod.example to restrict it.");
   }
 
-  // Scanned starting *after* whatever was just picked for the server, and re-checked
-  // even when a previously-configured WEB_PORT still looks free — a stale WEB_PORT that
-  // happens to equal the server's newly-picked port would otherwise cause "port already
-  // allocated" at `docker compose up` time, since nothing is actually bound yet at the
-  // moment either port is merely written to .env.prod.
-  const configuredWeb = readEnvValue(envProdPath, "WEB_PORT");
-  if (configuredWeb && configuredWeb !== serverPort && (await isPortFree(Number(configuredWeb)))) {
-    webPort = configuredWeb;
-    step(`Using existing web port ${webPort}`);
+  webPort = readEnvValue(envProdPath, "WEB_PORT");
+  if (webPort) {
+    step(`Using configured web port ${webPort} (not re-scanned on redeploy — see .env.prod.example if you need to change it)`);
   } else {
-    if (configuredWeb === serverPort) warn(`Configured web port ${configuredWeb} collides with the server's port — picking a new one.`);
-    else if (configuredWeb) warn(`Configured web port ${configuredWeb} is now in use by something else on this machine — picking a new one.`);
+    // Only scanned fresh (never re-verified afterward, per above) — starts after
+    // whatever SERVER_PORT is, so a first-ever setup can't pick the same port for both.
     webPort = String(await findFreePort(Number(serverPort) + 1));
     step(`Port ${Number(serverPort) + 1}+ scanned — selected ${webPort} for the web client`);
   }
@@ -294,8 +297,14 @@ if (wantsSkipApp) {
       } else {
         step(`Logged in to EAS as ${whoami}`);
         checkBakedApiUrl(rootDir, appDir, appProfile);
-        step("Submitting to EAS Build (not waiting for it to finish — this would otherwise block for several minutes)...");
-        appBuildStarted = run(`npx eas-cli@latest build --platform ${appPlatform} --profile ${appProfile} --non-interactive --no-wait`, {
+        // Deliberately not --non-interactive: the very first build ever needs to ask
+        // (interactively, right here) which EAS account/project to link, and forcing
+        // non-interactive mode turns that prompt into a hard failure ("EAS project not
+        // configured... cannot configure it in non-interactive mode") instead of asking.
+        // That one-time answer gets written to app.json (commit it afterward) — every
+        // build after that is unattended again on its own, nothing more to answer.
+        step("Submitting to EAS Build (--no-wait only skips waiting for the *build* to finish — if this is the very first build ever, EAS may ask here which account/project to link; answer it, this part isn't skippable)...");
+        appBuildStarted = run(`npx eas-cli@latest build --platform ${appPlatform} --profile ${appProfile} --no-wait`, {
           cwd: appDir,
           optional: true,
         });

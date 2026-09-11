@@ -246,13 +246,20 @@ published for *your* proxy to reach.
 
 - Uses `docker-compose.prod.external-proxy.yml` instead of `docker-compose.prod.yml` — no
   `caddy` service at all; nothing here ever touches ports 80/443.
-- Auto-picks a free host port for the server (starting at 3001, the same
-  scan-and-persist logic `npm run setup` uses for local dev — see
-  [Automatic port selection](./development.md#automatic-port-selection)), published as
-  `SERVER_PORT` in `.env.prod`, then a free port for the web client *starting after
-  whatever `SERVER_PORT` ended up being* (so they never collide), published as
-  `WEB_PORT`. Both re-verified on every run, so a port that's since been claimed by
-  something else on this machine gets replaced automatically, same as dev.
+- Auto-picks a free host port for the server the *first* time (starting at 3001), then a
+  free port for the web client *starting after whatever `SERVER_PORT` ended up being* (so
+  they never collide), published as `SERVER_PORT`/`WEB_PORT` in `.env.prod`. Unlike local
+  dev's [Automatic port selection](./development.md#automatic-port-selection), these are
+  **not** re-verified on every later redeploy — once set, a production port is reused
+  unconditionally. This is deliberate, not the dev behavior forgotten: a plain "is this
+  port free" check can't tell "taken by something else" apart from "taken by this same
+  stack's own already-running container," so re-checking on every run would see its own
+  server/web container occupying the port and conclude it needs a *different* one —
+  incrementing forever on every redeploy, never actually settling. If a configured port
+  is ever genuinely unavailable (something unrelated grabbed it while this stack was
+  down), `docker compose up` fails with a clear "port already allocated" error — fix it by
+  hand then (edit `SERVER_PORT`/`WEB_PORT` in `.env.prod`), the same as changing a dev
+  port.
 - Publishes both ports on `SERVER_BIND`/`WEB_BIND` (default `0.0.0.0`, i.e. every
   interface) since your proxy might be reachable only from elsewhere on the network —
   **this means the server and web client are each reachable as plain HTTP on their port
@@ -402,11 +409,14 @@ yours to supply. Running the server directly, set all of these however your host
   Set via `--local-proxy`/`--external-proxy` on `npm run deploy`, persisted from then on.
 - **`SERVER_PORT`** / **`SERVER_BIND`** (Compose path, `external` mode only) — the host
   port/interface the server is published on for your own proxy to reach. Auto-picked and
-  auto-set by `npm run deploy`; see [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy)
-  for the security note on `SERVER_BIND`.
+  auto-set by `npm run deploy` the first time only — reused as-is on every later redeploy,
+  never re-verified (see [What's different from the default (local) mode](#whats-different-from-the-default-local-mode)
+  for why); edit it by hand in `.env.prod` if you ever need to change it. See
+  [Deploying behind your own reverse proxy](#deploying-behind-your-own-reverse-proxy) for
+  the security note on `SERVER_BIND`.
 - **`WEB_PORT`** / **`WEB_BIND`** (Compose path, `external` mode only) — same idea as
   `SERVER_PORT`/`SERVER_BIND`, for the web client. Auto-picked *after* `SERVER_PORT` so
-  the two never collide, and auto-set by `npm run deploy`.
+  the two never collide, same "first time only" rule otherwise.
 
 ## Security gaps to close before this is public
 
@@ -534,6 +544,12 @@ verified, `scripts/deploy.mjs`:
 4. Submits the build (`eas build --platform android --profile preview` by default) with
    `--no-wait` — it doesn't block the rest of the deploy for the several minutes a cloud
    build takes; EAS prints a dashboard link/QR code once it's done, separately.
+   **The very first build ever is the one exception that isn't hands-off**: if `app.json`
+   isn't linked to an EAS project yet, `eas build` interactively asks right there in your
+   terminal which account/project to use (this is why the deploy script never passes
+   `--non-interactive` for this step) — answer it once, and it's written into `app.json`
+   (commit that change), after which every future deploy's build goes out unattended
+   again with nothing to answer.
 
 Override the platform/profile, or skip it for one run:
 
