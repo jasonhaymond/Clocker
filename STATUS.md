@@ -365,32 +365,23 @@ and "security gaps" sections — read it before touching production).
 
 ## 7. Recent history highlights
 
-`CHANGELOG.md` covers `1.1.0` onward (started 2026-09-11); full detailed history for
-everything before that is `git log` only (currently 42 commits, `c0b8dad` scaffold to
-`76f54e8` most recent). Newest-first highlights from `git log --oneline -60`:
+**`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
+`1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
+here.** Everything before that, plus full commit-level detail for anything after, is
+`git log` (currently 45 commits, `c0b8dad` scaffold to `51514cb` most recent). A few
+highlights predating the changelog, newest-first, kept for orientation rather than
+completeness:
 
-1. `76f54e8` Add full BorgBackup support (config, schedule, archives, restore)
-2. `c5b4963` Add an in-app "Update Server" button, backed by a host-side updater
-4. `c174cf1` Fold captcha/rate-limit commit hash into STATUS.md's history list
-5. `51297bf` Add self-hosted CAPTCHA, auth rate limiting, and remember-me login
-6. `f157682` Add full shift editing (times, breaks, notes) on both clients
-7. `fbc3d9f` Restore STATUS.md's prior content, destroyed by my own last commit
-8. `ab55f88` Add STATUS.md and the policy to keep it current (this file; note that its
-   very first update overwrote this same file's own prior content without reading it
-   first — recovered from git history and merged back in via `fbc3d9f`)
-9. `d55fcc8` Surface store action failures via a global error banner
-10. (not a commit) Manually fixed the external proxy's stale port config on `nextcloud` —
-    see §4/§5
-11. `9004c7d` Add mandatory pre-deploy database snapshot, per the global backup standard
-12. `d69b080` Fix two real deploy bugs: incrementing ports on redeploy, and EAS non-interactive
-13. `db897b0` Bring web client to full feature parity with the mobile app
-14. `cb18a21` Fold mobile app builds into `npm run deploy`; add feature-parity policy
-15. `5886a91` Deploy web on the same domain as the API, always, path-routed
-16. `68e5fda` Wire web client into external-proxy compose + `npm run deploy`; fix EAS monorepo build
-17. `60a57e0` Split web into its own thin client; extract shared logic; drop in-Expo web target
-18. Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
-    export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log` for
-    the rest.
+- `f157682` Add full shift editing (times, breaks, notes) on both clients
+- `ab55f88`/`fbc3d9f` Added STATUS.md, then had to recover it after overwriting it without
+  reading first — see §6 lesson on always reading before writing
+- `d55fcc8` Surface store action failures via a global error banner
+- `9004c7d`/`d69b080` Mandatory pre-deploy DB snapshot; fixed incrementing-ports and EAS
+  non-interactive deploy bugs
+- `db897b0`/`cb18a21`/`5886a91`/`68e5fda`/`60a57e0` Web client brought to full feature
+  parity, folded into `npm run deploy`, and deployed on the same domain as the API
+- Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
+  export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
 **Working tree**: clean at time of this audit (`git status` — nothing staged or modified,
 branch up to date with `origin/master`). One stray untracked file exists:
