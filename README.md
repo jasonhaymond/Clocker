@@ -192,6 +192,9 @@ dependencies, and applies any new migrations.
   for automatically right after clocking out (Settings toggle)
 - History grouped by day, with per-day and per-shift totals and computed pay; multi-select
   (long-press or tap a row while a selection is active) to delete several shifts at once
+- Tap any shift (still clocked in or already closed) to open its full editor: correct the
+  clock-in/out date and time, add/edit/delete breaks, and edit its note — no more
+  delete-and-recreate to fix a mistake
 - CSV export by date range (this week / last week / this month / last 90 days) and job,
   shared via the OS share sheet (iOS/Android)
 - Export as a clean, formatted HTML email draft (recipients, subject, and
@@ -217,8 +220,6 @@ dependencies, and applies any new migrations.
 
 ## Notes for future work
 
-- Editing a shift's clock-in/clock-out time from the History screen isn't wired up yet
-  (delete + re-create is the current workaround; notes/comments are editable, though).
 - Export/Timesheet submission works on both clients, via different mechanisms per
   platform (see `CLAUDE.md`): mobile opens a native email draft via `expo-mail-composer`
   (HTML formatting there is "not working perfectly on Android" per that library's own

@@ -11,10 +11,9 @@ stale by the time you read it — re-check anything load-bearing (`git log`, `gi
 the relevant doc) before acting on it.
 
 **Amended:** same day, later session — a real production incident (§4/§5) was diagnosed
-and fixed, the web client got a global error banner, and `CLAUDE.md` now requires this
-file to be kept current at the end of every work session (this amendment is that policy's
-first real use). Shift/break time editing is in progress as of this amendment — check
-`git log` before assuming it's still open.
+and fixed, the web client got a global error banner, `CLAUDE.md` now requires this file to
+be kept current at the end of every work session (this amendment is that policy's first
+real use), and full shift/break time editing shipped on both clients (§3).
 
 ## 1. What this is
 
@@ -100,6 +99,18 @@ Verified present in the repo (code + docs, not just described in memory):
   not just a local test: ports genuinely stayed fixed across redeploys on `nextcloud` —
   the 502 incident in §4/§5 was caused by a *stale external-proxy config* left over from
   before that fix landed, not by ports drifting again.
+- **Full shift editing, both clients**: tap any shift in History (open or already
+  clocked out) to correct its clock-in/out date and time, add/edit/delete breaks, and
+  edit its note — no more delete-and-recreate to fix a mistake. Mobile:
+  `app/src/components/ShiftEditor.tsx` + two new `database.ts` functions
+  (`updateBreakTimes`, `deleteBreak`). Web: `web/src/components/ShiftEditor.tsx` + the
+  same two actions added to `store.tsx`. Deliberately one-directional: you can *set* a
+  clock-out on a still-open shift (closing it), but not clear an existing one and reopen
+  it, since the rest of the app assumes at most one open shift per job. Verified against
+  a real running server (every new mutation shape replayed via `/sync/push`/`/sync/pull`,
+  including the "set clock-out on a previously-open shift" path) plus clean typecheck and
+  builds on both clients — not yet clicked through by hand in either a real browser or a
+  mobile device/simulator.
 
 ## 4. Known gaps / open work
 
@@ -111,10 +122,6 @@ Verified present in the repo (code + docs, not just described in memory):
   pass `--non-interactive` for this reason (see commit `d69b080`). If Jason has since done
   this himself outside a Claude session, re-check `app/app.json` before assuming this gap
   still stands.
-- **Editing a shift's clock-in/out time and breaks from History isn't built yet** —
-  delete+recreate is the current workaround (notes/comments ARE editable). **In progress
-  as of this amendment** — check `git log` for whether it landed; if so, update this
-  bullet and README's "Notes for future work" (which also still describes this as a gap).
 - **JWT refresh isn't implemented** — 180-day fixed expiry, no revocation short of
   rotating `JWT_SECRET` (logs out every device). Accepted as fine for personal/single-user
   use; flagged as a real gap in `docs/deployment.md#security-gaps-to-close-before-this-is-public`.

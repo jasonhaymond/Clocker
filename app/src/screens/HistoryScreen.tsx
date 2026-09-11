@@ -9,7 +9,7 @@ import {
   listRateVersionsForTiers,
   listShiftsInRange,
 } from "../db/database";
-import { ShiftNotesModal } from "../components/ShiftNotesModal";
+import { ShiftEditor } from "../components/ShiftEditor";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import {
   addDays,
@@ -195,7 +195,7 @@ export function HistoryScreen() {
         ListEmptyComponent={<Text style={styles.empty}>No shifts in the last {DAYS_BACK} days.</Text>}
       />
       {editingShift && (
-        <ShiftNotesModal shiftId={editingShift.id} initialNotes={editingShift.notes} onClose={() => setEditingShift(null)} />
+        <ShiftEditor shift={editingShift} onClose={() => setEditingShift(null)} />
       )}
     </>
   );

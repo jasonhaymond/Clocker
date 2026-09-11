@@ -85,6 +85,8 @@ interface StoreActions {
   deleteShifts(shifts: Shift[]): Promise<void>;
   startBreak(shiftId: string, startTime?: string): Promise<Break>;
   endBreak(brk: Break, endTime?: string): Promise<void>;
+  updateBreakTimes(brk: Break, patch: { start?: string; end?: string | null }): Promise<void>;
+  deleteBreak(brk: Break): Promise<void>;
 }
 
 const StoreContext = createContext<(StoreState & StoreActions) | null>(null);
@@ -302,6 +304,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       async endBreak(brk, endTime) {
         await pushChanges({ breaks: [{ ...brk, end: endTime ?? nowIso(), updatedAt: nowIso() }] });
+        await refresh();
+      },
+      async updateBreakTimes(brk, patch) {
+        await pushChanges({ breaks: [{ ...brk, ...patch, updatedAt: nowIso() }] });
+        await refresh();
+      },
+      async deleteBreak(brk) {
+        await pushChanges({ deletedBreakIds: [brk.id] });
         await refresh();
       },
     };

@@ -11,7 +11,7 @@ import {
   type ShiftPay,
 } from "@clocker/shared";
 import { useMemo, useState } from "react";
-import { ShiftNotesModal } from "../components/ShiftNotesModal";
+import { ShiftEditor } from "../components/ShiftEditor";
 import { useStore } from "../store";
 
 const DAYS_BACK = 90;
@@ -159,7 +159,7 @@ export function HistoryScreen() {
         </div>
       ))}
 
-      {editingShift && <ShiftNotesModal shift={editingShift} onClose={() => setEditingShift(null)} />}
+      {editingShift && <ShiftEditor shift={editingShift} onClose={() => setEditingShift(null)} />}
     </div>
   );
 }

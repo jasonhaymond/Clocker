@@ -507,6 +507,25 @@ export async function endBreak(breakId: string, endTime?: string): Promise<void>
   dbEvents.emit();
 }
 
+// General correction, unlike startBreak/endBreak's "now, or a specific moment as it
+// happens" framing — used by the shift editor to fix up a break's times after the fact.
+export async function updateBreakTimes(breakId: string, patch: { start?: string; end?: string | null }): Promise<void> {
+  const db = await getDb();
+  const current = await db.getFirstAsync("SELECT * FROM breaks WHERE id = ?", [breakId]);
+  if (!current) return;
+  const merged = { ...rowToBreak(current), ...patch };
+  await db.runAsync("UPDATE breaks SET start = ?, end = ?, updated_at = ? WHERE id = ?", [merged.start, merged.end, nowIso(), breakId]);
+  await markPending("break", breakId, "upsert");
+  dbEvents.emit();
+}
+
+export async function deleteBreak(breakId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE breaks SET deleted_at = ? WHERE id = ?", [nowIso(), breakId]);
+  await markPending("break", breakId, "delete");
+  dbEvents.emit();
+}
+
 export async function listBreaksForShift(shiftId: string): Promise<Break[]> {
   const db = await getDb();
   const rows = await db.getAllAsync("SELECT * FROM breaks WHERE shift_id = ? AND deleted_at IS NULL ORDER BY start", [shiftId]);
