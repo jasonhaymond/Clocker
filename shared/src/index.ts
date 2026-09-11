@@ -14,3 +14,4 @@ export * from "./pay";
 export * from "./rounding";
 export * from "./timesheetPeriods";
 export * from "./exportFormat";
+export * from "./expectedHours";

@@ -22,7 +22,11 @@ export interface Period {
   label: string;
 }
 
-function mostRecentWeekStart(date: Date, weekStartDay: number): Date {
+// Exported for reuse by expectedHours.ts, which needs the same "which week does this
+// moment fall in, given an arbitrary start day" calculation but deliberately doesn't want
+// to pull in the rest of the period-type system (biweekly/monthly aren't meaningful for a
+// weekly hours target).
+export function mostRecentWeekStart(date: Date, weekStartDay: number): Date {
   const d = startOfDay(date);
   const diff = (d.getDay() - weekStartDay + 7) % 7;
   return addDays(d, -diff);

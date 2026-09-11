@@ -47,6 +47,10 @@ OS's autofill highlight, since the input style never set an explicit text color 
 **Amended again:** same day, later session — added a "Custom Range" option to Export on
 both clients (start/end date pickers alongside the fixed presets), `1.3.0` (§3).
 
+**Amended again:** same day, later session — added an optional per-job weekly hours
+target: "remaining hours"/"expected clock-out" shown on the Clock screen, both clients,
+`1.4.0` (§3).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -245,6 +249,22 @@ Verified present in the repo (code + docs, not just described in memory):
   `addDays(customEnd, 1)` as the exclusive upper bound, matching every other range).
   Verified via a clean typecheck and production build on web; not clicked through by hand
   in a browser or on a device (no such access from this session).
+- **Optional per-job weekly hours target** — `Job.expectedWeeklyHours`/
+  `expectedHoursWeekStartDay` (Postgres migration `20260911195029_add_job_expected_weekly_hours`,
+  SQLite `SCHEMA_VERSION` bumped to `6`). Configured per job (settings modal, next to
+  rounding/notes-prompt); shown on the Clock screen's open-shift card as "Xh Ym left this
+  week" and, while clocked in, "expected out H:MM". Calculation
+  (`shared/src/expectedHours.ts`'s `calculateWeeklyProgress`) reuses the job's own
+  `roundedWorkedMillis` for every shift in the current week (including the open one,
+  counted to "now") and a newly-exported `mostRecentWeekStart` (previously private to
+  `timesheetPeriods.ts`) for the week boundary — deliberately independent of the job's
+  timesheet period settings, per explicit design decision. Verified directly: a synthetic
+  16h-already-worked-plus-a-2h-open-shift scenario against a 40h target produced exactly
+  the expected remaining-minutes and expected-clock-out values, and the field round-trips
+  (including clearing to `null`) through a real push/pull against a running local server.
+  Not clicked through by hand on a device/browser. Web computes progress directly from
+  its full in-memory shift/break list (no local DB to query); mobile fetches each
+  target-having job's current-week shifts/breaks from SQLite on load.
 
 ## 4. Known gaps / open work
 

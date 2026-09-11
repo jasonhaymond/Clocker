@@ -152,6 +152,8 @@ export function JobEditor({ job, onClose }: { job: Job; onClose: () => void }) {
   const [overtimeEnabled, setOvertimeEnabled] = useState(job.overtimeMultiplier != null);
   const [multiplier, setMultiplier] = useState(job.overtimeMultiplier != null ? String(job.overtimeMultiplier) : "1.5");
   const [threshold, setThreshold] = useState(job.overtimeWeeklyThresholdHours != null ? String(job.overtimeWeeklyThresholdHours) : "40");
+  const [expectedHoursEnabled, setExpectedHoursEnabled] = useState(job.expectedWeeklyHours != null);
+  const [expectedHours, setExpectedHours] = useState(job.expectedWeeklyHours != null ? String(job.expectedWeeklyHours) : "40");
   const [newTierName, setNewTierName] = useState("");
   const [newTierRate, setNewTierRate] = useState("");
 
@@ -194,6 +196,16 @@ export function JobEditor({ job, onClose }: { job: Job; onClose: () => void }) {
 
   async function saveTimesheet(patch: Parameters<typeof store.updateJobTimesheetSettings>[1]) {
     await store.updateJobTimesheetSettings(job, patch);
+  }
+
+  async function saveExpectedHours(enabled: boolean, hours: string, weekStartDay?: number) {
+    if (!enabled) {
+      await store.updateJobExpectedHours(job, { expectedWeeklyHours: null, expectedHoursWeekStartDay: weekStartDay ?? job.expectedHoursWeekStartDay });
+      return;
+    }
+    const value = parseFloat(hours);
+    if (!Number.isFinite(value) || value <= 0) return;
+    await store.updateJobExpectedHours(job, { expectedWeeklyHours: value, expectedHoursWeekStartDay: weekStartDay ?? job.expectedHoursWeekStartDay });
   }
 
   return (
@@ -324,6 +336,47 @@ export function JobEditor({ job, onClose }: { job: Job; onClose: () => void }) {
               <span className="switch-track" />
             </label>
           </div>
+
+          <div className="switch-row">
+            <h4>Weekly hours target</h4>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={expectedHoursEnabled}
+                onChange={(e) => {
+                  setExpectedHoursEnabled(e.target.checked);
+                  saveExpectedHours(e.target.checked, expectedHours);
+                }}
+              />
+              <span className="switch-track" />
+            </label>
+          </div>
+          {expectedHoursEnabled && (
+            <>
+              <input
+                value={expectedHours}
+                onChange={(e) => setExpectedHours(e.target.value)}
+                onBlur={() => saveExpectedHours(expectedHoursEnabled, expectedHours)}
+                placeholder="e.g. 40"
+              />
+              <p className="hint">Week starts on</p>
+              <div className="chip-row">
+                {WEEKDAYS.map((d, i) => (
+                  <button
+                    key={d}
+                    className={`chip${job.expectedHoursWeekStartDay === i ? " selected" : ""}`}
+                    onClick={() => saveExpectedHours(expectedHoursEnabled, expectedHours, i)}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="hint">
+            Shows remaining hours this week (and, while clocked in, an expected clock-out time) on the Clock tab. Uses
+            this job's own rounding rules, and doesn't have to match its timesheet period.
+          </p>
 
           <h4>Timesheet period</h4>
           <div className="chip-row">

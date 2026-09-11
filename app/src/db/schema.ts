@@ -136,7 +136,15 @@ const V5_JOB_PROMPT_FOR_NOTES_SQL = `
 ALTER TABLE jobs ADD COLUMN prompt_for_notes_on_clock_out INTEGER NOT NULL DEFAULT 0;
 `;
 
-export const SCHEMA_VERSION = 5;
+// Version 6 — an optional per-job weekly hours target, for "remaining hours"/"expected
+// clock-out". Deliberately a simple independent week (expected_hours_week_start_day), not
+// tied to the job's own timesheet period settings — see shared/src/expectedHours.ts.
+const V6_JOB_EXPECTED_HOURS_SQL = `
+ALTER TABLE jobs ADD COLUMN expected_weekly_hours REAL;
+ALTER TABLE jobs ADD COLUMN expected_hours_week_start_day INTEGER NOT NULL DEFAULT 1;
+`;
+
+export const SCHEMA_VERSION = 6;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
@@ -147,4 +155,5 @@ export const MIGRATIONS: string[] = [
   V3_MANAGERS_SQL,
   V4_JOB_TIMESHEET_SQL,
   V5_JOB_PROMPT_FOR_NOTES_SQL,
+  V6_JOB_EXPECTED_HOURS_SQL,
 ];

@@ -47,6 +47,7 @@ interface StoreActions {
   updateJobOvertime(job: Job, patch: { overtimeMultiplier: number | null; overtimeWeeklyThresholdHours: number | null }): Promise<void>;
   updateJobRounding(job: Job, patch: Pick<Job, "roundingEnabled" | "roundingMode" | "roundingIncrementMinutes">): Promise<void>;
   updateJobPromptForNotes(job: Job, promptForNotesOnClockOut: boolean): Promise<void>;
+  updateJobExpectedHours(job: Job, patch: Pick<Job, "expectedWeeklyHours" | "expectedHoursWeekStartDay">): Promise<void>;
   updateJobTimesheetSettings(
     job: Job,
     patch: Partial<
@@ -165,6 +166,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           roundingMode: "nearest",
           roundingIncrementMinutes: 15,
           promptForNotesOnClockOut: false,
+          expectedWeeklyHours: null,
+          expectedHoursWeekStartDay: 1,
           updatedAt: now,
           deletedAt: null,
         };
@@ -192,6 +195,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       async updateJobPromptForNotes(job, promptForNotesOnClockOut) {
         await pushChanges({ jobs: [{ ...job, promptForNotesOnClockOut, updatedAt: nowIso() }] });
+        await refresh();
+      },
+      async updateJobExpectedHours(job, patch) {
+        await pushChanges({ jobs: [{ ...job, ...patch, updatedAt: nowIso() }] });
         await refresh();
       },
       async updateJobTimesheetSettings(job, patch) {

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.4.0] - 2026-09-11
+
+### Added
+
+- Optional per-job weekly hours target (each job's settings modal): shows remaining hours
+  for the current week, and — while clocked in — an expected clock-out time, on the Clock
+  screen. Uses the job's own rounding rules and a simple independent week, not tied to its
+  timesheet period.
+
 ## [1.3.0] - 2026-09-11
 
 ### Added

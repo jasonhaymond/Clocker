@@ -107,6 +107,14 @@ which is why this is per-job rather than one app-wide setting.
 - **Prompt for notes on clock out** — `promptForNotesOnClockOut` (per job, default
   `false`). Used to be a single device-local preference covering every job (never
   synced); moved here since different jobs legitimately want different behavior.
+- **Weekly hours target** — `expectedWeeklyHours` (per job, `null` disables the feature)
+  and `expectedHoursWeekStartDay` (0=Sun..6=Sat, default Monday). `shared/src/expectedHours.ts`'s
+  `calculateWeeklyProgress` sums this job's `roundedWorkedMillis` across the current week
+  (including a currently open shift, counted up to "now") and shows "remaining hours" and,
+  while clocked in, an "expected clock-out" time (now + however much is left, assuming no
+  further breaks) on the Clock screen. Deliberately its own simple week, independent of
+  the job's `timesheetPeriodType`/`timesheetWeekStartDay` — a monthly-pay job can still
+  have a weekly hours target without the two concepts having to agree on what "a week" is.
 
 ## Server schema (PostgreSQL / Prisma)
 
@@ -138,6 +146,8 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `roundingMode` | `String` | `"up"` \| `"down"` \| `"nearest"` (default) |
 | | `roundingIncrementMinutes` | `Int` | default `15`; one of 5/10/15/20/30/60/120 |
 | | `promptForNotesOnClockOut` | `Boolean` | default `false` |
+| | `expectedWeeklyHours` | `Float?` | `null` disables the weekly-hours-target feature for this job |
+| | `expectedHoursWeekStartDay` | `Int` | default `1` (Monday); 0=Sun..6=Sat |
 | | `createdAt` / `updatedAt` | `DateTime` | `updatedAt` is Prisma's `@updatedAt` — server-set on every write, and the field sync pulls by |
 | | `deletedAt` | `DateTime?` | soft delete (tombstone) — see sync protocol |
 | **RateTier** | `id` | `String` (uuid) | primary key, **client-generated** |

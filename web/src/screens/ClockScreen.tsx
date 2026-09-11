@@ -1,4 +1,4 @@
-import { formatClock, formatDuration, workedMillis, type Break, type Shift } from "@clocker/shared";
+import { calculateWeeklyProgress, formatClock, formatDuration, workedMillis, type Break, type Job, type Shift } from "@clocker/shared";
 import { useEffect, useState } from "react";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { useDateTimePrompt } from "../lib/useDateTimePrompt";
@@ -36,6 +36,17 @@ export function ClockScreen() {
 
   function openBreakFor(shiftId: string): Break | undefined {
     return store.breaks.find((b) => b.shiftId === shiftId && !b.end);
+  }
+
+  // The web store already holds every shift/break in memory (no local DB to query), so no
+  // extra data loading is needed here — calculateWeeklyProgress does its own week
+  // filtering from whatever's passed in.
+  function weeklyProgressFor(job: Job | null) {
+    if (!job || job.expectedWeeklyHours == null) return null;
+    const jobShifts = store.shifts.filter((s) => s.jobId === job.id);
+    const breaksByShift: Record<string, Break[]> = {};
+    for (const b of store.breaks) (breaksByShift[b.shiftId] ??= []).push(b);
+    return calculateWeeklyProgress({ job, shifts: jobShifts, breaksByShift });
   }
 
   async function handleClockIn(customTime?: Date) {
@@ -98,6 +109,7 @@ export function ClockScreen() {
         const shiftBreaks = store.breaks.filter((b) => b.shiftId === shift.id);
         const openBreak = openBreakFor(shift.id);
         const worked = workedMillis(shift, shiftBreaks);
+        const progress = weeklyProgressFor(job);
         return (
           <div key={shift.id} className="clock-card">
             <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#2563eb" }}>
@@ -106,6 +118,16 @@ export function ClockScreen() {
             <div className="clock-timer">{formatDuration(worked)}</div>
             <div className="clock-since">Since {formatClock(shift.clockIn)}</div>
             {openBreak && <div className="clock-on-break">On break since {formatClock(openBreak.start)}</div>}
+            {progress && (
+              <div className="clock-weekly-progress">
+                {progress.remainingMinutes > 0
+                  ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
+                  : "Weekly target reached"}
+                {progress.expectedClockOut && progress.remainingMinutes > 0
+                  ? ` — expected out ${formatClock(progress.expectedClockOut.toISOString())}`
+                  : ""}
+              </div>
+            )}
 
             <div className="split-row">
               <button

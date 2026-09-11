@@ -30,6 +30,13 @@ export interface Job {
   // a single device-local preference covering every job; different jobs legitimately want
   // different behavior, so it moved here alongside the job's other settings.
   promptForNotesOnClockOut: boolean;
+  // Optional weekly hours target for this job — null disables the feature entirely (no
+  // "remaining hours"/"expected clock-out" shown anywhere for this job). Deliberately a
+  // simple independent week (expectedHoursWeekStartDay), not tied to this job's own
+  // timesheetPeriodType/timesheetWeekStartDay — a monthly-pay job can still have a weekly
+  // hours target, and the two concepts shouldn't have to agree on what "a week" means.
+  expectedWeeklyHours: number | null;
+  expectedHoursWeekStartDay: number; // 0=Sun..6=Sat
   updatedAt: string;
   deletedAt: string | null;
 }

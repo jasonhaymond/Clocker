@@ -189,7 +189,9 @@ dependencies, and applies any new migrations.
 - Breaks (start/end), excluded from worked-hours totals — "Start Break At..." / "End Break
   At..." accept an explicit time the same way clock in/out do
 - Per-shift notes/comments, added or edited from the History screen; optionally prompted
-  for automatically right after clocking out (Settings toggle)
+  for automatically right after clocking out (per-job setting)
+- Optional per-job weekly hours target — shows remaining hours this week, and (while
+  clocked in) an expected clock-out time, right on the Clock screen
 - History grouped by day, with per-day and per-shift totals and computed pay; multi-select
   (long-press or tap a row while a selection is active) to delete several shifts at once
 - Tap any shift (still clocked in or already closed) to open its full editor: correct the

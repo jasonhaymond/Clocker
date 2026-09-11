@@ -9,14 +9,28 @@ import {
   getOpenBreak,
   getOpenShifts,
   listBreaksForShift,
+  listBreaksForShifts,
   listJobs,
   listRateTiers,
+  listShiftsInRange,
   startBreak,
 } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
-import { formatClock, formatDuration, workedMillis, type Break, type Job, type RateTier, type Shift } from "@clocker/shared";
+import {
+  addDays,
+  calculateWeeklyProgress,
+  formatClock,
+  formatDuration,
+  mostRecentWeekStart,
+  workedMillis,
+  type Break,
+  type Job,
+  type RateTier,
+  type Shift,
+  type WeeklyProgress,
+} from "@clocker/shared";
 
 interface OpenShiftDetail {
   shift: Shift;
@@ -33,10 +47,29 @@ export function ClockScreen() {
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
+  const [weekDataByJobId, setWeekDataByJobId] = useState<Record<string, { shifts: Shift[]; breaksByShift: Record<string, Break[]> }>>({});
   const { pick, modal } = useDateTimePicker();
 
   const load = useCallback(() => {
-    listJobs(false).then(setJobs);
+    listJobs(false).then(async (allJobs) => {
+      setJobs(allJobs);
+      // Only jobs with a weekly target need their week's shifts loaded — everything else
+      // has nothing to compute. Each job can define its own week (expectedHoursWeekStartDay),
+      // so the range is computed per job, not once for all of them.
+      const targetJobs = allJobs.filter((j) => j.expectedWeeklyHours != null);
+      const entries = await Promise.all(
+        targetJobs.map(async (job): Promise<[string, { shifts: Shift[]; breaksByShift: Record<string, Break[]> }]> => {
+          const weekStart = mostRecentWeekStart(new Date(), job.expectedHoursWeekStartDay);
+          const weekEnd = addDays(weekStart, 7);
+          const weekShifts = await listShiftsInRange(weekStart.toISOString(), weekEnd.toISOString(), job.id);
+          const breaks = await listBreaksForShifts(weekShifts.map((s) => s.id));
+          const breaksByShift: Record<string, Break[]> = {};
+          for (const b of breaks) (breaksByShift[b.shiftId] ??= []).push(b);
+          return [job.id, { shifts: weekShifts, breaksByShift }];
+        }),
+      );
+      setWeekDataByJobId(Object.fromEntries(entries));
+    });
     getOpenShifts().then(async (shifts) => {
       const details = await Promise.all(
         shifts.map(async (shift): Promise<OpenShiftDetail> => {
@@ -142,10 +175,18 @@ export function ClockScreen() {
     if (date) handleEndBreak(openBreak, date);
   }
 
+  function weeklyProgressFor(job: Job | null): WeeklyProgress | null {
+    if (!job) return null;
+    const weekData = weekDataByJobId[job.id];
+    if (!weekData) return null;
+    return calculateWeeklyProgress({ job, shifts: weekData.shifts, breaksByShift: weekData.breaksByShift });
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {openShiftDetails.map(({ shift, job, breaks, openBreak }) => {
         const worked = workedMillis(shift, breaks);
+        const progress = weeklyProgressFor(job);
         return (
           <View key={shift.id} style={styles.openShiftCard}>
             <View style={[styles.jobBadge, { backgroundColor: job?.colorHex ?? "#2563eb" }]}>
@@ -154,6 +195,16 @@ export function ClockScreen() {
             <Text style={styles.timer}>{formatDuration(worked)}</Text>
             <Text style={styles.since}>Since {formatClock(shift.clockIn)}</Text>
             {openBreak && <Text style={styles.onBreak}>On break since {formatClock(openBreak.start)}</Text>}
+            {progress && (
+              <Text style={styles.weeklyProgress}>
+                {progress.remainingMinutes > 0
+                  ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
+                  : "Weekly target reached"}
+                {progress.expectedClockOut && progress.remainingMinutes > 0
+                  ? ` — expected out ${formatClock(progress.expectedClockOut.toISOString())}`
+                  : ""}
+              </Text>
+            )}
 
             <View style={styles.splitRow}>
               <TouchableOpacity
@@ -255,6 +306,7 @@ const styles = StyleSheet.create({
   timer: { fontSize: 32, fontWeight: "700", marginBottom: 4, fontVariant: ["tabular-nums"] },
   since: { color: "#999", marginBottom: 10, fontSize: 13 },
   onBreak: { color: "#d97706", fontWeight: "600", marginBottom: 8, fontSize: 13 },
+  weeklyProgress: { color: "#2563eb", fontSize: 12, marginBottom: 8, textAlign: "center" },
   newShiftSection: { alignItems: "center" },
   jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
   jobOption: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },

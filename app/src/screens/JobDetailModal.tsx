@@ -14,6 +14,7 @@ import {
   setManagerArchived,
   setRateTierArchived,
   updateJobDetails,
+  updateJobExpectedHours,
   updateJobOvertime,
   updateJobPromptForNotes,
   updateJobRounding,
@@ -223,6 +224,9 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
     incrementMinutes: job.roundingIncrementMinutes,
   });
   const [promptForNotes, setPromptForNotes] = useState(job.promptForNotesOnClockOut);
+  const [expectedHoursEnabled, setExpectedHoursEnabled] = useState(job.expectedWeeklyHours != null);
+  const [expectedHours, setExpectedHours] = useState(job.expectedWeeklyHours != null ? String(job.expectedWeeklyHours) : "40");
+  const [expectedWeekStartDay, setExpectedWeekStartDay] = useState(job.expectedHoursWeekStartDay);
   const [timesheet, setTimesheet] = useState({
     periodType: job.timesheetPeriodType,
     weekStartDay: job.timesheetWeekStartDay,
@@ -248,6 +252,16 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
   async function savePromptForNotes(value: boolean) {
     setPromptForNotes(value);
     await updateJobPromptForNotes(job.id, value);
+  }
+
+  async function saveExpectedHours(enabled: boolean, hours: string, weekStartDay: number) {
+    if (!enabled) {
+      await updateJobExpectedHours(job.id, { expectedWeeklyHours: null, expectedHoursWeekStartDay: weekStartDay });
+      return;
+    }
+    const value = parseFloat(hours);
+    if (!Number.isFinite(value) || value <= 0) return;
+    await updateJobExpectedHours(job.id, { expectedWeeklyHours: value, expectedHoursWeekStartDay: weekStartDay });
   }
 
   async function saveTimesheet(next: typeof timesheet) {
@@ -424,6 +438,48 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
           <Switch value={promptForNotes} onValueChange={savePromptForNotes} />
         </View>
         <Text style={styles.hint}>Shows a quick note field right after clocking out of this job.</Text>
+
+        <View style={styles.overtimeHeader}>
+          <Text style={styles.sectionLabel}>Weekly hours target</Text>
+          <Switch
+            value={expectedHoursEnabled}
+            onValueChange={(v) => {
+              setExpectedHoursEnabled(v);
+              saveExpectedHours(v, expectedHours, expectedWeekStartDay);
+            }}
+          />
+        </View>
+        {expectedHoursEnabled && (
+          <>
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={expectedHours}
+              onChangeText={setExpectedHours}
+              onBlur={() => saveExpectedHours(expectedHoursEnabled, expectedHours, expectedWeekStartDay)}
+              placeholder="e.g. 40"
+            />
+            <Text style={styles.hint}>Week starts on</Text>
+            <View style={styles.chipRow}>
+              {WEEKDAYS.map((d, i) => (
+                <TouchableOpacity
+                  key={d}
+                  style={[styles.dayChip, expectedWeekStartDay === i && styles.chipSelected]}
+                  onPress={() => {
+                    setExpectedWeekStartDay(i);
+                    saveExpectedHours(expectedHoursEnabled, expectedHours, i);
+                  }}
+                >
+                  <Text style={[styles.chipText, expectedWeekStartDay === i && styles.chipTextSelected]}>{d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+        <Text style={styles.hint}>
+          Shows remaining hours this week (and, while clocked in, an expected clock-out time) on the Clock tab. Uses
+          this job's own rounding rules, and doesn't have to match its timesheet period.
+        </Text>
 
         <Text style={styles.sectionLabel}>Timesheet period</Text>
         <View style={styles.chipRow}>

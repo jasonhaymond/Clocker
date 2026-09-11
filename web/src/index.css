@@ -543,6 +543,11 @@ button.primary {
   font-size: 13px;
   margin-top: 6px;
 }
+.clock-weekly-progress {
+  color: #2563eb;
+  font-size: 12px;
+  margin-top: 6px;
+}
 .clock-new-shift {
   text-align: center;
 }

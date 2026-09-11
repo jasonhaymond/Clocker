@@ -68,6 +68,12 @@ model Job {
   // legitimately want different behavior (e.g. always add a note for client billing on
   // one job, never bothered for another) — see app/src/lib/preferences.ts's old comment.
   promptForNotesOnClockOut    Boolean    @default(false)
+  // Optional weekly hours target — null disables "remaining hours"/"expected clock-out"
+  // for this job entirely. Deliberately a simple independent week
+  // (expectedHoursWeekStartDay), not tied to timesheetPeriodType/timesheetWeekStartDay —
+  // see shared/src/expectedHours.ts.
+  expectedWeeklyHours         Float?
+  expectedHoursWeekStartDay   Int        @default(1) // 0=Sun..6=Sat
   createdAt                   DateTime   @default(now())
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?
