@@ -23,6 +23,13 @@
 	handle /sync/* {
 		reverse_proxy server:3001
 	}
+	# The update-trigger service (scripts/updater-service.mjs) runs on the host, not as a
+	# service in this compose stack, so it's reached via host.docker.internal (mapped in
+	# docker-compose.prod.yml) rather than a service name — see
+	# docs/deployment.md#triggering-an-update-from-the-app.
+	handle /update* {
+		reverse_proxy host.docker.internal:{$UPDATER_PORT:4001}
+	}
 	handle {
 		reverse_proxy web:80
 	}

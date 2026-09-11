@@ -59,6 +59,15 @@ services:
       - caddy-config:/config
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
+      # The update-trigger service (scripts/updater-service.mjs) runs on the host, not in
+      # this stack — see docs/deployment.md#triggering-an-update-from-the-app for why —
+      # so Caddy reaches it via host.docker.internal (mapped below) instead of a compose
+      # service name.
+      UPDATER_PORT: ${UPDATER_PORT:-4001}
+    extra_hosts:
+      # Docker Desktop provides host.docker.internal natively; on Linux this mapping is
+      # required for a container to reach a process bound to the host itself.
+      - "host.docker.internal:host-gateway"
     depends_on:
       - server
       - web

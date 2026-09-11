@@ -170,6 +170,40 @@ if (proxyMode === "external") {
   }
 }
 
+section("Configuring the update-trigger service");
+// Independent of PROXY_MODE — the updater is a host process either way (never a Docker
+// container, see scripts/updater-service.mjs for why), so it needs a real host port
+// regardless of whether the bundled Caddy or an external one is reaching it. Same
+// "scanned once, then reused forever" rule as SERVER_PORT/WEB_PORT above.
+let updaterPort = readEnvValue(envProdPath, "UPDATER_PORT");
+if (updaterPort) {
+  step(`Using configured updater port ${updaterPort} (not re-scanned on redeploy)`);
+} else {
+  updaterPort = String(await findFreePort(4001));
+  step(`Port 4001+ scanned — selected ${updaterPort} for the update-trigger service`);
+}
+upsertEnvLine(envProdPath, "UPDATER_PORT", updaterPort);
+if (!readEnvValue(envProdPath, "UPDATER_BIND")) {
+  upsertEnvLine(envProdPath, "UPDATER_BIND", "0.0.0.0");
+}
+
+if (!commandExists("pm2 --version")) {
+  warn("pm2 isn't installed — the in-app \"Update Server\" button won't work until the updater service is running.");
+  warn("Install pm2 (`npm install -g pm2`) then run:");
+  warn(`  pm2 start scripts/updater-service.mjs --name clocker-updater --cwd "${rootDir}" && pm2 save`);
+  warn("Or run it under systemd instead — see docs/deployment.md#triggering-an-update-from-the-app for a ready-to-paste unit file.");
+} else {
+  const alreadyManaged = captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-updater"');
+  if (alreadyManaged) {
+    step("Restarting the already-running clocker-updater pm2 process...");
+    run("pm2 restart clocker-updater", { cwd: rootDir, optional: true });
+  } else {
+    step("Starting the clocker-updater pm2 process for the first time...");
+    run(`pm2 start scripts/updater-service.mjs --name clocker-updater --cwd "${rootDir}"`, { cwd: rootDir, optional: true });
+  }
+  run("pm2 save", { cwd: rootDir, optional: true });
+}
+
 const composeFlags = `-f ${composeFileFor(proxyMode)} --env-file .env.prod`;
 
 if (proxyMode === "local") {
@@ -358,11 +392,16 @@ const appBuildLine = appBuildStarted
   : wantsSkipApp
     ? "Mobile app: skipped (--skip-app)."
     : "Mobile app: not built this run — see the warning above for why, and how to include it next time.";
+const updaterManaged = commandExists("pm2 --version") && captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-updater"');
+const updaterLine = updaterManaged
+  ? "Update-trigger service: running under pm2 as \"clocker-updater\" — the in-app \"Update Server\" button is live."
+  : "Update-trigger service: NOT running — see the warning above to start it before the in-app \"Update Server\" button will work.";
 if (proxyMode === "local") {
   console.log(`
 Server: https://${domain}
 Web client: https://${domain}/
 ${appBuildLine}
+${updaterLine}
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status
@@ -390,6 +429,9 @@ ${domain} {
     handle /sync/* {
         reverse_proxy <this-machine's-address>:${serverPort}
     }
+    handle /update* {
+        reverse_proxy <this-machine's-address>:${updaterPort}
+    }
     handle {
         reverse_proxy <this-machine's-address>:${webPort}
     }
@@ -401,11 +443,12 @@ its LAN IP, a private network hostname, a VPN/Tailscale address, etc. (this scri
 know which, since your proxy runs elsewhere). Not using Caddy on the other end? Translate
 the same "path -> this host:port" rules into your proxy's own config format.
 
-Make sure ports ${serverPort} and ${webPort} are actually reachable from your proxy's machine —
-a firewall rule scoped to its specific IP is safer than leaving it open to everything. See
-docs/deployment.md#deploying-behind-your-own-reverse-proxy.
+Make sure ports ${serverPort}, ${webPort}, and ${updaterPort} are actually reachable from your
+proxy's machine — a firewall rule scoped to its specific IP is safer than leaving it open
+to everything. See docs/deployment.md#deploying-behind-your-own-reverse-proxy.
 
 ${appBuildLine}
+${updaterLine}
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status

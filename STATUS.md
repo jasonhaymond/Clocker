@@ -19,6 +19,12 @@ real use), and full shift/break time editing shipped on both clients (§3).
 "remember me" shipped on both clients (§3), closing two of the three items in
 `docs/deployment.md#security-gaps-to-close-before-this-is-public` (§4).
 
+**Amended again:** same day, later session — an in-app "Update Server" button shipped on
+both clients, backed by a new host-side process (`scripts/updater-service.mjs`, §3/§5).
+Not yet run against a real production host from this session (no SSH access) — the auth
+and dirty-tree-refusal guards were verified locally, but the actual `git pull`/`docker
+compose` sequence it triggers has not been exercised end-to-end.
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -133,6 +139,24 @@ Verified present in the repo (code + docs, not just described in memory):
   three workspaces (`server`, `app`, `web`) typecheck clean. Not yet clicked through by
   hand in a real browser or mobile simulator (no browser-automation/emulator access from
   this session).
+- **In-app "Update Server" button, both clients**: Settings has a button that triggers
+  `git pull --ff-only && npm install && npm run deploy -- --skip-app` on the deploy host,
+  polling a status endpoint for progress/result. Backed by a new standalone process,
+  `scripts/updater-service.mjs` — deliberately NOT inside the `server` Docker container
+  (which has no host/Docker-socket access by design, chosen over the alternative of
+  mounting those into the container, per explicit instruction); it runs directly on the
+  host, started via pm2 (auto, from `npm run deploy`) or documented systemd instructions,
+  and survives the very container restarts it triggers. Reached under the same domain via
+  a new `/update*` Caddy route (bundled: `host.docker.internal`; external: added to the
+  printed proxy snippet) on a new auto-picked `UPDATER_PORT`/`UPDATER_BIND`. Auth reuses
+  the existing `JWT_SECRET`/bearer token — no separate secret. Refuses to run if the host's
+  working tree is dirty or an update is already in progress. Verified locally: auth
+  (401 without/with-bad token), status shape, and — using this session's own genuinely
+  dirty working tree — the "uncommitted changes" refusal actually firing, which is exactly
+  the guard that matters most to get right (it's also what stopped this verification pass
+  from ever executing a real `git pull`/deploy against this repo). The actual
+  pull-and-redeploy sequence has **not** been exercised end-to-end against a real host —
+  only the HTTP layer and its guards.
 
 ## 4. Known gaps / open work
 
@@ -152,6 +176,13 @@ Verified present in the repo (code + docs, not just described in memory):
   doc section as pre-public-launch work, not yet done. (Rate limiting and a bot-filtering
   CAPTCHA on `/auth/login`/`/auth/register`, previously listed here as gaps, shipped this
   session — see §3.)
+- **The "Update Server" button has never triggered a real deploy** — verified locally
+  against a scratch/dirty-tree setup only (see §3), never against the actual `nextcloud`
+  host or a genuinely clean repo. First real use should be watched closely (check
+  `pm2 logs clocker-updater` or the in-app log viewer) rather than trusted blind. Also
+  untested: whether the bundled Caddy's `host.docker.internal` route actually resolves on
+  the real host's Docker version/OS (added `extra_hosts: host-gateway` for Linux, but this
+  wasn't verified against a running container — only that Docker Compose accepted the config).
 - **Web client's real-browser click-through pass** — parity work was verified by
   typecheck + production build + a scripted store-action replay against a real local
   server, not yet by a human actually clicking through in a browser. Worth doing before
@@ -201,6 +232,11 @@ and "security gaps" sections — read it before touching production).
 - **Web is deployed unconditionally alongside the server**, same domain, path-routed by
   Caddy (`/health`, `/auth/*`, `/sync/*` → server; everything else → web's static build) —
   not a separate subdomain, not opt-in.
+- **`npm run deploy` now also starts/restarts a host-side `clocker-updater` pm2 process**
+  (`scripts/updater-service.mjs`), auto-picking `UPDATER_PORT`/`UPDATER_BIND` and routing
+  `/update*` alongside the other paths, so the in-app "Update Server" button (§3) works.
+  Falls back to printing manual pm2/systemd instructions if pm2 isn't installed on the
+  host — nothing here has been confirmed against the real `nextcloud` host yet (§4).
 - **Ports are now stable across redeploys** (fixed in `d69b080`, 2026-09-11): a port is
   only scanned-for-free the *first* time a deploy runs (`SERVER_PORT`/`WEB_PORT` unset in
   `.env.prod`); once written, it's reused unconditionally on every later redeploy, never

@@ -4,7 +4,8 @@ Base URL is whatever `EXPO_PUBLIC_API_URL` points at on the client (default
 `http://localhost:3001`, though the actual port on your machine depends on what
 `npm run setup` picked — see [Automatic port selection](./development.md#automatic-port-selection)).
 The examples below use `3001`; substitute your own. All request/response bodies are JSON.
-Source: `server/src/routes/*.ts`.
+Source: `server/src/routes/*.ts`, except [Deployment](#deployment) (`scripts/updater-service.mjs`,
+a separate process — see that section for why).
 
 ## Authentication
 
@@ -205,6 +206,41 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
 Returns **every** row with `updatedAt > since`, including soft-deleted ones (`deletedAt`
 non-null) — the client is expected to apply those as local tombstones, not skip them.
 Save `serverTimestamp` as the new cursor for the next call's `since`.
+
+## Deployment
+
+Not served by `server/` at all — routed to a separate host process
+(`scripts/updater-service.mjs`) under the same domain. Full rationale:
+[`deployment.md#triggering-an-update-from-the-app`](./deployment.md#triggering-an-update-from-the-app).
+
+### `POST /update`
+
+Requires `Authorization: Bearer <token>` — same JWT as every other authenticated
+endpoint, verified with the same `JWT_SECRET`, no separate secret involved. Body: none.
+
+```json
+→ 202 { "started": true }
+→ 401 { "error": "Missing or invalid bearer token" }
+→ 409 { "error": "An update is already running" }
+→ 409 { "error": "Server's working tree has uncommitted changes — resolve manually before updating." }
+```
+
+### `GET /update/status`
+
+Same auth. Poll this after a `202` from `POST /update` until `running` is `false`.
+
+```json
+→ 200 {
+  "running": false,
+  "startedAt": "2026-09-11T18:00:00.000Z",
+  "finishedAt": "2026-09-11T18:01:42.000Z",
+  "exitCode": 0,
+  "log": "[updater] Starting: ...\n...\n[updater] Finished with exit code 0"
+}
+```
+
+`log` is a capped tail (last 500 lines) of the triggered command's combined
+stdout/stderr, reset at the start of each run.
 
 ## Manual smoke test
 

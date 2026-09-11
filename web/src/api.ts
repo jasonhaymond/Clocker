@@ -136,3 +136,21 @@ export interface PullResponse {
 export function pullAll() {
   return request<PullResponse>("/sync/pull", { auth: true });
 }
+
+export interface UpdateStatus {
+  running: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  log: string;
+}
+
+// Hits the host-side update-trigger service (scripts/updater-service.mjs), routed through
+// the same domain/token as everything else — see docs/deployment.md#triggering-an-update-from-the-app.
+export function triggerServerUpdate() {
+  return request<{ started: true }>("/update", { method: "POST", auth: true });
+}
+
+export function getServerUpdateStatus() {
+  return request<UpdateStatus>("/update/status", { auth: true });
+}

@@ -1,11 +1,12 @@
 import * as Application from "expo-application";
 import Constants from "expo-constants";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
 import { getPromptForNotesOnClockOut, setPromptForNotesOnClockOut } from "../lib/preferences";
 import { useDbRefresh } from "../lib/useDbRefresh";
+import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../sync/api";
 import { synchronize } from "../sync/sync";
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
@@ -38,6 +39,11 @@ export function SettingsScreen() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(updateState.get());
   const [promptForNotes, setPromptForNotes] = useState(false);
+  const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
+  const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
+  const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
+  const [showServerLog, setShowServerLog] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     getSyncCursor().then(setLastSynced);
@@ -48,6 +54,59 @@ export function SettingsScreen() {
   useEffect(() => {
     getPromptForNotesOnClockOut().then(setPromptForNotes);
   }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const pollServerUpdateStatus = useCallback(() => {
+    getServerUpdateStatus()
+      .then((status) => {
+        setServerUpdate(status);
+        if (!status.running) stopPolling();
+      })
+      // Expected mid-deploy: the server container restarts, so a poll or two failing is
+      // normal, not a real error worth surfacing — keep polling instead.
+      .catch(() => {});
+  }, [stopPolling]);
+
+  useEffect(() => {
+    getServerUpdateStatus()
+      .then((status) => {
+        setServerUpdate(status);
+        if (status.running) pollRef.current = setInterval(pollServerUpdateStatus, 3000);
+      })
+      // Silently ignored: most likely the update-trigger service just isn't deployed yet
+      // (see docs/deployment.md#triggering-an-update-from-the-app) — not worth alarming a
+      // user who never asked for this on first opening Settings.
+      .catch(() => {});
+    return stopPolling;
+  }, [pollServerUpdateStatus, stopPolling]);
+
+  async function updateServer() {
+    setTriggeringServerUpdate(true);
+    setServerUpdateError(null);
+    try {
+      await triggerServerUpdate();
+      stopPolling();
+      pollRef.current = setInterval(pollServerUpdateStatus, 3000);
+      pollServerUpdateStatus();
+    } catch (e: any) {
+      setServerUpdateError(e?.message ?? "Couldn't start the update");
+    } finally {
+      setTriggeringServerUpdate(false);
+    }
+  }
+
+  function confirmUpdateServer() {
+    Alert.alert("Update server", "Pull the latest code and redeploy the server and web client?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Update", onPress: updateServer },
+    ]);
+  }
 
   async function togglePromptForNotes(value: boolean) {
     setPromptForNotes(value);
@@ -106,6 +165,39 @@ export function SettingsScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.label}>Server</Text>
+        {serverUpdate?.running ? (
+          <Text style={styles.updateStatus}>Updating server… this can take a minute or two.</Text>
+        ) : serverUpdate?.finishedAt ? (
+          <Text style={styles.updateStatus}>
+            {serverUpdate.exitCode === 0 ? "Last update succeeded" : `Last update failed (exit ${serverUpdate.exitCode})`}
+            {" · "}
+            {new Date(serverUpdate.finishedAt).toLocaleString()}
+          </Text>
+        ) : null}
+        {serverUpdateError && <Text style={styles.error}>{serverUpdateError}</Text>}
+        <TouchableOpacity
+          style={styles.syncButton}
+          onPress={confirmUpdateServer}
+          disabled={triggeringServerUpdate || !!serverUpdate?.running}
+        >
+          {triggeringServerUpdate || serverUpdate?.running ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.syncButtonText}>Update Server</Text>
+          )}
+        </TouchableOpacity>
+        {serverUpdate?.log ? (
+          <>
+            <TouchableOpacity onPress={() => setShowServerLog(!showServerLog)}>
+              <Text style={styles.logToggle}>{showServerLog ? "Hide log" : "Show log"}</Text>
+            </TouchableOpacity>
+            {showServerLog && <Text style={styles.logText}>{serverUpdate.log}</Text>}
+          </>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
         <View style={styles.preferenceRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.preferenceLabel}>Prompt for notes when clocking out</Text>
@@ -145,4 +237,6 @@ const styles = StyleSheet.create({
   checkButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 14 },
   signOutButton: { padding: 11, alignItems: "center" },
   signOutText: { color: "#dc2626", fontWeight: "600", fontSize: 14 },
+  logToggle: { color: "#2563eb", fontSize: 13, marginTop: 10, textAlign: "center" },
+  logText: { fontFamily: "monospace", fontSize: 10, color: "#333", marginTop: 8, backgroundColor: "#fff", padding: 8, borderRadius: 6 },
 });

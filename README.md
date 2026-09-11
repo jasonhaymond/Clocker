@@ -228,5 +228,9 @@ dependencies, and applies any new migrations.
   neither a share sheet nor a mail composer to call into.
 - Overtime is calculated only over the shifts in whatever date range you export — pass a
   full calendar week (e.g. "This Week") for an exactly correct weekly overtime total.
-- The JWT has a 180-day expiry and there's no refresh flow — fine for a personal app,
+- A "remember me" JWT (checked by default) never expires and there's no refresh/revocation
+  flow beyond rotating `JWT_SECRET` (logs out every device) — fine for a personal app,
   worth revisiting if this ever gets multi-user.
+- Settings' "Update Server" button reuses the app's own auth token against a separate
+  host-side service (`scripts/updater-service.mjs`) rather than a dedicated admin role —
+  same reasoning as above, fine for one user.
