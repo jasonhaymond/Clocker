@@ -29,3 +29,13 @@ When adding a new feature going forward: build it for both clients as part of th
 unit of work (same PR/commit series), not "mobile now, web later." If a genuine reason
 prevents landing both at once, say so explicitly and track the gap — don't let it become
 implicit permanent scope.
+
+## Keep `STATUS.md` current
+
+Update `STATUS.md` (repo root) at the end of every work session on this project — not
+just major ones. It's the fast, "read this first" answer to "where does this project
+actually stand right now": what's deployed and where, what was just worked on, what's
+known-broken or mid-flight, and what's next. Write it for someone (including a future
+session with no memory of this one) who needs to get oriented in under a minute, not as a
+full history — that's what git log and commit messages are for. Prefer overwriting stale
+sections to appending forever; this file describes the current state, not a diary.
