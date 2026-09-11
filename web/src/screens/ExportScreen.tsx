@@ -13,15 +13,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store";
 import { downloadText } from "../lib/download";
 
-type RangeKey = "thisWeek" | "lastWeek" | "thisMonth" | "last90";
+type RangeKey = "thisWeek" | "lastWeek" | "thisMonth" | "last90" | "custom";
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "thisWeek", label: "This Week" },
   { key: "lastWeek", label: "Last Week" },
   { key: "thisMonth", label: "This Month" },
   { key: "last90", label: "Last 90 Days" },
+  { key: "custom", label: "Custom Range" },
 ];
 
-function rangeFor(key: RangeKey): { start: Date; end: Date; label: string } {
+// `custom` is handled separately (needs the user-picked start/end state) — every other
+// key is a pure function of "today".
+function rangeFor(key: Exclude<RangeKey, "custom">): { start: Date; end: Date; label: string } {
   const today = new Date();
   switch (key) {
     case "thisWeek": {
@@ -48,6 +51,16 @@ function defaultSubject(rangeLabel: string, jobName: string | null): string {
   return jobName ? `${jobName} Hours — ${rangeLabel}` : `Hours — ${rangeLabel}`;
 }
 
+// <input type="date"> works in the browser's local timezone via plain "YYYY-MM-DD"
+// strings — going through Date/toISOString would shift the value by the UTC offset.
+function toDateInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function fromDateInputValue(value: string): Date {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // mailto: bodies get silently truncated by some mail clients past roughly this length —
 // past it, skip prefilling the body and rely on the clipboard copy instead (see below).
 const MAILTO_BODY_LIMIT = 1500;
@@ -63,8 +76,18 @@ export function ExportScreen() {
   const [includeComments, setIncludeComments] = useState(true);
   const [includeTimes, setIncludeTimes] = useState(true);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
+  const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
 
-  const range = useMemo(() => rangeFor(rangeKey), [rangeKey]);
+  const range = useMemo(() => {
+    if (rangeKey === "custom") {
+      const start = customStart;
+      const end = addDays(customEnd, 1);
+      const label = start.getTime() === customEnd.getTime() ? start.toLocaleDateString() : `${start.toLocaleDateString()} – ${customEnd.toLocaleDateString()}`;
+      return { start, end, label };
+    }
+    return rangeFor(rangeKey);
+  }, [rangeKey, customStart, customEnd]);
   const jobsById = useMemo(() => Object.fromEntries(store.jobs.map((j) => [j.id, j])), [store.jobs]);
 
   const shifts = useMemo(
@@ -143,6 +166,29 @@ export function ExportScreen() {
           </button>
         ))}
       </div>
+
+      {rangeKey === "custom" && (
+        <div className="custom-range-row">
+          <label>
+            Start
+            <input
+              type="date"
+              value={toDateInputValue(customStart)}
+              max={toDateInputValue(customEnd)}
+              onChange={(e) => e.target.value && setCustomStart(fromDateInputValue(e.target.value))}
+            />
+          </label>
+          <label>
+            End
+            <input
+              type="date"
+              value={toDateInputValue(customEnd)}
+              min={toDateInputValue(customStart)}
+              onChange={(e) => e.target.value && setCustomEnd(fromDateInputValue(e.target.value))}
+            />
+          </label>
+        </div>
+      )}
 
       <h3>Job</h3>
       <div className="chip-row">

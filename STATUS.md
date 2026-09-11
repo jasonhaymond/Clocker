@@ -44,6 +44,9 @@ clock out" from a single device-local preference to a per-job synced setting (§
 an Android-only bug: the login password field's text could become invisible against the
 OS's autofill highlight, since the input style never set an explicit text color (§3).
 
+**Amended again:** same day, later session — added a "Custom Range" option to Export on
+both clients (start/end date pickers alongside the fixed presets), `1.3.0` (§3).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -235,6 +238,13 @@ Verified present in the repo (code + docs, not just described in memory):
   explicit `color`/`backgroundColor` on the shared input style. Not yet re-verified on a
   real Android device from this session (no device/emulator access) — worth confirming
   the actual fix looks right, not just that it compiles.
+- **Export: "Custom Range"** (both clients) — a fifth range option alongside the four
+  fixed presets, with start/end date pickers (mobile: `useDateTimePicker`; web: native
+  `<input type="date">`, using local-timezone "YYYY-MM-DD" strings rather than
+  `toISOString()` to avoid a UTC-offset day shift). End date is inclusive (internally
+  `addDays(customEnd, 1)` as the exclusive upper bound, matching every other range).
+  Verified via a clean typecheck and production build on web; not clicked through by hand
+  in a browser or on a device (no such access from this session).
 
 ## 4. Known gaps / open work
 

@@ -610,6 +610,20 @@ button.primary {
   font-size: 13px;
 }
 
+.custom-range-row {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+}
+.custom-range-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #666;
+  flex: 1;
+}
+
 /* Totals */
 .totals-row {
   display: flex;

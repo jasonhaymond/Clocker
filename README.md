@@ -195,8 +195,8 @@ dependencies, and applies any new migrations.
 - Tap any shift (still clocked in or already closed) to open its full editor: correct the
   clock-in/out date and time, add/edit/delete breaks, and edit its note — no more
   delete-and-recreate to fix a mistake
-- CSV export by date range (this week / last week / this month / last 90 days) and job,
-  shared via the OS share sheet (iOS/Android)
+- CSV export by date range (this week / last week / this month / last 90 days / a custom
+  start-end range) and job, shared via the OS share sheet (iOS/Android)
 - Export as a clean, formatted HTML email draft (recipients, subject, and
   earnings/comments/times toggles), opened in your device's mail app for you to review
   and send — see `app/src/lib/exportFormat.ts`. Uses `expo-mail-composer`, which opens

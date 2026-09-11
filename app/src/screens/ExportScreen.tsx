@@ -4,6 +4,7 @@ import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { listBreaksForShifts, listJobs, listRateTiersForJobs, listRateVersionsForTiers, listShiftsInRange } from "../db/database";
+import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import {
   buildCsv,
@@ -21,16 +22,19 @@ import {
   type Shift,
 } from "@clocker/shared";
 
-type RangeKey = "thisWeek" | "lastWeek" | "thisMonth" | "last90";
+type RangeKey = "thisWeek" | "lastWeek" | "thisMonth" | "last90" | "custom";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "thisWeek", label: "This Week" },
   { key: "lastWeek", label: "Last Week" },
   { key: "thisMonth", label: "This Month" },
   { key: "last90", label: "Last 90 Days" },
+  { key: "custom", label: "Custom Range" },
 ];
 
-function rangeFor(key: RangeKey): { start: Date; end: Date; label: string } {
+// `custom` is handled separately (needs the user-picked start/end state) — every other
+// key is a pure function of "today".
+function rangeFor(key: Exclude<RangeKey, "custom">): { start: Date; end: Date; label: string } {
   const today = new Date();
   switch (key) {
     case "thisWeek": {
@@ -73,13 +77,43 @@ export function ExportScreen() {
   const [includeComments, setIncludeComments] = useState(true);
   const [includeTimes, setIncludeTimes] = useState(true);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
+  const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
+  const { pick, modal: dateModal } = useDateTimePicker();
 
   const load = useCallback(() => {
     listJobs(true).then(setJobs);
   }, []);
   useDbRefresh(load);
 
-  const range = useMemo(() => rangeFor(rangeKey), [rangeKey]);
+  const range = useMemo(() => {
+    if (rangeKey === "custom") {
+      const start = customStart;
+      const end = addDays(customEnd, 1);
+      const label = start.getTime() === customEnd.getTime() ? start.toLocaleDateString() : `${start.toLocaleDateString()} – ${customEnd.toLocaleDateString()}`;
+      return { start, end, label };
+    }
+    return rangeFor(rangeKey);
+  }, [rangeKey, customStart, customEnd]);
+
+  async function pickCustomStart() {
+    const date = await pick(customStart, "Start Date");
+    if (!date) return;
+    const day = startOfDay(date);
+    setCustomStart(day);
+    if (day.getTime() > customEnd.getTime()) setCustomEnd(day);
+  }
+
+  async function pickCustomEnd() {
+    const date = await pick(customEnd, "End Date");
+    if (!date) return;
+    const day = startOfDay(date);
+    if (day.getTime() < customStart.getTime()) {
+      Alert.alert("Invalid range", "End date can't be before the start date.");
+      return;
+    }
+    setCustomEnd(day);
+  }
 
   useDbRefresh(
     useCallback(() => {
@@ -186,6 +220,19 @@ export function ExportScreen() {
         ))}
       </View>
 
+      {rangeKey === "custom" && (
+        <View style={styles.customRangeRow}>
+          <TouchableOpacity style={styles.customDateButton} onPress={pickCustomStart}>
+            <Text style={styles.customDateLabel}>Start</Text>
+            <Text style={styles.customDateValue}>{customStart.toLocaleDateString()}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.customDateButton} onPress={pickCustomEnd}>
+            <Text style={styles.customDateLabel}>End</Text>
+            <Text style={styles.customDateValue}>{customEnd.toLocaleDateString()}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <Text style={styles.sectionLabel}>Job</Text>
       <View style={styles.chipRow}>
         <TouchableOpacity style={[styles.chip, jobId === "all" && styles.chipSelected]} onPress={() => setJobId("all")}>
@@ -244,6 +291,7 @@ export function ExportScreen() {
       <TouchableOpacity style={[styles.exportButton, styles.emailButton]} onPress={sendEmail} disabled={sendingEmail}>
         {sendingEmail ? <ActivityIndicator color="#fff" /> : <Text style={styles.exportButtonText}>Create Email Draft</Text>}
       </TouchableOpacity>
+      {dateModal}
     </ScrollView>
   );
 }
@@ -253,6 +301,10 @@ const styles = StyleSheet.create({
   sectionLabel: { fontWeight: "600", color: "#444", marginBottom: 6, marginTop: 8, fontSize: 13 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
+  customRangeRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+  customDateButton: { flex: 1, borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 10, alignItems: "center" },
+  customDateLabel: { fontSize: 11, color: "#999" },
+  customDateValue: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   chipSelected: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
   chipText: { color: "#333", fontSize: 13 },
   chipTextSelected: { color: "#fff", fontWeight: "600" },

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.3.0] - 2026-09-11
+
+### Added
+
+- Export screen: a "Custom Range" option alongside the fixed presets (this week/last
+  week/this month/last 90 days), with start/end date pickers.
+
 ## [1.2.0] - 2026-09-11
 
 ### Added
