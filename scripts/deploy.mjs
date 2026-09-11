@@ -12,6 +12,11 @@
 //               under one domain, path-routed) at the end.
 // The web client always deploys alongside the API in both modes — see
 // docs/deployment.md for the full walkthrough, including the external-proxy path.
+//
+// The mobile app builds here too (via EAS Build), by design — not as a separate process
+// you have to remember to run. Pass --skip-app to skip it for one run (e.g. a quick
+// backend-only iteration); a JS-only change between full deploys should usually go out
+// via `npm run deploy:app` (an OTA update) instead of a full rebuild here.
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,14 +33,36 @@ import {
   upsertEnvLine,
   warn,
 } from "./lib.mjs";
+import { checkBakedApiUrl, checkEasLogin } from "./eas-helpers.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const appDir = join(rootDir, "app");
 const envProdPath = join(rootDir, ".env.prod");
 
 const args = process.argv.slice(2);
+function flagValue(name, fallback) {
+  const idx = args.indexOf(name);
+  return idx >= 0 && args[idx + 1] !== undefined ? args[idx + 1] : fallback;
+}
 const wantsExternal = args.includes("--external-proxy");
 const wantsLocal = args.includes("--local-proxy");
-const domainArg = args.find((a) => !a.startsWith("--"));
+const wantsSkipApp = args.includes("--skip-app");
+const appPlatform = flagValue("--app-platform", "android");
+const appProfile = flagValue("--app-profile", "preview");
+// Excludes both the flag names above and the values immediately following them, so
+// `--app-platform android` can't be mistaken for the positional domain argument (neither
+// "--app-platform" nor "android" starts with "--", so a plain "doesn't start with --"
+// filter alone would wrongly match "android" as the domain in some argument orderings).
+const valueFlags = ["--app-platform", "--app-profile"];
+const consumedIndices = new Set();
+for (const flag of valueFlags) {
+  const idx = args.indexOf(flag);
+  if (idx >= 0) {
+    consumedIndices.add(idx);
+    consumedIndices.add(idx + 1);
+  }
+}
+const domainArg = args.find((a, i) => !a.startsWith("--") && !consumedIndices.has(i));
 
 function composeFileFor(mode) {
   return mode === "external" ? "docker-compose.prod.external-proxy.yml" : "docker-compose.prod.yml";
@@ -247,11 +274,50 @@ if (!allRunning) {
   }
 }
 
+let appBuildStarted = false;
+if (wantsSkipApp) {
+  section("Skipping mobile app build (--skip-app)");
+} else {
+  section(`Building the mobile app (${appPlatform}, ${appProfile} profile)`);
+  if (!commandExists("npx --version")) {
+    warn("npx isn't available — skipping the mobile app build. Install Node.js locally to enable this step.");
+  } else {
+    const dirty = captureOutput("git status --porcelain -- app shared", { cwd: rootDir });
+    if (dirty) {
+      warn("app/ or shared/ has uncommitted changes — skipping the mobile app build so it doesn't ship unreviewed code.");
+      warn("Commit or stash, then re-run `npm run deploy` to include it.");
+    } else {
+      const whoami = captureOutput("npx eas-cli@latest whoami", { cwd: appDir });
+      if (!whoami || /not logged in/i.test(whoami)) {
+        warn("Not logged in to EAS — skipping the mobile app build.");
+        warn("Run `cd app && npx eas-cli@latest login`, then re-run `npm run deploy` to include it.");
+      } else {
+        step(`Logged in to EAS as ${whoami}`);
+        checkBakedApiUrl(rootDir, appDir, appProfile);
+        step("Submitting to EAS Build (not waiting for it to finish — this would otherwise block for several minutes)...");
+        appBuildStarted = run(`npx eas-cli@latest build --platform ${appPlatform} --profile ${appProfile} --non-interactive --no-wait`, {
+          cwd: appDir,
+          optional: true,
+        });
+        if (!appBuildStarted) {
+          warn("Failed to submit the mobile app build — see the error above. The server/web deploy above is unaffected.");
+        }
+      }
+    }
+  }
+}
+
 section("Done");
+const appBuildLine = appBuildStarted
+  ? "Mobile app: build submitted to EAS — it'll print a download link/QR code when it finishes (`eas build:list` to check status)."
+  : wantsSkipApp
+    ? "Mobile app: skipped (--skip-app)."
+    : "Mobile app: not built this run — see the warning above for why, and how to include it next time.";
 if (proxyMode === "local") {
   console.log(`
 Server: https://${domain}
 Web client: https://${domain}/
+${appBuildLine}
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status
@@ -293,6 +359,8 @@ the same "path -> this host:port" rules into your proxy's own config format.
 Make sure ports ${serverPort} and ${webPort} are actually reachable from your proxy's machine —
 a firewall rule scoped to its specific IP is safer than leaving it open to everything. See
 docs/deployment.md#deploying-behind-your-own-reverse-proxy.
+
+${appBuildLine}
 
 Useful commands:
   docker compose ${composeFlags} ps        # container status

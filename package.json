@@ -11,6 +11,7 @@
     "setup": "node scripts/setup.mjs",
     "update": "node scripts/update.mjs",
     "deploy": "node scripts/deploy.mjs",
+    "deploy:app": "node scripts/deploy-app.mjs",
     "dev:server": "npm run dev --workspace=server",
     "dev:app": "npm run start --workspace=app",
     "dev:web": "npm run dev --workspace=web",

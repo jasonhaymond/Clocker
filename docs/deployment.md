@@ -500,14 +500,47 @@ Three distinct things, easy to conflate:
 
 1. **Building** — compiling the app into something installable (`.apk`/`.aab` for
    Android, `.ipa` for iOS), via [EAS Build](https://docs.expo.dev/build/introduction/)
-   (Expo's cloud build service — nothing to install locally beyond the CLI).
+   (Expo's cloud build service — nothing to install locally beyond the CLI). **This
+   happens automatically as part of `npm run deploy`** (see below) — not a separate
+   process you have to remember to run.
 2. **Installing it somewhere** — an *internal distribution* build (a direct download
    link, no review) for personal/team use, vs. a full App Store/Play Store release for
    the public. This doc focuses on internal distribution — the right stopping point for
    a personal app.
-3. **Updating it afterward** — [OTA updates](./development.md#ota-updates) (`eas
-   update`) for JS/asset-only changes to an *already-installed* build, vs. a brand new
-   build (this section, again) for anything touching native code.
+3. **Updating it afterward** — [OTA updates](./development.md#ota-updates)
+   (`npm run deploy:app`, a thin wrapper around `eas update`) for JS/asset-only changes to
+   an *already-installed* build, vs. a brand new build (item 1) for anything touching
+   native code. This one *is* deliberately a separate, lighter command — it's for the
+   common case of shipping a JS fix between full deploys, without waiting on a cloud
+   build.
+
+### `npm run deploy` builds the app too
+
+Once [Step 1](#step-1-one-time-setup) below has been done once (logged in, project
+linked), every `npm run deploy` run also submits an EAS Build for the mobile app —
+alongside the server and web client, as one command, matching this project's [feature
+parity policy](../CLAUDE.md). Concretely, after the server/web containers are up and
+verified, `scripts/deploy.mjs`:
+
+1. Confirms `app/` and `shared/` have no uncommitted changes (skips the mobile build,
+   with a clear warning, rather than shipping unreviewed code — the server/web deploy
+   that already happened is unaffected either way).
+2. Confirms you're logged in to EAS (`npx eas-cli@latest whoami`) — skips with a warning
+   if not, telling you to `cd app && npx eas-cli@latest login` and re-run.
+3. Cross-checks `app/eas.json`'s baked `EXPO_PUBLIC_API_URL` against `.env.prod`'s
+   `DOMAIN` (same check described in [Step 2](#step-2-point-the-build-at-your-server)
+   below) — a mismatch here is exactly the class of bug that shipped earlier in this
+   project's history.
+4. Submits the build (`eas build --platform android --profile preview` by default) with
+   `--no-wait` — it doesn't block the rest of the deploy for the several minutes a cloud
+   build takes; EAS prints a dashboard link/QR code once it's done, separately.
+
+Override the platform/profile, or skip it for one run:
+
+```bash
+npm run deploy -- your-domain.com --app-platform ios --app-profile production
+npm run deploy -- your-domain.com --skip-app   # server + web only, this run
+```
 
 ### Step 1: One-time setup
 
@@ -586,6 +619,11 @@ of putting it in `eas.json`.)
 
 ### Step 3: Build
 
+Building itself is [automated as part of `npm run deploy`](#npm-run-deploy-builds-the-app-too)
+— once Steps 1-2 are done, you generally don't run `eas build` by hand at all. Spelled out
+manually anyway (useful the very first time, or to build a platform/profile combination
+`npm run deploy` isn't currently configured for):
+
 ```bash
 eas build --platform android --profile preview
 ```
@@ -614,7 +652,9 @@ eas build --platform ios --profile preview
 ```
 
 EAS handles provisioning-profile/certificate creation for you interactively the first
-time.
+time — this is also why `npm run deploy`'s automated build defaults to `android`, which
+doesn't need this interactive step; pass `--app-platform ios` once device
+registration/certificates are already sorted out.
 
 ### Step 4: Install it
 
@@ -629,10 +669,12 @@ time.
 
 - **JS/asset-only change** (a new screen, a bug fix, anything not touching native
   dependencies or `app.json`'s native-affecting config): ship it as an
-  [OTA update](./development.md#ota-updates) — `eas update` — no new build, no
-  reinstalling anything.
+  [OTA update](./development.md#ota-updates) — `npm run deploy:app` — no new build, no
+  reinstalling anything. This is the one piece that's *intentionally* a separate, lighter
+  command from `npm run deploy` — see `scripts/deploy-app.mjs`.
 - **Native change** (a new native dependency, an Expo SDK upgrade, a change to
-  permissions/icons/etc. in `app.json`): repeat [Step 3](#step-3-build) and reinstall.
+  permissions/icons/etc. in `app.json`): just run `npm run deploy` again — it rebuilds the
+  app as part of the same command, no separate step needed.
 
 ### Going further: an actual App Store / Play Store release
 

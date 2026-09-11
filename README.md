@@ -152,8 +152,10 @@ To enable it (needs a free Expo account):
 3. Whenever you want to ship a JS-only change (no native code changes) without a new app
    build:
    ```bash
-   eas update --branch production --message "Describe the change"
+   npm run deploy:app
    ```
+   A native change instead? Just run `npm run deploy` (see
+   [Deployment](./docs/deployment.md)) — it builds the app as part of the same command.
 
 ### Staying up to date
 

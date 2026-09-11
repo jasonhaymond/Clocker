@@ -364,9 +364,16 @@ Whenever you want to ship a JS-only change (no native module changes) without an
 app-store release:
 
 ```bash
-cd app
-eas update --branch production --message "Describe the change"
+npm run deploy:app
 ```
+
+`scripts/deploy-app.mjs` — refuses to run over uncommitted changes in `app/`/`shared/`,
+confirms you're logged in to EAS, cross-checks `app/eas.json`'s baked
+`EXPO_PUBLIC_API_URL` against `.env.prod`'s `DOMAIN`, then runs `eas update --branch
+production` with a message derived from your latest commit (or pass `-- --message "..."`
+for a custom one). This is deliberately a separate, lighter command from `npm run
+deploy` — that one rebuilds the whole app for native changes; this one is JS-only and
+doesn't touch a cloud build at all.
 
 This covers *updating* an already-installed build. For producing that build in the first
 place — EAS Build, internal distribution, installing on a real device — see
