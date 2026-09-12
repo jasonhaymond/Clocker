@@ -841,9 +841,9 @@ and "security gaps" sections — read it before touching production).
 **`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
 `1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
 here.** Everything before that, plus full commit-level detail for anything after, is
-`git log` (`94e92f7` most recent — the `1.12.0` commit, two real bugs found on the first
-real remote backup attempt, described in §3 above). A few highlights predating the
-changelog, newest-first, kept for orientation rather than completeness:
+`git log` (`5d51fcb` most recent — the `1.13.0` commit, removing the `1.12.0` repo-URL
+validation per explicit instruction, described in §3 above). A few highlights predating
+the changelog, newest-first, kept for orientation rather than completeness:
 
 - `f157682` Add full shift editing (times, breaks, notes) on both clients
 - `ab55f88`/`fbc3d9f` Added STATUS.md, then had to recover it after overwriting it without
@@ -856,7 +856,7 @@ changelog, newest-first, kept for orientation rather than completeness:
 - Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
   export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
-**Working tree**: clean as of `94e92f7` above (`git status` — nothing staged or
+**Working tree**: clean as of `5d51fcb` above (`git status` — nothing staged or
 modified), pushed to `origin/master` this session. One stray untracked file still exists
 (present since at least the last audit, deliberately left alone again):
 `app/assets/2A87F0F4-4604-43E5-88A9-353575B87AD4-05daea287739b47c27cea4102e72ecd9.lrprev`
