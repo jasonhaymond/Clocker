@@ -802,7 +802,7 @@ and "security gaps" sections — read it before touching production).
 **`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
 `1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
 here.** Everything before that, plus full commit-level detail for anything after, is
-`git log` (`PENDING` most recent — the `1.11.0` commit, the first under the newly-unified
+`git log` (`e4a87b1` most recent — the `1.11.0` commit, the first under the newly-unified
 backend+client versioning policy described in §1). A few highlights predating the
 changelog, newest-first, kept for orientation rather than completeness:
 
@@ -817,7 +817,7 @@ changelog, newest-first, kept for orientation rather than completeness:
 - Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
   export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
-**Working tree**: clean as of `PENDING` above (`git status` — nothing staged or
+**Working tree**: clean as of `e4a87b1` above (`git status` — nothing staged or
 modified), pushed to `origin/master` this session. One stray untracked file still exists
 (present since at least the last audit, deliberately left alone again):
 `app/assets/2A87F0F4-4604-43E5-88A9-353575B87AD4-05daea287739b47c27cea4102e72ecd9.lrprev`
