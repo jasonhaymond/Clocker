@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import cron from "node-cron";
 import jwt from "jsonwebtoken";
-import { captureOutput, composeFileFor, readEnvValue } from "./lib.mjs";
+import { composeFileFor, discardSafeLockfileDrift, readEnvValue } from "./lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const envProdPath = join(rootDir, ".env.prod");
@@ -466,8 +466,12 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === "POST" && url.pathname === "/update") {
       if (anyBusy()) return send(409, { error: "Another operation is already running" });
-      const dirty = captureOutput("git status --porcelain", { cwd: rootDir });
-      if (dirty) {
+      // A locally modified package-lock.json alone (e.g. from an `npm install` run
+      // directly on this host, outside the normal update flow) shouldn't block this
+      // button forever — see discardSafeLockfileDrift's own comment for the exact rule
+      // and why package.json also being dirty is the one case left alone.
+      const { remaining } = discardSafeLockfileDrift(rootDir);
+      if (remaining.length > 0) {
         return send(409, { error: "Server's working tree has uncommitted changes — resolve manually before updating." });
       }
       startUpdate();

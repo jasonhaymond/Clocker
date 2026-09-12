@@ -582,6 +582,19 @@ Verified present in the repo (code + docs, not just described in memory):
   Playwright: toggle opens, script contains the expected commands, and typing a repo URL
   correctly re-derives the host/path shown in the script.
 
+- **"Update Server" (and `npm run update`) now tolerate a locally modified
+  `package-lock.json` on their own, not just when it's the *only* dirty file.** Previously
+  a real `npm install` run directly on the host (as happened during this session's live
+  incident, see §4) could leave `package-lock.json` git-dirty in a way that would have
+  permanently 409'd the "Update Server" button (it required a fully clean tree) even
+  though that drift is always safe to discard — `npm install` regenerates the lockfile
+  fully on every run regardless. New shared helper, `discardSafeLockfileDrift` in
+  `scripts/lib.mjs`, used by both `scripts/update.mjs`'s local `git pull` and
+  `scripts/host-agent.mjs`'s `/update` handler: discards a dirty `package-lock.json`
+  outright unless `package.json` is *also* dirty (that pairing usually means an
+  intentional, uncommitted dependency change in progress, not just drift — left alone as
+  a real uncommitted change in that case).
+
 ## 4. Known gaps / open work
 
 - **Real incident (2026-09-12): `clocker-host-agent` was crash-looping in production on
@@ -751,9 +764,14 @@ and "security gaps" sections — read it before touching production).
   dev, documented in `docs/development.md#automatic-port-selection`.
 - **`package-lock.json` can show falsely modified on Windows** (LF/CRLF) after
   `npm install` — mitigated by root `.gitattributes` (`* text=auto eol=lf`) plus
-  `scripts/update.mjs` auto-discarding a lockfile-only dirty tree before pulling. If
-  `git pull`/`npm run update` ever blocks on this, `git checkout -- package-lock.json`
-  first.
+  `scripts/lib.mjs`'s `discardSafeLockfileDrift` (2026-09-12: broadened beyond the
+  original "only the lockfile is dirty" carve-out to discard it regardless of what else is
+  dirty, as long as `package.json` isn't *also* dirty — see §3/§4). Shared by both
+  `scripts/update.mjs`'s local `git pull` and the "Update Server" button's production
+  flow (`scripts/host-agent.mjs`), so the two can't diverge on this rule. If `git pull`/
+  `npm run update`/Update Server ever still blocks on this (i.e. `package.json` really is
+  also dirty, or something else entirely is), `git checkout -- package-lock.json` by hand
+  first, or resolve whatever else is actually dirty.
 - **Feature-parity policy** (`CLAUDE.md`, repo root) — every client must expose the same
   features; a platform constraint is a reason to adapt the mechanism, not drop the
   feature; new features land on both clients in the same unit of work.
