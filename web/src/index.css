@@ -260,11 +260,71 @@ hr {
   flex-direction: column;
 }
 .app-header {
-  padding: 14px 16px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 8px 12px 16px;
   border-bottom: 1px solid #eee;
 }
 .app-header h1 {
   font-size: 17px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Settings/Help entry point — see App.tsx's HeaderMenu. Kept out of the bottom bar so
+   that one only ever has to fit the tabs someone actually switches between often. */
+.header-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.header-menu-button {
+  border: none;
+  background: none;
+  padding: 6px;
+  font-size: 24px;
+  line-height: 1;
+  color: #333;
+  display: flex;
+}
+.header-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 160px;
+  overflow: hidden;
+  z-index: 20;
+}
+.header-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+}
+.header-menu-item svg {
+  font-size: 18px;
+  color: #888;
+  flex-shrink: 0;
+}
+.header-menu-item.active {
+  color: #2563eb;
+}
+.header-menu-item.active svg {
+  color: #2563eb;
 }
 /* A fixed bottom icon bar, styled to mimic app/'s bottom tab navigator (see
    app/src/navigation/RootNavigator.tsx) as closely as a web page reasonably can: same
@@ -285,19 +345,31 @@ hr {
 }
 .tab {
   flex: 1;
+  /* Flex items default to min-width:auto, which stops them shrinking below their
+     content's natural width — on a narrow phone screen that pushes the bar wider than
+     the viewport instead of letting a long label like "Timesheets" shrink to fit. This
+     is what actually makes the ellipsis rule on .tab span below take effect. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   border: none;
   background: none;
-  padding: 6px 4px 8px;
+  padding: 6px 2px 8px;
   font-size: 10px;
   font-weight: 600;
   color: #888;
 }
+.tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tab svg {
   font-size: 22px;
+  flex-shrink: 0;
 }
 .tab:hover {
   background: #f7f8fa;
@@ -330,13 +402,16 @@ hr {
   width: 100%;
   margin-top: 6px;
 }
+/* Deliberately NOT full width, unlike .primary-button — these are secondary/utility
+   actions (Refresh, Save Settings, Add a tier, ...), not the one thing a screen exists
+   for, so sizing to content reads as a normal web button rather than an oversized bar
+   stretched across a wide desktop viewport. */
 .secondary-button {
   border: 1px solid #2563eb;
   color: #2563eb;
   background: #fff;
   border-radius: 8px;
-  padding: 8px;
-  width: 100%;
+  padding: 8px 16px;
   font-weight: 600;
   margin-top: 8px;
 }

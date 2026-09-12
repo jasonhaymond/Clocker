@@ -1,12 +1,13 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   IoBriefcase,
   IoBriefcaseOutline,
   IoDocumentText,
   IoDocumentTextOutline,
+  IoHelpCircleOutline,
   IoList,
   IoListOutline,
-  IoSettings,
+  IoMenuOutline,
   IoSettingsOutline,
   IoShare,
   IoShareOutline,
@@ -21,6 +22,7 @@ import { HistoryScreen } from "./screens/HistoryScreen";
 import { TimesheetsScreen } from "./screens/TimesheetsScreen";
 import { ExportScreen } from "./screens/ExportScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { HelpScreen } from "./screens/HelpScreen";
 
 function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -103,7 +105,13 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
-type Tab = "clock" | "jobs" | "history" | "timesheets" | "export" | "settings";
+// Settings and Help live behind the header's hamburger menu, not the bottom bar — see
+// HeaderMenu below — so only the 5 tabs a user switches between constantly get a bottom
+// icon slot, same as app/'s bottom tab navigator would if it had this many destinations
+// competing for space on a narrow screen.
+type Tab = "clock" | "jobs" | "history" | "timesheets" | "export";
+type Overlay = "settings" | "help" | null;
+
 // Same icon set (Ionicons) as app/src/navigation/RootNavigator.tsx's bottom tab bar, via
 // react-icons/io5 — this bar is deliberately styled to mimic that one as closely as a web
 // page reasonably can, right down to which icon goes with which tab.
@@ -113,7 +121,6 @@ const TABS: { key: Tab; label: string; icon: ComponentType; iconActive: Componen
   { key: "history", label: "History", icon: IoListOutline, iconActive: IoList },
   { key: "timesheets", label: "Timesheets", icon: IoDocumentTextOutline, iconActive: IoDocumentText },
   { key: "export", label: "Export", icon: IoShareOutline, iconActive: IoShare },
-  { key: "settings", label: "Settings", icon: IoSettingsOutline, iconActive: IoSettings },
 ];
 
 // Every store action's failure sets store.error (see store.tsx's `guarded` wrapper) —
@@ -135,33 +142,100 @@ function ErrorBanner() {
   );
 }
 
+// Hamburger menu, top right of the header: the entry point for Settings and Help, which
+// don't get their own bottom-bar slot (see the Tab/Overlay split above). Closes on an
+// outside click/tap as well as on selecting an item, the way any dropdown menu should.
+function HeaderMenu({ overlay, onSelect }: { overlay: Overlay; onSelect: (o: Overlay) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  return (
+    <div className="header-menu" ref={ref}>
+      <button className="header-menu-button" onClick={() => setOpen(!open)} aria-label="Menu">
+        <IoMenuOutline />
+      </button>
+      {open && (
+        <div className="header-menu-dropdown">
+          <button
+            className={`header-menu-item${overlay === "settings" ? " active" : ""}`}
+            onClick={() => {
+              onSelect("settings");
+              setOpen(false);
+            }}
+          >
+            <IoSettingsOutline />
+            <span>Settings</span>
+          </button>
+          <button
+            className={`header-menu-item${overlay === "help" ? " active" : ""}`}
+            onClick={() => {
+              onSelect("help");
+              setOpen(false);
+            }}
+          >
+            <IoHelpCircleOutline />
+            <span>Help</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("clock");
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const current = TABS.find((t) => t.key === tab)!;
+  const title = overlay === "settings" ? "Settings" : overlay === "help" ? "Help" : current.label;
+
+  function selectTab(t: Tab) {
+    setOverlay(null);
+    setTab(t);
+  }
 
   return (
     <StoreProvider>
       <div className="app-shell">
         {/* Mirrors app/'s per-screen navigation header (always the current screen's
             title), now that the tab switcher itself lives at the bottom like the mobile
-            bottom tab bar. */}
+            bottom tab bar. The hamburger on the right is this client's only departure
+            from that mobile layout — Settings/Help don't compete with the 5 frequently
+            used tabs for bottom-bar space. */}
         <header className="app-header">
-          <h1>{current.label}</h1>
+          <h1>{title}</h1>
+          <HeaderMenu overlay={overlay} onSelect={setOverlay} />
         </header>
         <ErrorBanner />
         <main className="app-main">
-          {tab === "clock" && <ClockScreen />}
-          {tab === "jobs" && <JobsScreen />}
-          {tab === "history" && <HistoryScreen />}
-          {tab === "timesheets" && <TimesheetsScreen />}
-          {tab === "export" && <ExportScreen />}
-          {tab === "settings" && <SettingsScreen onSignOut={onSignOut} />}
+          {overlay === "settings" ? (
+            <SettingsScreen onSignOut={onSignOut} />
+          ) : overlay === "help" ? (
+            <HelpScreen onClose={() => setOverlay(null)} />
+          ) : (
+            <>
+              {tab === "clock" && <ClockScreen />}
+              {tab === "jobs" && <JobsScreen />}
+              {tab === "history" && <HistoryScreen />}
+              {tab === "timesheets" && <TimesheetsScreen />}
+              {tab === "export" && <ExportScreen />}
+            </>
+          )}
         </main>
         <nav className="tab-bar">
           {TABS.map((t) => {
-            const Icon = tab === t.key ? t.iconActive : t.icon;
+            const isActive = !overlay && tab === t.key;
+            const Icon = isActive ? t.iconActive : t.icon;
             return (
-              <button key={t.key} className={`tab${tab === t.key ? " active" : ""}`} onClick={() => setTab(t.key)}>
+              <button key={t.key} className={`tab${isActive ? " active" : ""}`} onClick={() => selectTab(t.key)}>
                 <Icon />
                 <span>{t.label}</span>
               </button>

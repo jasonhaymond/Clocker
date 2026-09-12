@@ -2,12 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
 import { useStore } from "../store";
 import { BackupsScreen } from "./BackupsScreen";
-import { HelpScreen } from "./HelpScreen";
 
 export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
   const [showBackups, setShowBackups] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -63,9 +61,6 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   if (showBackups) {
     return <BackupsScreen onClose={() => setShowBackups(false)} />;
   }
-  if (showHelp) {
-    return <HelpScreen onClose={() => setShowHelp(false)} />;
-  }
 
   return (
     <div className="screen">
@@ -100,12 +95,6 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
             {showLog && <pre className="update-log">{serverUpdate.log}</pre>}
           </>
         )}
-      </section>
-
-      <section>
-        <button className="secondary-button" onClick={() => setShowHelp(true)}>
-          Help
-        </button>
       </section>
 
       <section>

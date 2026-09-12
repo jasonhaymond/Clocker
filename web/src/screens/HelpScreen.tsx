@@ -92,7 +92,7 @@ export function HelpScreen({ onClose }: { onClose: () => void }) {
     <div className="screen">
       <div className="screen-header">
         <button className="link" onClick={onClose}>
-          ← Back to Settings
+          ← Back
         </button>
       </div>
 

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [web 1.7.0] - 2026-09-12 (web only, no mobile changes)
+
+### Changed
+
+- Settings and Help moved out of the bottom tab bar into a hamburger menu at the top
+  right of the header, leaving the bottom bar for the 5 tabs actually switched between
+  often (Clock, Jobs, History, Timesheets, Export). Closes on an outside click, on
+  selecting an item, or implicitly when a bottom tab is tapped.
+- Secondary/utility buttons (Refresh, Update Server, Backups, Save Settings, Back Up Now,
+  Add a tier/manager/break, etc.) no longer stretch full width — they size to their
+  content, like a normal button, instead of spanning the whole screen width on a wide
+  desktop viewport. Primary call-to-action buttons (Add Job, Export, Submit Timesheet)
+  are unchanged and stay full width.
+
+### Fixed
+
+- The bottom tab bar's labels could crowd or overflow on a narrow screen — tab items can
+  now shrink and truncate with an ellipsis instead of overflowing the bar, verified at
+  320/375/414/768/1280px widths.
+
 ## [1.6.0] - 2026-09-12
 
 ### Added

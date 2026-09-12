@@ -66,6 +66,12 @@ web client's tab switcher into a bottom icon bar mimicking the mobile app's, add
 synced" display to web Settings, and removed a stale leftover Settings message on both
 clients — `1.6.0`/`server` untouched this round (§3).
 
+**Amended again (2026-09-12, same day, later session):** web-only follow-up — moved
+Settings/Help out of the bottom tab bar into a header hamburger menu, made the bottom bar
+robust at narrow widths (labels shrink/ellipsize instead of overflowing), and stopped
+secondary/utility buttons from stretching full width on wide screens — `web` bumped to
+`1.7.0` (§3).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -85,8 +91,9 @@ pay calculation, CSV/email export). Two clients, one API:
 npm workspaces monorepo (`shared`, `app`, `server`, `web`). **`CHANGELOG.md` started
 2026-09-11** (Keep a Changelog format) after the user asked to make version-tracking
 default practice — earlier history isn't backfilled, only `git log`/§7 cover that.
-`app/package.json`/`app/app.json` and `web/package.json` are at `1.6.0`; `shared/package.json`
-is at `1.4.0` (last touched then); `server/package.json` is at `0.5.0`. Each package's
+`app/package.json`/`app/app.json` are at `1.6.0`; `web/package.json` is at `1.7.0` (one
+ahead — a web-only round shipped after the last app change); `shared/package.json` is at
+`1.4.0` (last touched then); `server/package.json` is at `0.5.0`. Each package's
 version only bumps in a release that actually touches it — the numbers aren't expected to
 match across packages. Going forward, a version bump + CHANGELOG entry should land with
 each shipping commit, not after the fact.
@@ -346,6 +353,28 @@ Verified present in the repo (code + docs, not just described in memory):
   out has moved to a per-job setting" was never cleaned up after that setting actually
   moved back in `1.2.0`; deleted from both `SettingsScreen.tsx` files (and the
   now-unused RN styles that only supported it, on mobile).
+- **Web: Settings/Help moved to a header hamburger menu; bottom bar hardened for narrow
+  screens; secondary buttons no longer full-width** (`web` bumped to `1.7.0`, web-only —
+  mobile's own bottom tab bar and button sizing were already fine and untouched). The
+  bottom bar now only carries the 5 tabs used constantly (Clock/Jobs/History/Timesheets/
+  Export); a new `HeaderMenu` in `App.tsx` puts Settings and Help behind a hamburger
+  (`IoMenuOutline`) at the header's top right, closing on an outside pointerdown, on
+  selecting an item, or implicitly whenever a bottom tab is tapped (clearing the overlay
+  state). `SettingsScreen.tsx`'s own "Help" button was removed since Help is now a peer
+  destination, not nested under Settings; `HelpScreen.tsx`'s back link text changed from
+  "Back to Settings" to "Back" to match. `.tab` gained `min-width: 0` plus an ellipsis
+  rule on its label — without `min-width: 0`, a flex item can't shrink below its content's
+  natural width, which is exactly what was letting a long label like "Timesheets" push the
+  bar wider than the viewport on a narrow phone instead of truncating. `.secondary-button`
+  (Refresh, Update Server, Backups, Save Settings, Back Up Now, Add a tier/manager/break,
+  etc.) dropped its `width: 100%` in favor of sizing to content — `.primary-button` (Add
+  Job, Export, Submit Timesheet) is unchanged and still full width, since those really are
+  each screen's one main action. **Verified with the same real-headless-Chromium technique
+  as the prior round** (see §4), this time across 320/375/414/768/1280px viewport widths:
+  screenshotted the tab bar, the open hamburger dropdown, Settings, Help, confirmed
+  clicking a bottom tab while viewing Help correctly closes the overlay and navigates, and
+  confirmed a click outside the open dropdown closes it without triggering navigation —
+  all at every width, zero console errors.
 
 ## 4. Known gaps / open work
 
