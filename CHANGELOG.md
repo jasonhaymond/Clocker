@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.8.0] - 2026-09-12
+
+App, web, and shared versions are unified from this release on — see `STATUS.md`'s
+versioning policy. `server` keeps its own independent version.
+
+### Added
+
+- The app's version is now shown in Settings on both clients (mobile already showed it;
+  web is new).
+- Export's job filter (both clients) is now a real multi-select — pick any combination of
+  jobs, not just one job or all of them — with "Select All"/"Deselect All". Defaults to
+  every job selected.
+
+### Fixed
+
+- Mobile: the job chips on the Timesheets tab could render badly oversized (a known
+  Android-specific React Native quirk — a horizontal `ScrollView`'s content container
+  defaults to stretching its children to the scroll view's full available height instead
+  of just matching their own content). Every other chip row in the app happens to use a
+  wrapping layout instead, which sidesteps this; Timesheets' job picker was the only
+  single-line horizontally-scrolling one. Fixed by opting the row out of stretch
+  alignment explicitly. Not verified on a physical device/emulator (none available this
+  session) — the fix targets a well-documented, specific failure mode, but flag this if
+  it still looks off on a real phone.
+
+- Web: History's multi-select was unreachable entirely, not just unreliable on mobile
+  browsers — there was no way to enter selection mode at all. Long-press (mouse, touch,
+  or pen) now enters it, matching the mobile app's long-press gesture.
+- `ShiftEditor` (both clients): "Done" was styled as plain text; it's now a real button.
+  Added a "Cancel" that discards the shift's note draft without saving it (clock-in/out
+  and break edits commit immediately when made, the same as everywhere else in the app,
+  so Cancel doesn't affect those). Mobile's note field no longer auto-saves on blur, so
+  it stays a draft until Done — Cancel would have been meaningless otherwise.
+- Backups (both clients): if the backup key still isn't generated after several automatic
+  retries, a manual Retry now always appears — previously this only showed up when the
+  host agent reported a specific error, so an older deployed host agent (silently missing
+  that error field) could leave this stuck on "Generating..." forever with no way out.
+- Both clients' API request handling no longer throws an unrelated JSON-parsing error
+  when a failed request's response isn't JSON (e.g. a reverse proxy's own error page) —
+  the real HTTP status is now always surfaced cleanly, with a specific hint when a 405
+  hits `/update*`/`/backup*` (see `docs/deployment.md#the-host-agent`).
+
 ## [web 1.7.0] - 2026-09-12 (web only, no mobile changes)
 
 ### Changed

@@ -92,14 +92,6 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
       <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Edit Shift</Text>
-          <TouchableOpacity
-            onPress={() => {
-              saveNotes();
-              onClose();
-            }}
-          >
-            <Text style={styles.doneText}>Done</Text>
-          </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionLabel}>{formatDay(shift.clockIn)}</Text>
@@ -143,9 +135,29 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
           placeholder="Add a note about this shift..."
           value={notes}
           onChangeText={setNotes}
-          onBlur={saveNotes}
           multiline
         />
+
+        {/* Only the note is draft state here — Cancel discards it. Clock in/out and break
+            edits above each commit immediately via their own date/time picker, the same
+            "commit per interaction" pattern used everywhere else in this app (rate
+            tiers, job settings, ...); Cancel can't retroactively undo those. Note used to
+            auto-save onBlur, which defeated the point of a Cancel button (tapping Cancel
+            itself blurs the field first) — removed so it stays a draft until Done. */}
+        <View style={styles.actions}>
+          <TouchableOpacity onPress={onClose} style={styles.actionButton}>
+            <Text style={styles.actionButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              saveNotes();
+              onClose();
+            }}
+            style={[styles.actionButton, styles.actionButtonPrimary]}
+          >
+            <Text style={[styles.actionButtonText, styles.actionButtonPrimaryText]}>Done</Text>
+          </TouchableOpacity>
+        </View>
 
         {modal}
       </ScrollView>
@@ -157,7 +169,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   title: { fontSize: 17, fontWeight: "700" },
-  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
   sectionLabel: { fontWeight: "600", color: "#444", marginTop: 16, marginBottom: 6, fontSize: 13 },
   hint: { color: "#999", fontSize: 12 },
   timeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#eee" },
@@ -169,4 +180,9 @@ const styles = StyleSheet.create({
   secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#2563eb" },
   secondaryButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
   notesInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 10, minHeight: 90, textAlignVertical: "top" },
+  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
+  actionButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+  actionButtonPrimary: { backgroundColor: "#2563eb" },
+  actionButtonText: { fontWeight: "600", color: "#333" },
+  actionButtonPrimaryText: { color: "#fff" },
 });

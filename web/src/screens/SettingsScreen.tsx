@@ -65,6 +65,11 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   return (
     <div className="screen">
       <section>
+        <div className="row-title">App version</div>
+        <div className="hint">{__APP_VERSION__}</div>
+      </section>
+
+      <section>
         <div className="row-title">Last synced</div>
         <div className="hint">{store.lastSyncedAt ? new Date(store.lastSyncedAt).toLocaleString() : "Never"}</div>
         <button className="secondary-button" onClick={() => store.refresh()} disabled={store.loading}>

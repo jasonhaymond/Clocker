@@ -74,15 +74,6 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
       <div className="modal-card modal-card-large">
         <div className="modal-header">
           <h2>Edit Shift</h2>
-          <button
-            className="link-button"
-            onClick={() => {
-              saveNotes();
-              onClose();
-            }}
-          >
-            Done
-          </button>
         </div>
         <div className="modal-scroll">
           <h4>{formatDay(shift.clockIn)}</h4>
@@ -126,6 +117,22 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
 
           <h4>Note</h4>
           <textarea placeholder="Add a note about this shift..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
+        </div>
+        {/* Only the note is draft state here — Cancel discards it. Clock in/out and break
+            edits above each commit immediately via their own date/time picker, the same
+            "commit per interaction" pattern used everywhere else in this app (rate
+            tiers, job settings, ...); Cancel can't retroactively undo those. */}
+        <div className="modal-actions">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            className="primary"
+            onClick={() => {
+              saveNotes();
+              onClose();
+            }}
+          >
+            Done
+          </button>
         </div>
       </div>
       {modal}

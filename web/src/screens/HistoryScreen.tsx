@@ -10,11 +10,15 @@ import {
   type Shift,
   type ShiftPay,
 } from "@clocker/shared";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ShiftEditor } from "../components/ShiftEditor";
 import { useStore } from "../store";
 
 const DAYS_BACK = 90;
+const LONG_PRESS_MS = 500;
+// How far a pointer can drift while held before it counts as a scroll/drag rather than a
+// long press, in CSS pixels.
+const LONG_PRESS_MOVE_TOLERANCE = 10;
 
 export function HistoryScreen() {
   const store = useStore();
@@ -84,6 +88,59 @@ export function HistoryScreen() {
     });
   }
 
+  // There was previously no way to ENTER selection mode at all here — nothing ever set
+  // selectedIds to non-empty except actions that already require selection mode to be
+  // active. Pointer Events (not separate mouse/touch handlers) so one implementation
+  // covers mouse, touch, and pen alike — long-press-with-mouse works the same as
+  // long-press-with-touch, matching the mobile app's onLongPress for entering selection.
+  const press = useRef<{ timer: ReturnType<typeof setTimeout> | null; id: string | null; x: number; y: number; fired: boolean }>({
+    timer: null,
+    id: null,
+    x: 0,
+    y: 0,
+    fired: false,
+  });
+
+  function clearPressTimer() {
+    if (press.current.timer != null) {
+      clearTimeout(press.current.timer);
+      press.current.timer = null;
+    }
+  }
+
+  function onRowPointerDown(e: React.PointerEvent, id: string) {
+    // Right-click / non-primary buttons shouldn't start a long-press.
+    if (e.button !== 0) return;
+    press.current.id = id;
+    press.current.x = e.clientX;
+    press.current.y = e.clientY;
+    press.current.fired = false;
+    clearPressTimer();
+    press.current.timer = setTimeout(() => {
+      press.current.fired = true;
+      toggleSelected(id);
+    }, LONG_PRESS_MS);
+  }
+
+  function onRowPointerMove(e: React.PointerEvent) {
+    if (press.current.timer == null) return;
+    const dx = e.clientX - press.current.x;
+    const dy = e.clientY - press.current.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearPressTimer();
+  }
+
+  function onRowClick(shift: Shift) {
+    // Swallow the click that a long-press's pointerup still generates — without this, a
+    // long press would both enter selection mode AND open the shift editor in the same
+    // gesture.
+    if (press.current.fired) {
+      press.current.fired = false;
+      return;
+    }
+    if (selectionMode) toggleSelected(shift.id);
+    else setEditingShift(shift);
+  }
+
   function confirmDelete(shift: Shift) {
     if (window.confirm("Delete this shift? This can't be undone.")) store.deleteShift(shift);
   }
@@ -127,8 +184,13 @@ export function HistoryScreen() {
             return (
               <div
                 key={shift.id}
-                className={`row clickable${selected ? " selected" : ""}`}
-                onClick={() => (selectionMode ? toggleSelected(shift.id) : setEditingShift(shift))}
+                className={`row clickable no-callout${selected ? " selected" : ""}`}
+                onPointerDown={(e) => onRowPointerDown(e, shift.id)}
+                onPointerMove={onRowPointerMove}
+                onPointerUp={clearPressTimer}
+                onPointerLeave={clearPressTimer}
+                onPointerCancel={clearPressTimer}
+                onClick={() => onRowClick(shift)}
               >
                 {selectionMode && <input type="checkbox" checked={selected} readOnly />}
                 <span className="dot" style={{ backgroundColor: job?.colorHex ?? "#999" }} />

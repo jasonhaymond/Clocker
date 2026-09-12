@@ -455,6 +455,16 @@ hr {
 .row.selected {
   background: #eff6ff;
 }
+/* Long-press-to-select (History) needs the press to actually reach our pointer handlers
+   instead of triggering the mobile browser's own text-selection/callout menu or a
+   text-cursor drag-select on desktop — both of which would otherwise fire partway through
+   the same hold. touch-action: pan-y keeps vertical scrolling working. */
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+}
 .row-main {
   flex: 1;
   min-width: 0;
@@ -541,6 +551,23 @@ hr {
 }
 
 /* Chips */
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.section-header-row h3 {
+  margin: 0;
+}
+.header-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-separator {
+  color: #ccc;
+  font-size: 12px;
+}
 .chip-row {
   display: flex;
   flex-wrap: wrap;

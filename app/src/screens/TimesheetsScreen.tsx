@@ -228,8 +228,15 @@ export function TimesheetsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#fff" },
-  jobBar: { paddingHorizontal: 10, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  jobChip: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6 },
+  // alignItems: "flex-start" is load-bearing, not decorative: a horizontal ScrollView's
+  // content container defaults to alignItems "stretch" like any row, and on Android that
+  // stretches every chip to the ScrollView's full available height instead of just
+  // matching its siblings' content height (every OTHER chip row in this app uses
+  // flexWrap instead of a horizontal ScrollView, which sidesteps this — this is the only
+  // one that didn't). alignSelf on jobChip itself is a second, redundant guard against
+  // the same failure mode.
+  jobBar: { paddingHorizontal: 10, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: "#eee", alignItems: "flex-start" },
+  jobChip: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, alignSelf: "flex-start" },
   jobChipText: { fontWeight: "600", fontSize: 13 },
   jobChipTextSelected: { color: "#fff" },
   periodBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#eee" },

@@ -1,7 +1,7 @@
 import { File, Paths } from "expo-file-system";
 import * as MailComposer from "expo-mail-composer";
 import * as Sharing from "expo-sharing";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { listBreaksForShifts, listJobs, listRateTiersForJobs, listRateVersionsForTiers, listShiftsInRange } from "../db/database";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
@@ -63,7 +63,11 @@ function defaultSubject(rangeLabel: string, jobName: string | null): string {
 
 export function ExportScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [jobId, setJobId] = useState<string | "all">("all");
+  // Defaults to every job selected once jobs first load (see the effect below) — after
+  // that it's purely user-driven, including a job added later is a deliberate choice via
+  // Select All or its own chip, not an automatic side effect of adding it.
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const didInitJobFilter = useRef(false);
   const [rangeKey, setRangeKey] = useState<RangeKey>("thisWeek");
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [breaksByShift, setBreaksByShift] = useState<Record<string, Break[]>>({});
@@ -82,9 +86,24 @@ export function ExportScreen() {
   const { pick, modal: dateModal } = useDateTimePicker();
 
   const load = useCallback(() => {
-    listJobs(true).then(setJobs);
+    listJobs(true).then((rows) => {
+      setJobs(rows);
+      if (!didInitJobFilter.current && rows.length > 0) {
+        setSelectedJobIds(new Set(rows.map((j) => j.id)));
+        didInitJobFilter.current = true;
+      }
+    });
   }, []);
   useDbRefresh(load);
+
+  function toggleJob(id: string) {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const range = useMemo(() => {
     if (rangeKey === "custom") {
@@ -117,22 +136,24 @@ export function ExportScreen() {
 
   useDbRefresh(
     useCallback(() => {
-      listShiftsInRange(range.start.toISOString(), range.end.toISOString(), jobId === "all" ? undefined : jobId).then(
-        async (rows) => {
-          setShifts(rows);
-          const jobIds = Array.from(new Set(rows.map((r) => r.jobId)));
-          const [breaks, jobTiers] = await Promise.all([
-            listBreaksForShifts(rows.map((r) => r.id)),
-            listRateTiersForJobs(jobIds),
-          ]);
-          const grouped: Record<string, Break[]> = {};
-          for (const b of breaks) (grouped[b.shiftId] ??= []).push(b);
-          setBreaksByShift(grouped);
-          setTiers(jobTiers);
-          setVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
-        },
-      );
-    }, [range, jobId]),
+      // Fetch everything in range, then filter to the selected jobs client-side — with
+      // an arbitrary subset (not just "one job" or "all of them"), that's simpler than
+      // teaching the query layer a multi-ID IN clause for what's normally a small list.
+      listShiftsInRange(range.start.toISOString(), range.end.toISOString()).then(async (allRows) => {
+        const rows = allRows.filter((r) => selectedJobIds.has(r.jobId));
+        setShifts(rows);
+        const jobIds = Array.from(new Set(rows.map((r) => r.jobId)));
+        const [breaks, jobTiers] = await Promise.all([
+          listBreaksForShifts(rows.map((r) => r.id)),
+          listRateTiersForJobs(jobIds),
+        ]);
+        const grouped: Record<string, Break[]> = {};
+        for (const b of breaks) (grouped[b.shiftId] ??= []).push(b);
+        setBreaksByShift(grouped);
+        setTiers(jobTiers);
+        setVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
+      });
+    }, [range, selectedJobIds]),
   );
 
   const jobsById = useMemo(() => Object.fromEntries(jobs.map((j) => [j.id, j])), [jobs]);
@@ -144,9 +165,12 @@ export function ExportScreen() {
 
   useEffect(() => {
     if (subjectEdited) return;
-    const jobName = jobId === "all" ? null : jobsById[jobId]?.name ?? null;
+    // Only name a specific job in the default subject when exactly one is selected —
+    // "all of them" or "some arbitrary subset" both read better as the generic label.
+    const selected = jobs.filter((j) => selectedJobIds.has(j.id));
+    const jobName = selected.length === 1 ? selected[0].name : null;
     setSubject(defaultSubject(range.label, jobName));
-  }, [range, jobId, jobsById, subjectEdited]);
+  }, [range, selectedJobIds, jobs, subjectEdited]);
 
   async function exportCsv() {
     if (shifts.length === 0) {
@@ -233,16 +257,25 @@ export function ExportScreen() {
         </View>
       )}
 
-      <Text style={styles.sectionLabel}>Job</Text>
+      <View style={styles.jobHeaderRow}>
+        <Text style={[styles.sectionLabel, styles.jobHeaderLabel]}>Job</Text>
+        <View style={styles.jobHeaderActions}>
+          <TouchableOpacity onPress={() => setSelectedJobIds(new Set(jobs.map((j) => j.id)))}>
+            <Text style={styles.linkAction}>Select All</Text>
+          </TouchableOpacity>
+          <Text style={styles.linkSeparator}>·</Text>
+          <TouchableOpacity onPress={() => setSelectedJobIds(new Set())}>
+            <Text style={styles.linkAction}>Deselect All</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
       <View style={styles.chipRow}>
-        <TouchableOpacity style={[styles.chip, jobId === "all" && styles.chipSelected]} onPress={() => setJobId("all")}>
-          <Text style={[styles.chipText, jobId === "all" && styles.chipTextSelected]}>All Jobs</Text>
-        </TouchableOpacity>
         {jobs.map((job) => (
-          <TouchableOpacity key={job.id} style={[styles.chip, jobId === job.id && styles.chipSelected]} onPress={() => setJobId(job.id)}>
-            <Text style={[styles.chipText, jobId === job.id && styles.chipTextSelected]}>{job.name}</Text>
+          <TouchableOpacity key={job.id} style={[styles.chip, selectedJobIds.has(job.id) && styles.chipSelected]} onPress={() => toggleJob(job.id)}>
+            <Text style={[styles.chipText, selectedJobIds.has(job.id) && styles.chipTextSelected]}>{job.name}</Text>
           </TouchableOpacity>
         ))}
+        {jobs.length === 0 && <Text style={styles.hint}>Add a job in the Jobs tab first.</Text>}
       </View>
 
       <View style={styles.summary}>
@@ -299,6 +332,12 @@ export function ExportScreen() {
 const styles = StyleSheet.create({
   container: { padding: 14, paddingBottom: 40 },
   sectionLabel: { fontWeight: "600", color: "#444", marginBottom: 6, marginTop: 8, fontSize: 13 },
+  jobHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  jobHeaderLabel: { marginBottom: 6, marginTop: 8 },
+  jobHeaderActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  linkAction: { color: "#2563eb", fontWeight: "600", fontSize: 12 },
+  linkSeparator: { color: "#ccc", fontSize: 12 },
+  hint: { color: "#999", fontSize: 12 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
   customRangeRow: { flexDirection: "row", gap: 10, marginTop: 10 },

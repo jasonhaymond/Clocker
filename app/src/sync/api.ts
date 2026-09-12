@@ -26,9 +26,22 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
+  // A response from something other than our own API (a reverse proxy's own error page,
+  // a static file server's plain-text/HTML 405) isn't JSON at all — JSON.parse would
+  // throw and mask the real HTTP status behind an unrelated "Unexpected token" error.
+  // Every caller should see a clean status-based message even then.
+  let data: { error?: unknown } | undefined;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    data = undefined;
+  }
   if (!res.ok) {
-    throw new ApiError(res.status, data?.error ? JSON.stringify(data.error) : `Request failed (${res.status})`);
+    const hint =
+      res.status === 405 && (path.startsWith("/update") || path.startsWith("/backup"))
+        ? " — your reverse proxy may not be routing this path to the host agent yet (see docs/deployment.md#the-host-agent)"
+        : "";
+    throw new ApiError(res.status, data?.error ? JSON.stringify(data.error) : `Request failed (${res.status})${hint}`);
   }
   return data as T;
 }

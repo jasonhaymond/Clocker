@@ -283,6 +283,20 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
               Retry
             </button>
           </>
+        ) : config && keyPollAttempt >= KEY_POLL_ATTEMPTS ? (
+          // No sshPublicKeyError doesn't necessarily mean nothing's wrong — an older
+          // deployed host agent (predating that field) would leave this permanently
+          // undefined even while genuinely stuck, which is exactly what previously left
+          // this stuck on "Generating..." forever with no way out. Once the auto-retry
+          // budget is spent with still no key, always offer a manual retry rather than
+          // trusting the absence of an error field.
+          <>
+            <p className="error">Still generating a backup key after several tries — the host agent may be running an older
+              version. Try Update Server (Settings) if this persists, then Retry here.</p>
+            <button className="link" onClick={retryKeyGeneration}>
+              Retry
+            </button>
+          </>
         ) : (
           <pre className="update-log">Generating…</pre>
         )}

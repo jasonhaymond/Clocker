@@ -72,7 +72,23 @@ robust at narrow widths (labels shrink/ellipsize instead of overflowing), and st
 secondary/utility buttons from stretching full width on wide screens — `web` bumped to
 `1.7.0` (§3).
 
-## 1. What this is
+**Amended again (2026-09-12, same day, later session):** fixed History multi-select on
+web (it was completely unreachable, not just flaky on mobile browsers — see §3), gave
+`ShiftEditor` a real Done button plus a Cancel that discards the note draft on both
+clients, unified `app`/`web`/`shared` onto one "project version" (`1.8.0`, now shown in
+Settings on both clients — see §1's revised versioning policy), and hardened both
+clients' `api.ts` against a non-JSON error response. Also diagnosed (but couldn't fix
+directly — no SSH access) a real production 405 on "Update Server": the user's
+`nextcloud` host almost certainly has a stale external-proxy Caddy config missing the
+`/update*`/`/backup*` routes; see §4 for the exact fix to hand the user.
+
+**Amended again (2026-09-12, same day, later session):** turned Export's job filter into
+a real multi-select on both clients (Select All/Deselect All, any combination — was
+single-select), and fixed a real mobile-only bug the user screenshotted: Timesheets' job
+chips could render badly oversized on Android, traced to a known React Native horizontal-
+`ScrollView`-stretch quirk that every other chip row in the app happens to avoid by using
+a wrapping layout instead — see §3 for detail. The mobile fix is unverified on a real
+device (none available this session).
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
@@ -91,12 +107,19 @@ pay calculation, CSV/email export). Two clients, one API:
 npm workspaces monorepo (`shared`, `app`, `server`, `web`). **`CHANGELOG.md` started
 2026-09-11** (Keep a Changelog format) after the user asked to make version-tracking
 default practice — earlier history isn't backfilled, only `git log`/§7 cover that.
-`app/package.json`/`app/app.json` are at `1.6.0`; `web/package.json` is at `1.7.0` (one
-ahead — a web-only round shipped after the last app change); `shared/package.json` is at
-`1.4.0` (last touched then); `server/package.json` is at `0.5.0`. Each package's
-version only bumps in a release that actually touches it — the numbers aren't expected to
-match across packages. Going forward, a version bump + CHANGELOG entry should land with
-each shipping commit, not after the fact.
+
+**Versioning policy, revised 2026-09-12** (per explicit request — previously each package
+bumped independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/
+shared at `1.4.0`): `app/package.json`, `app/app.json`, `web/package.json`, and
+`shared/package.json` are now kept in lockstep as one "project version" — every one of
+them bumps together on every release, whether or not that release actually touched all
+three, and the number is shown in Settings on both clients (mobile: `Application.
+nativeApplicationVersion`/`app.json`, already existed; web: `__APP_VERSION__`, baked in
+from `web/package.json` via a `define` in `vite.config.ts` — new). All four are at
+`1.8.0` as of this session. `server/package.json` stays on its own independent `0.x`
+track (currently `0.5.0`) — deliberately NOT unified with the client version, since it's
+a backend service versioned separately, not something "clients" (the user's own word)
+covers. A version bump + CHANGELOG entry should land with each shipping commit.
 
 **Project policy (see `CLAUDE.md` at repo root, authoritative — not duplicated here):**
 every client must expose the same feature set; architecture can differ per platform
@@ -375,6 +398,72 @@ Verified present in the repo (code + docs, not just described in memory):
   clicking a bottom tab while viewing Help correctly closes the overlay and navigates, and
   confirmed a click outside the open dropdown closes it without triggering navigation —
   all at every width, zero console errors.
+- **Web: History multi-select was completely unreachable — fixed.** Reported by the user
+  as "not working on mobile browser"; turned out to not work anywhere on web at all — the
+  only ways to change `selectedIds` all required selection mode to already be active, so
+  there was no actual entry point into it. Implemented long-press via Pointer Events (one
+  implementation for mouse, touch, and pen — matches `app/`'s `onLongPress` mental model
+  without needing separate mouse/touch handling): hold ~500ms without moving more than
+  ~10px to enter selection mode; a genuine drag/scroll cancels it. Added `.no-callout`
+  (`-webkit-touch-callout`/`user-select: none`, `touch-action: pan-y`) so a mobile
+  browser's own text-selection/callout menu doesn't fire mid-press and steal the gesture.
+  **Verified for real** with a scripted mouse-held-down long-press (not just reading the
+  code): confirmed entering selection mode, selecting a second row without opening its
+  editor, Cancel exiting selection mode, and — the negative case — a drag past the row
+  correctly NOT entering selection mode.
+- **`ShiftEditor`, both clients: "Done" is now a real button; added "Cancel".** Reported
+  by the user. "Done" was `.link-button`-styled text; now `.primary`/solid-blue in a
+  proper `.modal-actions` footer (mirroring `ShiftNotesModal`'s existing Skip/Save
+  pattern) instead of living in the header. Cancel discards the note's draft text without
+  saving it — the only field with actual draft state; clock-in/out and break edits above
+  each commit immediately via their own date/time picker (the same "commit per
+  interaction" pattern used everywhere else in this app), so Cancel can't retroactively
+  undo those, and doesn't claim to. Mobile's notes field previously auto-saved `onBlur`,
+  which would have made Cancel meaningless (tapping Cancel blurs the field first) —
+  removed, so notes now stay a draft until Done on both clients, consistently. **Verified
+  for real**: typed a note, hit Cancel, reopened the editor, confirmed it was NOT saved;
+  typed a different note, hit Done, reopened, confirmed it WAS saved.
+- **Client versions unified into one "project version"** (see §1) — `app`, `web`, and
+  `shared` are now kept in lockstep (all `1.8.0`), shown in Settings on both clients.
+  `web/vite.config.ts` gained a `define` baking `web/package.json`'s version into
+  `__APP_VERSION__` at build time (Vite doesn't expose `package.json` to browser code on
+  its own) — confirmed present in a real production build's output JS, not just assumed
+  from the config. `server` intentionally stays on its own independent `0.x` track.
+- **Hardened `request()` in both clients' `api.ts` against a non-JSON error response** —
+  see §4's "Update Server" entry for the real production 405 that exposed this: a
+  response body that isn't JSON (a proxy's or static server's own error page, not our
+  API's) used to throw an unrelated `JSON.parse` error instead of surfacing the actual
+  HTTP status cleanly. Now caught, with a specific inline hint when a 405 hits
+  `/update*`/`/backup*` (the exact shape of the external-proxy-routing-gap failure mode).
+- **Export's job filter is now a real multi-select, both clients** — reported by the user.
+  Was single-select (`jobId: string | "all"`); now `selectedJobIds: Set<string>`, any
+  combination, with "Select All"/"Deselect All" next to the "Job" section header.
+  Defaults to every job selected the first time jobs load (matching the old "All Jobs"
+  default); after that it's purely user-driven — a job added later doesn't silently join
+  an already-customized selection, it needs Select All or its own chip. Mobile's
+  `listShiftsInRange` query still only takes one optional job ID; rather than teach it an
+  `IN (...)` clause for what's normally a short list, both clients now always fetch the
+  full range unfiltered and filter client-side by the selected set (web already worked
+  this way). **Verified for real** with a scripted run on web: default-all-selected,
+  Deselect All, an individual re-toggle, and Select All again, checking the actual chip
+  classes after each step — not just reading the code.
+- **Mobile: Timesheets' job chips could render badly oversized** — reported by the user
+  with a screenshot (a selected chip rendered as a large filled square, and the
+  unselected ones nearly as tall). Diagnosed as a specific, well-documented React
+  Native-on-Android bug: a horizontal `ScrollView`'s content container defaults to
+  `alignItems: stretch` like any flex row, and on Android this can stretch every child to
+  the scroll view's full available height rather than just matching sibling content —
+  confirmed as the likely cause by checking every other chip row in this codebase
+  (Backups' schedule/weekday chips, Export's range/job chips, `JobDetailModal`'s several
+  chip rows, Clock's job picker): every single one uses a wrapping (`flexWrap: "wrap"`)
+  layout instead of a horizontal `ScrollView`, which structurally can't hit this failure
+  mode — Timesheets' job picker was the only one built as a single non-wrapping
+  scrollable row. Fixed with the standard remedy (`alignItems: "flex-start"` on the
+  container, `alignSelf: "flex-start"` on each chip as a second guard). **Not verified on
+  a real device or emulator** (none available this session, same standing limitation as
+  every other mobile UI change) — this is a confident diagnosis of a known failure mode
+  with its standard fix, not something seen corrected on an actual phone. Watch for this
+  specifically the next time someone has one in hand.
 
 ## 4. Known gaps / open work
 
@@ -399,13 +488,36 @@ Verified present in the repo (code + docs, not just described in memory):
   (CORS restriction and a bot-filtering CAPTCHA/rate-limiting on `/auth/login`/
   `/auth/register`, previously listed here as gaps, have both since shipped — see §3. The
   refresh-token gap above is the only item left in that doc section.)
-- **The "Update Server" button has never triggered a real deploy** — verified locally
-  against a scratch/dirty-tree setup only (see §3), never against the actual `nextcloud`
-  host or a genuinely clean repo. First real use should be watched closely (check
-  `pm2 logs clocker-host-agent` or the in-app log viewer) rather than trusted blind. Also
-  untested: whether the bundled Caddy's `host.docker.internal` route actually resolves on
-  the real host's Docker version/OS (added `extra_hosts: host-gateway` for Linux, but this
-  wasn't verified against a running container — only that Docker Compose accepted the config).
+- **The "Update Server" button has now actually been tried against the real `nextcloud`
+  host (2026-09-12) and failed with a 405** clicking it from the web client. Diagnosed
+  (no SSH access this session to confirm directly): the user's `nextcloud` deployment uses
+  `PROXY_MODE=external` (a separate Caddy on another machine — see the deployment target
+  note above), and a 405 on a POST is exactly what you'd get if that external proxy's
+  config predates the `/update*`/`/backup*` `handle` blocks being added (host agent
+  shipped in `1.1.0`) — the request would fall through to the catch-all, hit the `web`
+  container's own static file server, which only answers GET/HEAD. **Action for the user**:
+  re-run `npm run deploy -- <domain> --external-proxy` on that host and paste the printed
+  Caddy snippet into the external proxy's config, replacing whatever's there now — the
+  exact `handle` blocks needed are in `scripts/deploy.mjs`'s printed output. Separately
+  hardened `request()` in both clients' `api.ts` this session: a non-JSON error body (a
+  static file server's own 405 page, not our API's JSON) used to throw an unrelated
+  `JSON.parse` error instead of a clean status message; now caught, and a 405 on
+  `/update*`/`/backup*` specifically gets an inline hint pointing at this exact cause.
+  Also confirmed via a second screenshot the same day: the live site's web bundle already
+  reflects newer commits (the header hamburger menu was visible) but Settings → Backups
+  still showed the pre-fix "Generating..." key UI with no error — meaning the `web`/
+  `server` Docker containers were rebuilt more recently than `scripts/host-agent.mjs` was
+  restarted (a `git pull` alone doesn't restart a separately-managed pm2 process; that
+  needs `pm2 restart clocker-host-agent`, or a full `npm run deploy` run that gets far
+  enough to reach that step). **Also fixed a real remaining gap this exposed**: if an
+  older host agent (predating `sshPublicKeyError`) never sends that field, the key UI
+  used to just stay on "Generating..." forever once the auto-retry budget was spent, with
+  no error and no way out. Both `BackupsScreen.tsx`s now show a manual Retry regardless of
+  whether a specific error string is available, once retries are exhausted.
+- Also untested: whether the bundled Caddy's `host.docker.internal` route actually
+  resolves on the real host's Docker version/OS (added `extra_hosts: host-gateway` for
+  Linux, but this wasn't verified against a running container — only that Docker Compose
+  accepted the config). Moot for `nextcloud` specifically since it uses `external` mode.
 - **BorgBackup has never run against a real `borg` binary** — not installed on the dev
   machine this was built on (see §3 for exactly what *was* verified: the HTTP/config/guard
   layer, and a real crash bug caught and fixed in it). Needs `apt install borgbackup` (or

@@ -7,9 +7,8 @@ import {
   startOfDay,
   startOfMonth,
   startOfWeek,
-  type Job,
 } from "@clocker/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { downloadText } from "../lib/download";
 
@@ -67,7 +66,11 @@ const MAILTO_BODY_LIMIT = 1500;
 
 export function ExportScreen() {
   const store = useStore();
-  const [jobId, setJobId] = useState<string | "all">("all");
+  // Defaults to every job selected once jobs first load (see the effect below) — after
+  // that it's purely user-driven, including a job added later is a deliberate choice via
+  // Select All or its own chip, not an automatic side effect of adding it.
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const didInitJobFilter = useRef(false);
   const [rangeKey, setRangeKey] = useState<RangeKey>("thisWeek");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState("");
@@ -90,14 +93,30 @@ export function ExportScreen() {
   }, [rangeKey, customStart, customEnd]);
   const jobsById = useMemo(() => Object.fromEntries(store.jobs.map((j) => [j.id, j])), [store.jobs]);
 
+  useEffect(() => {
+    if (!didInitJobFilter.current && store.jobs.length > 0) {
+      setSelectedJobIds(new Set(store.jobs.map((j) => j.id)));
+      didInitJobFilter.current = true;
+    }
+  }, [store.jobs]);
+
+  function toggleJob(id: string) {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const shifts = useMemo(
     () =>
       store.shifts.filter((s) => {
         const t = new Date(s.clockIn).getTime();
         if (t < range.start.getTime() || t >= range.end.getTime()) return false;
-        return jobId === "all" || s.jobId === jobId;
+        return selectedJobIds.has(s.jobId);
       }),
-    [store.shifts, range, jobId],
+    [store.shifts, range, selectedJobIds],
   );
   const breaksByShift = useMemo(() => {
     const grouped: Record<string, typeof store.breaks> = {};
@@ -113,9 +132,12 @@ export function ExportScreen() {
 
   useEffect(() => {
     if (subjectEdited) return;
-    const jobName = jobId === "all" ? null : (jobsById[jobId] as Job | undefined)?.name ?? null;
+    // Only name a specific job in the default subject when exactly one is selected —
+    // "all of them" or "some arbitrary subset" both read better as the generic label.
+    const selected = store.jobs.filter((j) => selectedJobIds.has(j.id));
+    const jobName = selected.length === 1 ? selected[0].name : null;
     setSubject(defaultSubject(range.label, jobName));
-  }, [range, jobId, jobsById, subjectEdited]);
+  }, [range, selectedJobIds, store.jobs, subjectEdited]);
 
   function exportCsv() {
     if (shifts.length === 0) {
@@ -190,16 +212,25 @@ export function ExportScreen() {
         </div>
       )}
 
-      <h3>Job</h3>
+      <div className="section-header-row">
+        <h3>Job</h3>
+        <div className="header-row-actions">
+          <button className="link" onClick={() => setSelectedJobIds(new Set(store.jobs.map((j) => j.id)))}>
+            Select All
+          </button>
+          <span className="link-separator">·</span>
+          <button className="link" onClick={() => setSelectedJobIds(new Set())}>
+            Deselect All
+          </button>
+        </div>
+      </div>
       <div className="chip-row">
-        <button className={`chip${jobId === "all" ? " selected" : ""}`} onClick={() => setJobId("all")}>
-          All Jobs
-        </button>
         {store.jobs.map((job) => (
-          <button key={job.id} className={`chip${jobId === job.id ? " selected" : ""}`} onClick={() => setJobId(job.id)}>
+          <button key={job.id} className={`chip${selectedJobIds.has(job.id) ? " selected" : ""}`} onClick={() => toggleJob(job.id)}>
             {job.name}
           </button>
         ))}
+        {store.jobs.length === 0 && <p className="hint">Add a job in the Jobs tab first.</p>}
       </div>
 
       <div className="totals-row">
