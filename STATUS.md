@@ -630,8 +630,8 @@ and "security gaps" sections — read it before touching production).
 **`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
 `1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
 here.** Everything before that, plus full commit-level detail for anything after, is
-`git log` (currently 53 commits, `c0b8dad` scaffold to `d9e18bb` most recent — the web
-`1.7.0` commit described above). A few highlights predating the changelog, newest-first,
+`git log` (currently 55 commits, `c0b8dad` scaffold to `539fd06` most recent — the
+`1.8.0` commit described above). A few highlights predating the changelog, newest-first,
 kept for orientation rather than completeness:
 
 - `f157682` Add full shift editing (times, breaks, notes) on both clients
@@ -645,9 +645,9 @@ kept for orientation rather than completeness:
 - Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
   export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
-**Working tree**: clean as of the web `1.7.0` commit above (`git status` — nothing staged
-or modified), pushed to `origin/master` this session. One stray untracked file still
-exists (present since at least the last audit, deliberately left alone again):
+**Working tree**: clean as of the `1.8.0` commit above (`git status` — nothing staged or
+modified), pushed to `origin/master` this session. One stray untracked file still exists
+(present since at least the last audit, deliberately left alone again):
 `app/assets/2A87F0F4-4604-43E5-88A9-353575B87AD4-05daea287739b47c27cea4102e72ecd9.lrprev`
 — a Lightroom preview file, not project-generated; almost certainly an accidental drop
 into the repo tree (this whole project lives under a Nextcloud-synced folder). Worth
