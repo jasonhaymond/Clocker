@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import {
   clockIn,
   clockOut,
+  deleteShift,
   endBreak,
   getJob,
   getOpenBreak,
@@ -166,10 +168,35 @@ export function ClockScreen() {
   }
 
   async function handleClockOut(shift: Shift, customTime?: Date) {
+    // Only the immediate "Clock Out" button (no customTime) needs this guard — a shift
+    // clocked in for later today (via "Start At...") hasn't started yet, so clocking out
+    // "now" would record a clock-out before the clock-in, the exact backwards-shift bug
+    // reported via screenshot. "Clock Out At..." has its own after-clock-in check already.
+    if (!customTime && Date.now() < new Date(shift.clockIn).getTime()) {
+      Alert.alert(
+        "Not started yet",
+        `This shift is scheduled to start at ${formatClock(shift.clockIn)}. Use the ✕ above to cancel it, or wait until then.`,
+      );
+      return;
+    }
     await clockOut(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
     const job = jobs.find((j) => j.id === shift.jobId);
     if (job?.promptForNotesOnClockOut) setNotesPrompt({ shiftId: shift.id, notes: shift.notes });
+  }
+
+  function confirmCancelClockIn(shift: Shift, job: Job | null) {
+    Alert.alert("Cancel clock-in?", `This removes the ${job?.name ?? "job"} shift you just started — no time will be recorded. This can't be undone.`, [
+      { text: "Keep It", style: "cancel" },
+      {
+        text: "Cancel Clock-In",
+        style: "destructive",
+        onPress: async () => {
+          await deleteShift(shift.id);
+          synchronize().catch(() => {});
+        },
+      },
+    ]);
   }
 
   async function handleClockOutAt(shift: Shift) {
@@ -241,6 +268,13 @@ export function ClockScreen() {
         const pay = payFor(shift, job, worked);
         return (
           <View key={shift.id} style={styles.openShiftCard}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => confirmCancelClockIn(shift, job)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={18} color={colors.textMuted2} />
+            </TouchableOpacity>
             <View style={[styles.jobBadge, { backgroundColor: job?.colorHex ?? colors.primary }]}>
               <Text style={styles.jobBadgeText}>{job?.name ?? "Job"}</Text>
             </View>
@@ -371,7 +405,8 @@ export function ClockScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flexGrow: 1, padding: 14, paddingTop: 16, backgroundColor: colors.card, gap: 12 },
-    openShiftCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, alignItems: "center" },
+    openShiftCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, alignItems: "center", position: "relative" },
+    cancelButton: { position: "absolute", top: 10, right: 10, padding: 4, zIndex: 1 },
     label: { color: colors.textMuted3, fontSize: 13, marginBottom: 8, textAlign: "center" },
     jobBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16, marginBottom: 12 },
     jobBadgeText: { color: "#fff", fontWeight: "600", fontSize: 14 },

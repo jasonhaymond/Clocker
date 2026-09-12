@@ -178,6 +178,39 @@ pickable options in Export/History's job checklists and Timesheets' job selector
 already excluded them). The Jobs screen itself now hides archived jobs by default too,
 with a "Show Archived Jobs (N)" toggle to reveal them — `1.17.0` (§3).
 
+**Amended again (2026-09-12, same day, later session):** fixed a real bug found via a user
+screenshot: the Clock screen's "expected out"/weekly-hours-remaining was anchored to `now`
+even for a shift clocked in at a future time (via "Start At...") — visibly wrong when the
+clock-in itself hasn't happened yet. `calculateWeeklyProgress` (`shared/src/expectedHours.ts`)
+now anchors the projection to `max(now, shift.clockIn)` — `1.17.1` (§3). Verified via a
+synthetic unit-style script (`tsx`-run, using far-future dates to sidestep
+`roundedWorkedMillis`'s internal, non-injectable `Date.now()` call) and a real Playwright
+browser end-to-end test against the running web app. The user also reported the same job's
+weekly-progress line missing *entirely* on the native Android app — investigated the whole
+mobile pipeline (Prisma schema → server pull response → local SQLite upsert → `dbEvents`
+refresh) with no code-level defect found; most likely explanation is the standing EAS/OTA
+gap (§5 — the installed app can't receive any JS fix without a manual rebuild) or ordinary
+sync staleness, not yet confirmed either way pending info from the user.
+
+**Amended again (2026-09-12, same day, later session):** the user's own Android History
+screenshot turned up the real root cause of a related bug — the immediate "Clock Out"
+button used the current time with no check against the shift's own clock-in, so clocking
+out immediately on a "Start At..." shift that hadn't started yet recorded `clockOut <
+clockIn` (History showed this as literally backwards, e.g. "8:45 AM – 8:16 AM", "0h 00m").
+Both clients now block that button with an explanatory alert in this case ("Clock Out
+At..." already validated correctly and needed no change). Also added a ✕ "cancel
+clock-in" button to the open-shift card (deletes the shift outright, no time recorded) so
+a mistaken clock-in/wrong future time doesn't have to be worked around via Clock Out at
+all, and History (both clients) now filters out any completed shift that displays as "0h
+00m" — from this bug, a job's rounding rounding a very short shift down to zero, or a
+same-instant clock-in/out — rather than showing a useless zero-value row; a still-open
+shift is never filtered. Folded into the still-unshipped `1.17.1` (§3) rather than a new
+bump, since it's the same "future clock-in" problem area and nothing here had been
+committed yet. Verified with three real Playwright end-to-end tests against the running
+web app (blocked backwards clock-out + cancel button removes the shift with no History
+trace; a real sub-minute shift is correctly hidden; a real 5-minute shift still shows) and
+`expo export --platform android` for the mobile bundle (no device/emulator available).
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -204,7 +237,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.17.0` as of this session; the
+full stop. All five (four packages, one version) are at `1.17.1` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every

@@ -77,9 +77,22 @@ export function ClockScreen() {
   }
 
   async function handleClockOut(shift: Shift, customTime?: Date) {
+    // Only the immediate "Clock Out" button (no customTime) needs this guard — a shift
+    // clocked in for later today (via "Start At...") hasn't started yet, so clocking out
+    // "now" would record a clock-out before the clock-in, the exact backwards-shift bug
+    // reported via screenshot. "Clock Out At..." has its own after-clock-in check already.
+    if (!customTime && Date.now() < new Date(shift.clockIn).getTime()) {
+      alert(`This shift is scheduled to start at ${formatClock(shift.clockIn)}. Use the ✕ above to cancel it, or wait until then.`);
+      return;
+    }
     await store.clockOut(shift, customTime?.toISOString());
     const job = store.jobs.find((j) => j.id === shift.jobId);
     if (job?.promptForNotesOnClockOut) setNotesPromptShift(shift);
+  }
+
+  function confirmCancelClockIn(shift: Shift, job: Job | null) {
+    if (!window.confirm(`Cancel this ${job?.name ?? "job"} clock-in? No time will be recorded. This can't be undone.`)) return;
+    store.deleteShift(shift);
   }
 
   async function handleClockOutAt(shift: Shift) {
@@ -129,6 +142,9 @@ export function ClockScreen() {
         const pay = payFor(shift, job, worked);
         return (
           <div key={shift.id} className="clock-card">
+            <button className="clock-cancel-btn" onClick={() => confirmCancelClockIn(shift, job)} aria-label="Cancel clock-in" title="Cancel clock-in">
+              ✕
+            </button>
             <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#1d4ed8" }}>
               {job?.name ?? "Job"}
             </span>

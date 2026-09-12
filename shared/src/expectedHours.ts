@@ -19,7 +19,11 @@ export interface WeeklyProgress {
 //
 // expectedClockOut assumes no further breaks beyond what's already been taken: it's
 // "if you took no more breaks from here, this is when you'd hit your target," not a
-// prediction of your actual break habits.
+// prediction of your actual break habits. Projected from `now` for a normal already-
+// under-way shift (clockIn in the past) — but from the shift's own clockIn instead when
+// that's still in the future (e.g. a "Start At..." clock-in for later today), since no
+// work happens between now and then; projecting from `now` in that case would show an
+// expected clock-out earlier than the shift has even started.
 export function calculateWeeklyProgress(params: {
   job: Job;
   shifts: Shift[];
@@ -49,6 +53,8 @@ export function calculateWeeklyProgress(params: {
     targetMinutes: targetMs / 60_000,
     workedMinutes: workedMs / 60_000,
     remainingMinutes: remainingMs / 60_000,
-    expectedClockOut: openShift ? new Date(now.getTime() + remainingMs) : null,
+    expectedClockOut: openShift
+      ? new Date(Math.max(now.getTime(), new Date(openShift.clockIn).getTime()) + remainingMs)
+      : null,
   };
 }

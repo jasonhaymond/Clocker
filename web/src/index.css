@@ -895,6 +895,22 @@ button.primary {
   padding: 16px;
   text-align: center;
   margin-bottom: 14px;
+  position: relative;
+}
+.clock-cancel-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-muted-2);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+.clock-cancel-btn:hover {
+  color: var(--text);
 }
 .job-badge {
   display: inline-block;

@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.17.1] - 2026-09-12
+
+### Added
+
+- **A ✕ "cancel clock-in" button on the open-shift card (Clock screen, both clients)** —
+  removes the shift entirely (no time recorded), for when you clocked into the wrong job or
+  set the wrong "Start At..." time and want to undo it rather than record a bad shift.
+
+### Fixed
+
+- **"Expected out" and weekly-hours-remaining were computed from the current time instead
+  of the shift's clock-in time**, for an open shift whose clock-in is still in the future
+  (e.g. a "Start At..." clock-in scheduled for later today) — reported by the user via a
+  screenshot showing a shift clocked in at a future 8:45 AM, at 8:03 AM real time, with
+  "expected out" already projected from `now` rather than from the still-upcoming clock-in.
+  `calculateWeeklyProgress` (`shared/src/expectedHours.ts`) now anchors the projection to
+  `max(now, shift.clockIn)`, so a future clock-in projects from its own start time — no
+  work happens between now and then, so projecting from `now` could show an expected
+  clock-out earlier than the shift even starts. Shared logic, so this fixes both clients.
+- **The immediate "Clock Out" button could record a clock-out before the shift's own
+  clock-in**, for a shift started via "Start At..." with a future time — pressing "Clock
+  Out" before that scheduled start used the current time regardless, producing a shift
+  with `clockOut < clockIn` (a negative duration, clamped to "0h 00m" but still showing a
+  nonsensical time range in History, e.g. "8:45 AM – 8:16 AM"). Reported by the user via a
+  History screenshot showing exactly this. Both clients now block the immediate button in
+  that case with an explanatory alert; "Clock Out At..." already validated this correctly
+  and is unchanged.
+- **History no longer shows shifts that display as "0h 00m"** (both clients) — a completed
+  shift whose rounded worked time displays as zero, whether from the bug above, a job's
+  rounding rules rounding a very short shift down to nothing, or a same-instant clock-in/
+  clock-out — is filtered from the list entirely rather than shown as a useless zero-value
+  row. A still-open ("in progress") shift is never filtered, regardless of elapsed time.
+
 ## [1.17.0] - 2026-09-12
 
 ### Changed

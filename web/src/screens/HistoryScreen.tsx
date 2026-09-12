@@ -142,9 +142,27 @@ export function HistoryScreen() {
     return sum;
   }, [payByShiftId]);
 
+  // A completed shift that displays as "0h 00m" is either a backwards clock-out (a
+  // clock-in-time bug elsewhere, now guarded against on the Clock screen) or a real shift
+  // so short (job rounding, or just a same-instant clock-in/out) that it rounds down to
+  // nothing — either way it's just clutter here, not a useful entry. Checked at the same
+  // nearest-minute granularity formatDuration displays at, not raw milliseconds: a
+  // several-hundred-millisecond shift is technically ">0" worked but still shows as "0h
+  // 00m", which is exactly the entry this is meant to hide. A still-open shift is never
+  // filtered: it's "in progress" regardless of how little time has elapsed so far.
+  const visibleShifts = useMemo(
+    () =>
+      shifts.filter(
+        (s) =>
+          !s.clockOut ||
+          Math.round(roundedWorkedMillis(s, store.breaks.filter((b) => b.shiftId === s.id), jobsById[s.jobId]) / 60_000) > 0,
+      ),
+    [shifts, store.breaks, jobsById],
+  );
+
   const sections = useMemo(() => {
     const byDay = new Map<string, Shift[]>();
-    for (const shift of shifts) {
+    for (const shift of visibleShifts) {
       const key = startOfDay(new Date(shift.clockIn)).toISOString();
       if (!byDay.has(key)) byDay.set(key, []);
       byDay.get(key)!.push(shift);
@@ -158,7 +176,7 @@ export function HistoryScreen() {
         );
         return { day, title: `${formatDay(day)} — ${formatDuration(totalMs)}`, shifts: dayShifts };
       });
-  }, [shifts, store.breaks, jobsById]);
+  }, [visibleShifts, store.breaks, jobsById]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -393,7 +411,7 @@ export function HistoryScreen() {
             Cancel
           </button>
           <span className="selection-count">{selectedIds.size} selected</span>
-          <button className="link-button" onClick={() => setSelectedIds(new Set(shifts.map((s) => s.id)))}>
+          <button className="link-button" onClick={() => setSelectedIds(new Set(visibleShifts.map((s) => s.id)))}>
             Select All
           </button>
           <button className="link-button danger" onClick={confirmDeleteSelected} aria-label="Delete selected">
@@ -402,7 +420,7 @@ export function HistoryScreen() {
         </div>
       )}
 
-      {shifts.length === 0 && <p className="muted">No shifts match the current filter.</p>}
+      {visibleShifts.length === 0 && <p className="muted">No shifts match the current filter.</p>}
 
       {sections.map((section) => (
         <div key={section.day}>
