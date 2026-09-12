@@ -213,6 +213,30 @@ function borgEnv(cfg) {
   };
 }
 
+// Borg's own repo-URL syntax rule: a string is only treated as a remote SSH target if it
+// has an explicit "ssh://" prefix, or matches the short form "user@host:path" — anything
+// else (including "user@host" with no ":path", a real mistake this caught in practice) is
+// treated as a plain LOCAL path instead, resolved relative to whatever directory `borg`
+// happens to be run from. That's how a typo here produces a wildly confusing error later
+// ("Repository /tmp/clocker-backup-XXXXXX/user@host does not exist") instead of an SSH
+// connection error — the "@" makes it look like a remote target was intended, but Borg
+// silently treats it as local instead of rejecting it outright. Catching this at save
+// time (and again defensively in runBackupNow, in case an already-bad config predates
+// this check) turns that into an immediate, actionable message instead.
+function validateRepoUrl(repoUrl) {
+  if (!repoUrl || repoUrl.startsWith("ssh://")) return null;
+  if (!repoUrl.includes("@")) return null; // presumably a local path — nothing to validate
+  if (/^[^@\s]+@[^:\s]+:.+$/.test(repoUrl)) return null;
+  return (
+    'This looks like a remote SSH target (it contains "@") but is missing ":path" — ' +
+    "remote repo URLs must be exactly user@host:path (e.g. " +
+    "clocker-backup@10.1.30.64:/srv/clocker-backup/repositories/clocker), not just " +
+    "user@host on its own. Without the \":path\", Borg treats the whole thing as a local " +
+    "folder name instead of a remote target, which fails with a confusing " +
+    '"Repository ... does not exist" error instead of a clear one.'
+  );
+}
+
 function ensureRepoInitialized(cfg) {
   const env = borgEnv(cfg);
   const info = spawnSync("borg", ["info", cfg.repoUrl], { env });
@@ -248,6 +272,12 @@ function runBackupNow() {
     if (!cfg.repoUrl || !cfg.passphrase) {
       throw new Error("Backup repo/passphrase aren't configured yet — set them in Settings first.");
     }
+    // Defense in depth: the PATCH /backup/config handler rejects a malformed repo URL at
+    // save time now, but a config saved before that check existed could still have one on
+    // disk — catch it here too rather than let it fail deep inside borg with a confusing
+    // "Repository ... does not exist" error.
+    const repoUrlError = validateRepoUrl(cfg.repoUrl);
+    if (repoUrlError) throw new Error(repoUrlError);
     log("[backup] Staging database dump and secrets...");
     staging = mkdtempSync(join(tmpdir(), "clocker-backup-"));
     const dump = spawnSync("sh", ["-c", `docker compose ${composeFlags()} exec -T postgres pg_dump -U clocker -Fc clocker > "${join(staging, "db.dump")}"`], {
@@ -334,6 +364,8 @@ function restoreBackup({ archiveName, restoreDb, restoreEnv }) {
   try {
     const cfg = loadBackupConfig();
     if (!cfg.repoUrl || !cfg.passphrase) throw new Error("Backup repo/passphrase aren't configured.");
+    const repoUrlError = validateRepoUrl(cfg.repoUrl);
+    if (repoUrlError) throw new Error(repoUrlError);
 
     // Pre-restore safety net, independent of Borg entirely — mirrors the pre-deploy
     // snapshot in scripts/deploy.mjs. A bad restore is then itself recoverable.
@@ -504,7 +536,12 @@ const server = createServer(async (req, res) => {
     if (req.method === "PATCH" && url.pathname === "/backup/config") {
       const body = await readJsonBody(req);
       const cfg = loadBackupConfig();
-      if (typeof body.repoUrl === "string") cfg.repoUrl = body.repoUrl;
+      if (typeof body.repoUrl === "string") {
+        const trimmed = body.repoUrl.trim();
+        const repoUrlError = validateRepoUrl(trimmed);
+        if (repoUrlError) return send(400, { error: repoUrlError });
+        cfg.repoUrl = trimmed;
+      }
       if (typeof body.passphrase === "string") cfg.passphrase = body.passphrase === "" ? null : body.passphrase;
       if (body.retentionCount === null || typeof body.retentionCount === "number") cfg.retentionCount = body.retentionCount;
       if (body.schedule === null) cfg.schedule = null;

@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.12.0] - 2026-09-12
+
+### Fixed
+
+- **The generated remote backup user setup script used `nologin` as the account's
+  shell, which broke the backup entirely** — reported by the user on a real first
+  attempt: `borg init` failed with "Got unexpected RPC data format from server: This
+  account is currently not available." (the exact banner a `nologin` shell prints).
+  Root cause: sshd runs an `authorized_keys` `command="..."` forced command *through the
+  account's login shell* (`<shell> -c "<command>"`) — with `nologin` (or `/bin/false`) as
+  that shell, the forced `borg serve` command is discarded and the shell's own "not
+  available" banner is sent back to the SSH client instead. Changed the generated script
+  (`shared/src/backupRemoteSetup.ts`) to use a real `/bin/sh` shell instead — the
+  `restrict`+`command=` entry in `authorized_keys` already fully locks the account down
+  regardless of shell, so this doesn't reopen anything. **If you already ran the old
+  script's commands on a real Borg server, fix the existing account** with:
+  `sudo usermod -s /bin/sh clocker-backup` (substitute your actual username if you didn't
+  use the default) — editing this app's own code doesn't retroactively change an account
+  already created on a different, unrelated remote server.
+- **A "Repo URL" missing its `:path` (e.g. `user@host` on its own, instead of
+  `user@host:path`) used to fail with a wildly confusing error deep inside Borg** —
+  reported by the user on the same real attempt, after fixing the issue above: `borg
+  create failed: Repository /tmp/clocker-backup-XXXXXX/user@host does not exist.` Root
+  cause: Borg's repo-URL syntax only treats a string as remote when it's `ssh://...` or
+  matches `user@host:path` exactly — anything else, including `user@host` with no colon,
+  is silently treated as a plain LOCAL path instead, resolved relative to whatever
+  directory `borg` happens to be invoked from (here, a per-run temp staging directory,
+  hence the odd `/tmp/...` prefix in the error). Now validated up front instead: Settings
+  → Backups rejects a "Repo URL" that looks like an attempted remote target but is
+  missing the required `:path` with a clear, specific message, both when you save it and
+  (defensively, for a config saved before this check existed) when a backup/restore
+  actually runs.
+
 ## [1.11.0] - 2026-09-12
 
 `server`'s version is unified with `app`/`web`/`shared` from this release on — see

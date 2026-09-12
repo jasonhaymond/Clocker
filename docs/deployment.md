@@ -457,9 +457,11 @@ storing these settings in its own database the way a less-sandboxed app might.
   on the backup server rather than access to your own login, so it's useless for anything
   else even if it were ever leaked. Settings → Backups has a "Set up a dedicated backup
   user on the remote server" toggle right under the generated key that prints the exact
-  copy-pasteable commands (creates a system user with a `nologin` shell, the repository
-  directory, and a restricted `authorized_keys` entry scoped to just `borg serve` against
-  that one repository) — use that instead of retyping the commands here, so there's one
+  copy-pasteable commands (creates a system user with a real `/bin/sh` shell — **not**
+  `nologin`/`/bin/false`, which would break the forced-command restriction below, since
+  sshd runs it *through* the account's shell — the repository directory, and a restricted
+  `authorized_keys` entry scoped to just `borg serve` against that one repository) — use
+  that instead of retyping the commands here, so there's one
   source of truth (`shared/src/backupRemoteSetup.ts`) instead of two that can drift apart.
   Default convention it follows: user `clocker-backup`, repository
   `/srv/clocker-backup/repositories/clocker`. Borg initializes the repository itself
