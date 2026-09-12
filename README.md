@@ -192,6 +192,9 @@ dependencies, and applies any new migrations.
   for automatically right after clocking out (per-job setting)
 - Optional per-job weekly hours target — shows remaining hours this week, and (while
   clocked in) an expected clock-out time, right on the Clock screen
+- Android: a persistent notification while clocked into any job, showing the job(s),
+  start time, and current elapsed hours — needs a custom dev/production build, not Expo
+  Go (see `docs/development.md`)
 - History grouped by day, with per-day and per-shift totals and computed pay; multi-select
   (long-press or tap a row while a selection is active) to delete several shifts at once
 - Tap any shift (still clocked in or already closed) to open its full editor: correct the

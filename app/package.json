@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "main": "index.ts",
   "dependencies": {
     "@clocker/shared": "*",
@@ -22,6 +22,7 @@
     "expo-updates": "~57.0.21",
     "react": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-notify-kit": "^10.7.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0"
   },

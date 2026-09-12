@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.5.0] - 2026-09-11
+
+### Added
+
+- Android: a persistent notification while clocked into any job (job name, start time,
+  elapsed hours), backed by a real foreground service (`react-native-notify-kit`).
+  Requires a custom dev/production build — does not work in Expo Go. **Never run on a
+  real device from this session** (no Android device/emulator access) — written directly
+  against the library's shipped type definitions, not verified end-to-end.
+
 ## [1.4.0] - 2026-09-11
 
 ### Added

@@ -6,7 +6,10 @@
 - [ ] Docker Desktop installed and running — `docker --version` (optional; skip if you'll
       point `DATABASE_URL` at your own Postgres instance instead)
 - [ ] Expo Go installed on a phone, and/or Xcode/Android Studio for a simulator, to
-      actually run the app
+      actually run the app — **except for the persistent "clocked in" Android notification**
+      (`react-native-notify-kit`, a native module): that one feature needs a custom
+      dev/production build (`eas build --profile development` or `preview`/`production`),
+      not Expo Go. Everything else in the app still works fine in Expo Go.
 
 ## First run
 

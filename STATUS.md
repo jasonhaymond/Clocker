@@ -51,6 +51,10 @@ both clients (start/end date pickers alongside the fixed presets), `1.3.0` (§3)
 target: "remaining hours"/"expected clock-out" shown on the Clock screen, both clients,
 `1.4.0` (§3).
 
+**Amended again:** same day, later session — added a persistent Android notification
+while clocked in (job/start time/elapsed hours), `1.5.0` (§3/§4). Mobile-only; needs a
+custom dev/production build (not Expo Go); **never run on a real device this session**.
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -265,6 +269,19 @@ Verified present in the repo (code + docs, not just described in memory):
   Not clicked through by hand on a device/browser. Web computes progress directly from
   its full in-memory shift/break list (no local DB to query); mobile fetches each
   target-having job's current-week shifts/breaks from SQLite on load.
+- **Persistent Android "clocked in" notification** (`app/src/lib/clockedInNotification.ts`,
+  wired into `ClockScreen.tsx`) — a real Android foreground service (not just a "sticky"
+  flag) showing job name(s), start time, and elapsed hours, via `react-native-notify-kit`
+  (a maintained fork of Notifee, which was archived by its author in April 2026 — chosen
+  over the archived original per explicit instruction). Only one foreground service is
+  allowed per app, so multiple simultaneous open shifts fold into one notification, one
+  line per job, rather than several. Updates on the same 30s tick that drives the in-app
+  live timer. Requires a custom Expo dev/production build — **does not work in Expo Go**
+  (`app.json`'s plugin config adds the native module; `docs/development.md` flags this).
+  Written directly against the library's shipped `.d.ts` files (verified real API surface,
+  not guessed), but **never run on a real Android device or emulator from any Claude
+  session** — no such access was available. Treat this as unverified until someone
+  actually builds and runs it.
 
 ## 4. Known gaps / open work
 
@@ -276,6 +293,12 @@ Verified present in the repo (code + docs, not just described in memory):
   pass `--non-interactive` for this reason (see commit `d69b080`). If Jason has since done
   this himself outside a Claude session, re-check `app/app.json` before assuming this gap
   still stands.
+- **The persistent "clocked in" notification has never been built or run** — it's the
+  first feature in this project that genuinely requires a custom dev/production build
+  rather than Expo Go, so it's also blocked on the EAS gap above in practice. First real
+  test should happen on an actual Android device, watching for: the foreground service
+  actually starting, the notification surviving the app being backgrounded/swiped from
+  recents, and correct behavior when clocked into more than one job at once.
 - **JWT refresh isn't implemented** — a "remember me" token (default) never expires, with
   no revocation short of rotating `JWT_SECRET` (logs out every device). Accepted as fine
   for personal/single-user use; flagged as a real gap in

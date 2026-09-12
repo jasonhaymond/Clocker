@@ -3,7 +3,7 @@
     "name": "Clocker",
     "slug": "clocker",
     "scheme": "clocker",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -24,7 +24,17 @@
     },
     "plugins": [
       "expo-mail-composer",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "react-native-notify-kit",
+        {
+          "android": {
+            "foregroundService": {
+              "types": ["dataSync"]
+            }
+          }
+        }
+      ]
     ]
   }
 }

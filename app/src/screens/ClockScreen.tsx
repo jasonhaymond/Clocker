@@ -15,6 +15,7 @@ import {
   listShiftsInRange,
   startBreak,
 } from "../db/database";
+import { requestClockedInNotificationPermission, updateClockedInNotification } from "../lib/clockedInNotification";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
@@ -45,7 +46,7 @@ export function ClockScreen() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
   const [weekDataByJobId, setWeekDataByJobId] = useState<Record<string, { shifts: Shift[]; breaksByShift: Record<string, Break[]> }>>({});
   const { pick, modal } = useDateTimePicker();
@@ -113,6 +114,25 @@ export function ClockScreen() {
     const id = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(id);
   }, [openShiftDetails.length]);
+
+  useEffect(() => {
+    requestClockedInNotificationPermission().catch(() => {});
+  }, []);
+
+  // Keeps the persistent Android "clocked in" notification (see clockedInNotification.ts)
+  // in sync with actual open-shift state — driven by data, not this screen's mount state,
+  // since navigating to another tab shouldn't drop the notification while still clocked
+  // in. Also re-fires on the same 30s `tick` that keeps the in-app timer live, so the
+  // notification's elapsed time doesn't go stale between actual DB changes.
+  useEffect(() => {
+    updateClockedInNotification(
+      openShiftDetails.map(({ shift, job, breaks }) => ({
+        jobName: job?.name ?? "Job",
+        clockInIso: shift.clockIn,
+        workedMs: workedMillis(shift, breaks),
+      })),
+    ).catch(() => {});
+  }, [openShiftDetails, tick]);
 
   async function handleClockIn(customTime?: Date) {
     if (!selectedJobId) return;
