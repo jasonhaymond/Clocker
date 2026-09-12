@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [server 0.5.0] - 2026-09-11 (server only, no client changes)
+
+### Security
+
+- CORS is now restricted to an allowlist (`CORS_ORIGIN`, set automatically to
+  `https://$DOMAIN` by both production Compose files) instead of reflecting any request's
+  `Origin`. Only affects a browser on some other origin than the API's own — the mobile
+  app and the deployed web client (same-domain, path-routed) were already unaffected
+  either way. Falls back to allowing `localhost`/`127.0.0.1` origins when `CORS_ORIGIN` is
+  unset, so `web`'s Vite dev server keeps working locally.
+
 ## [1.5.0] - 2026-09-11
 
 ### Added

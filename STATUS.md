@@ -55,6 +55,10 @@ target: "remaining hours"/"expected clock-out" shown on the Clock screen, both c
 while clocked in (job/start time/elapsed hours), `1.5.0` (§3/§4). Mobile-only; needs a
 custom dev/production build (not Expo Go); **never run on a real device this session**.
 
+**Amended again (2026-09-11, later session):** closed one of the two remaining items in
+`docs/deployment.md#security-gaps-to-close-before-this-is-public` — CORS is no longer
+`{ origin: true }`, `server` bumped to `0.5.0` (§3/§4). No client-side changes.
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -282,6 +286,20 @@ Verified present in the repo (code + docs, not just described in memory):
   not guessed), but **never run on a real Android device or emulator from any Claude
   session** — no such access was available. Treat this as unverified until someone
   actually builds and runs it.
+- **CORS restricted to an allowlist** (`server/src/index.ts`, `server` bumped to `0.5.0`)
+  — no longer `{ origin: true }`. Both production Compose files now set `CORS_ORIGIN` to
+  `https://$DOMAIN` automatically; unset (local dev), it falls back to allowing any
+  `http://localhost:<port>`/`http://127.0.0.1:<port>` origin so `web`'s Vite dev server
+  keeps working. Verified for real (not just by reading the code): ran the server
+  standalone with a throwaway port and confirmed by curl that a matching `CORS_ORIGIN`
+  gets `access-control-allow-origin` back, a non-matching origin gets nothing, the
+  localhost fallback works when `CORS_ORIGIN` is unset, and a matching `CORS_ORIGIN`
+  correctly *stops* the localhost fallback from also being allowed. No client-side
+  changes — this only ever gated browser requests from some other origin than the API's
+  own, and the mobile app/deployed web client (same-domain) were unaffected either way.
+  Closes one of the two items in
+  `docs/deployment.md#security-gaps-to-close-before-this-is-public`; the refresh-token
+  gap remains open (see §4).
 
 ## 4. Known gaps / open work
 
@@ -303,10 +321,9 @@ Verified present in the repo (code + docs, not just described in memory):
   no revocation short of rotating `JWT_SECRET` (logs out every device). Accepted as fine
   for personal/single-user use; flagged as a real gap in
   `docs/deployment.md#security-gaps-to-close-before-this-is-public`.
-- **CORS is still `{ origin: true }`** (permissive) — flagged in the same security-gaps
-  doc section as pre-public-launch work, not yet done. (Rate limiting and a bot-filtering
-  CAPTCHA on `/auth/login`/`/auth/register`, previously listed here as gaps, shipped this
-  session — see §3.)
+  (CORS restriction and a bot-filtering CAPTCHA/rate-limiting on `/auth/login`/
+  `/auth/register`, previously listed here as gaps, have both since shipped — see §3. The
+  refresh-token gap above is the only item left in that doc section.)
 - **The "Update Server" button has never triggered a real deploy** — verified locally
   against a scratch/dirty-tree setup only (see §3), never against the actual `nextcloud`
   host or a genuinely clean repo. First real use should be watched closely (check

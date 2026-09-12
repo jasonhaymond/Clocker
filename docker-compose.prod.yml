@@ -33,6 +33,7 @@ services:
       DATABASE_URL: postgresql://clocker:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@postgres:5432/clocker?schema=public
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
       PORT: 3001
+      CORS_ORIGIN: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
     depends_on:
       - postgres
 

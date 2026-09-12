@@ -578,19 +578,15 @@ yours to supply. Running the server directly, set all of these however your host
 - **`WEB_PORT`** / **`WEB_BIND`** (Compose path, `external` mode only) — same idea as
   `SERVER_PORT`/`SERVER_BIND`, for the web client. Auto-picked *after* `SERVER_PORT` so
   the two never collide, same "first time only" rule otherwise.
+- **`CORS_ORIGIN`** (Compose path only) — set automatically to `https://$DOMAIN` by both
+  Compose files. See [Security gaps to close before this is public](#security-gaps-to-close-before-this-is-public)
+  for what it does and why it's set to your domain rather than left permissive.
 
 ## Security gaps to close before this is public
 
 The current code is fine for "one person, their own devices, their own network or a
 trusted host" and does **not** currently have:
 
-- **CORS restricted to specific origins** — it's registered as `{ origin: true }`
-  (reflects any request's `Origin`). Deploying `web/` on the *same domain* as the API
-  (see [Deploying the web client](#deploying-the-web-client)) means its own requests are
-  same-origin and wouldn't need CORS to be permissive at all — this setting only matters
-  for a browser on some *other* origin, which currently gets waved through. Tighten this
-  (`server/src/index.ts`) to your actual domain (or drop it entirely, since nothing
-  legitimate needs a cross-origin browser request here) before this is genuinely public.
 - **A refresh-token flow** — a "remember me" token (the default; see
   [`api-reference.md`](./api-reference.md#authentication)) never expires, with no
   revocation mechanism short of rotating `JWT_SECRET` (which logs out every device at
@@ -602,6 +598,16 @@ trusted host" and does **not** currently have:
 (`/auth/captcha`) — enough to blunt generic credential-stuffing/signup-spam bots without
 depending on a third-party service (reCAPTCHA/Turnstile). It won't stop a determined,
 targeted attacker; nothing here is meant to.
+
+**CORS is now restricted to `CORS_ORIGIN`** (`server/src/index.ts`) instead of reflecting
+any request's `Origin`. Both production Compose files set it to `https://$DOMAIN`
+automatically — nothing to configure by hand. This only ever gated *browser* requests
+from some other origin (the mobile app and any non-browser client never send an `Origin`
+header, so they were never affected either way); deploying `web/` on the same domain as
+the API (see [Deploying the web client](#deploying-the-web-client)) already makes its own
+requests same-origin regardless of this setting. Left unset, the server falls back to
+allowing any `http://localhost:<port>`/`http://127.0.0.1:<port>` origin, which is what
+lets `web`'s Vite dev server reach the API during local development.
 
 HTTPS termination itself **is** handled by default if you use the Caddy stack above; it's
 only a gap if you run the server directly and skip putting anything in front of it (Fastify
