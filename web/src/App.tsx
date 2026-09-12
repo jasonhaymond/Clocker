@@ -194,8 +194,6 @@ function HeaderMenu({ overlay, onSelect }: { overlay: Overlay; onSelect: (o: Ove
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("clock");
   const [overlay, setOverlay] = useState<Overlay>(null);
-  const current = TABS.find((t) => t.key === tab)!;
-  const title = overlay === "settings" ? "Settings" : overlay === "help" ? "Help" : current.label;
 
   function selectTab(t: Tab) {
     setOverlay(null);
@@ -205,13 +203,12 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   return (
     <StoreProvider>
       <div className="app-shell">
-        {/* Mirrors app/'s per-screen navigation header (always the current screen's
-            title), now that the tab switcher itself lives at the bottom like the mobile
-            bottom tab bar. The hamburger on the right is this client's only departure
-            from that mobile layout — Settings/Help don't compete with the 5 frequently
-            used tabs for bottom-bar space. */}
+        {/* Always the app name/brand, not the current screen — which tab you're on is
+            shown by the active icon in the bottom bar instead. Branded (see --header-bg/
+            --header-text in index.css) — a constant identity element that doesn't change
+            with the light/dark content theme. */}
         <header className="app-header">
-          <h1>{title}</h1>
+          <h1>Clocker</h1>
           <HeaderMenu overlay={overlay} onSelect={setOverlay} />
         </header>
         <ErrorBanner />

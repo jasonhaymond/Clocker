@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
 import { useStore } from "../store";
+import { useTheme, type ThemeMode } from "../theme";
 import { BackupsScreen } from "./BackupsScreen";
+
+const THEME_OPTIONS: { key: ThemeMode; label: string }[] = [
+  { key: "system", label: "System" },
+  { key: "light", label: "Light" },
+  { key: "dark", label: "Dark" },
+];
 
 export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
+  const { mode, setMode } = useTheme();
   const [showBackups, setShowBackups] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
@@ -64,6 +72,17 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
 
   return (
     <div className="screen">
+      <section>
+        <div className="row-title">Appearance</div>
+        <div className="chip-row">
+          {THEME_OPTIONS.map((opt) => (
+            <button key={opt.key} className={`chip${mode === opt.key ? " selected" : ""}`} onClick={() => setMode(opt.key)}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section>
         <div className="row-title">App version</div>
         <div className="hint">{__APP_VERSION__}</div>

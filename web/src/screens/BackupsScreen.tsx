@@ -121,31 +121,43 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [archives, setArchives] = useState<BackupArchive[]>([]);
-  const [archivesError, setArchivesError] = useState<string | null>(null);
   const [runs, setRuns] = useState<BackupRun[]>([]);
 
   const loadConfig = useCallback(() => {
-    getBackupConfig().then((cfg) => {
-      setConfig(cfg);
-      setRepoUrl(cfg.repoUrl ?? "");
-      setRetentionCount(cfg.retentionCount != null ? String(cfg.retentionCount) : "");
-      if (cfg.schedule) {
-        setFrequency(cfg.schedule.frequency);
-        setHour(cfg.schedule.hour);
-        setMinute(cfg.schedule.minute);
-        if (cfg.schedule.weekday != null) setWeekday(cfg.schedule.weekday);
-        if (cfg.schedule.dayOfMonth != null) setDayOfMonth(cfg.schedule.dayOfMonth);
-      } else {
-        setFrequency("off");
-      }
-    });
+    getBackupConfig()
+      .then((cfg) => {
+        if (!cfg) return;
+        setConfig(cfg);
+        setRepoUrl(cfg.repoUrl ?? "");
+        setRetentionCount(cfg.retentionCount != null ? String(cfg.retentionCount) : "");
+        if (cfg.schedule) {
+          setFrequency(cfg.schedule.frequency);
+          setHour(cfg.schedule.hour);
+          setMinute(cfg.schedule.minute);
+          if (cfg.schedule.weekday != null) setWeekday(cfg.schedule.weekday);
+          if (cfg.schedule.dayOfMonth != null) setDayOfMonth(cfg.schedule.dayOfMonth);
+        } else {
+          setFrequency("off");
+        }
+      })
+      // A malformed/empty response leaves `config` null — the retry effect below no
+      // longer requires `config` to already be set to keep trying, so this doesn't need
+      // to do anything beyond not crashing; swallowed so it doesn't spam the console on
+      // every retry attempt against a server stuck in that state.
+      .catch(() => {});
   }, []);
 
-  // Auto-retry a few times while the key is still missing with no reported error (the
-  // normal near-instant case caught mid-flight), then stop and let the error/manual-retry
-  // UI below take over rather than polling forever.
+  // Auto-retry a few times while we don't yet have either a key or an error, then stop
+  // and let the manual-retry UI below take over rather than polling forever. Previously
+  // this required `config` to already be non-null before it would even start — meaning
+  // if /backup/config itself never resolved to a real object (the same "empty response"
+  // failure mode fixed for /backup/archives above), the retry loop never began at all:
+  // keyPollAttempt stayed 0 forever, and the UI was stuck on "Generating..." permanently
+  // with no fallback and no way to recover short of reloading the page. This is exactly
+  // the bug behind a real report of the key staying stuck even after a redeploy.
   useEffect(() => {
-    if (config && !config.sshPublicKey && !config.sshPublicKeyError && keyPollAttempt < KEY_POLL_ATTEMPTS) {
+    const haveResolution = !!config?.sshPublicKey || !!config?.sshPublicKeyError;
+    if (!haveResolution && keyPollAttempt < KEY_POLL_ATTEMPTS) {
       const timer = setTimeout(() => {
         setKeyPollAttempt((n) => n + 1);
         loadConfig();
@@ -160,16 +172,21 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   }
 
   const loadArchives = useCallback(() => {
+    // Same treatment as loadRuns below: a malformed/empty response (seen in practice
+    // against a stale or misbehaving deployment) previously crashed here with a raw
+    // "Cannot read properties of undefined" — now it's just an empty list, same as
+    // genuinely having no archives yet. Not worth a dedicated error state; there's
+    // nothing actionable to tell the user beyond what the SSH key / server sections
+    // above already surface if the host agent itself is unreachable.
     getBackupArchives()
-      .then((r) => {
-        setArchives(r.archives);
-        setArchivesError(null);
-      })
-      .catch((err) => setArchivesError(err instanceof Error ? err.message : "Couldn't load archives"));
+      .then((r) => setArchives(r?.archives ?? []))
+      .catch(() => {});
   }, []);
 
   const loadRuns = useCallback(() => {
-    getBackupRuns().then((r) => setRuns(r.runs));
+    getBackupRuns()
+      .then((r) => setRuns(r?.runs ?? []))
+      .catch(() => {});
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -283,13 +300,14 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
               Retry
             </button>
           </>
-        ) : config && keyPollAttempt >= KEY_POLL_ATTEMPTS ? (
+        ) : keyPollAttempt >= KEY_POLL_ATTEMPTS ? (
           // No sshPublicKeyError doesn't necessarily mean nothing's wrong — an older
-          // deployed host agent (predating that field) would leave this permanently
-          // undefined even while genuinely stuck, which is exactly what previously left
-          // this stuck on "Generating..." forever with no way out. Once the auto-retry
-          // budget is spent with still no key, always offer a manual retry rather than
-          // trusting the absence of an error field.
+          // deployed host agent (predating that field), or /backup/config itself never
+          // resolving to a real object at all, would both leave this branch permanently
+          // unreachable via config alone, which is exactly what previously left this
+          // stuck on "Generating..." forever with no way out (see the retry effect's
+          // comment above). Deliberately does NOT require `config` to be set — once the
+          // auto-retry budget is spent with still no key, always offer a manual retry.
           <>
             <p className="error">Still generating a backup key after several tries — the host agent may be running an older
               version. Try Update Server (Settings) if this persists, then Retry here.</p>
@@ -398,8 +416,7 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
 
       <section>
         <div className="row-title">Archives</div>
-        {archivesError && <p className="error">{archivesError}</p>}
-        {archives.length === 0 && !archivesError && <p className="hint">No archives yet.</p>}
+        {archives.length === 0 && <p className="hint">No archives yet.</p>}
         {archives.map((a) => (
           <ArchiveRestoreRow key={a.name} archive={a} onRestored={() => { stopPolling(); pollRef.current = setInterval(pollStatus, 3000); pollStatus(); }} />
         ))}

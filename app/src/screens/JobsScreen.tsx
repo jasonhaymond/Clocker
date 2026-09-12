@@ -1,13 +1,16 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { createJob, deleteJob, listJobs, listRateTiers, listRateVersionsForTier, setJobArchived } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import type { Job } from "@clocker/shared";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import { JobDetailModal } from "./JobDetailModal";
 
 const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 function JobRatePreview({ jobId }: { jobId: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [label, setLabel] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -29,6 +32,8 @@ function JobRatePreview({ jobId }: { jobId: string }) {
 }
 
 export function JobsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
@@ -109,24 +114,26 @@ export function JobsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  listContent: { padding: 12 },
-  form: { marginBottom: 12, padding: 12, backgroundColor: "#f4f5f7", borderRadius: 10 },
-  formTitle: { fontWeight: "600", fontSize: 14, marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, marginBottom: 8, backgroundColor: "#fff" },
-  swatches: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  swatch: { width: 24, height: 24, borderRadius: 12 },
-  swatchSelected: { borderWidth: 3, borderColor: "#111" },
-  addButton: { backgroundColor: "#2563eb", borderRadius: 8, padding: 10, alignItems: "center" },
-  addButtonText: { color: "#fff", fontWeight: "600", fontSize: 14 },
-  jobRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  jobName: { fontSize: 15, fontWeight: "500" },
-  jobRate: { color: "#666", fontSize: 12 },
-  archivedText: { color: "#999", textDecorationLine: "line-through" },
-  rowAction: { paddingHorizontal: 6, paddingVertical: 3 },
-  rowActionText: { color: "#2563eb", fontSize: 12 },
-  deleteText: { color: "#dc2626" },
-  empty: { textAlign: "center", color: "#999", marginTop: 24 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    listContent: { padding: 12 },
+    form: { marginBottom: 12, padding: 12, backgroundColor: colors.surface, borderRadius: 10 },
+    formTitle: { fontWeight: "600", fontSize: 14, marginBottom: 8, color: colors.text },
+    input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 8, marginBottom: 8, backgroundColor: colors.card, color: colors.text },
+    swatches: { flexDirection: "row", gap: 8, marginBottom: 8 },
+    swatch: { width: 24, height: 24, borderRadius: 12 },
+    swatchSelected: { borderWidth: 3, borderColor: colors.text },
+    addButton: { backgroundColor: colors.primary, borderRadius: 8, padding: 10, alignItems: "center" },
+    addButtonText: { color: colors.onPrimary, fontWeight: "600", fontSize: 14 },
+    jobRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 8 },
+    dot: { width: 12, height: 12, borderRadius: 6 },
+    jobName: { fontSize: 15, fontWeight: "500", color: colors.text },
+    jobRate: { color: colors.textMuted3, fontSize: 12 },
+    archivedText: { color: colors.textMuted2, textDecorationLine: "line-through" },
+    rowAction: { paddingHorizontal: 6, paddingVertical: 3 },
+    rowActionText: { color: colors.primary, fontSize: 12 },
+    deleteText: { color: colors.danger },
+    empty: { textAlign: "center", color: colors.textMuted2, marginTop: 24 },
+  });
+}

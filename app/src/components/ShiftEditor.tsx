@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import {
   deleteBreak,
@@ -10,6 +10,7 @@ import {
 } from "../db/database";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import { formatClock, formatDay, type Break, type Shift } from "@clocker/shared";
 
 // Full shift editor: notes (as before), plus clock-in/out times and breaks — reachable
@@ -19,6 +20,8 @@ import { formatClock, formatDay, type Break, type Shift } from "@clocker/shared"
 // shift, since a job can already have a newer open shift by the time you'd do that, and
 // the rest of the app assumes at most one open shift per job.
 export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [notes, setNotes] = useState(shift.notes ?? "");
   const [breaks, setBreaks] = useState<Break[]>([]);
   const { pick, modal } = useDateTimePicker();
@@ -165,24 +168,26 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: "700" },
-  sectionLabel: { fontWeight: "600", color: "#444", marginTop: 16, marginBottom: 6, fontSize: 13 },
-  hint: { color: "#999", fontSize: 12 },
-  timeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  timeLabel: { color: "#666", fontSize: 14 },
-  timeValue: { color: "#2563eb", fontWeight: "600", fontSize: 14 },
-  breakRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  deleteAction: { paddingHorizontal: 5, paddingVertical: 3 },
-  deleteActionText: { color: "#dc2626", fontSize: 12, fontWeight: "600" },
-  secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#2563eb" },
-  secondaryButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
-  notesInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 10, minHeight: 90, textAlignVertical: "top" },
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
-  actionButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  actionButtonPrimary: { backgroundColor: "#2563eb" },
-  actionButtonText: { fontWeight: "600", color: "#333" },
-  actionButtonPrimaryText: { color: "#fff" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+    title: { fontSize: 17, fontWeight: "700", color: colors.text },
+    sectionLabel: { fontWeight: "600", color: colors.textSecondary, marginTop: 16, marginBottom: 6, fontSize: 13 },
+    hint: { color: colors.textMuted2, fontSize: 12 },
+    timeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+    timeLabel: { color: colors.textMuted3, fontSize: 14 },
+    timeValue: { color: colors.primary, fontWeight: "600", fontSize: 14 },
+    breakRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+    deleteAction: { paddingHorizontal: 5, paddingVertical: 3 },
+    deleteActionText: { color: colors.danger, fontSize: 12, fontWeight: "600" },
+    secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.primary },
+    secondaryButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+    notesInput: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 10, minHeight: 90, textAlignVertical: "top", color: colors.text },
+    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
+    actionButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+    actionButtonPrimary: { backgroundColor: colors.primary },
+    actionButtonText: { fontWeight: "600", color: colors.textSecondary },
+    actionButtonPrimaryText: { color: colors.onPrimary },
+  });
+}

@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   addJobManager,
   addRateVersion,
@@ -68,6 +69,8 @@ function currentRate(versions: RateVersion[]): RateVersion | null {
 }
 
 function TierRow({ tier }: { tier: RateTier }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [versions, setVersions] = useState<RateVersion[]>([]);
   const [newRate, setNewRate] = useState("");
   const [editing, setEditing] = useState(false);
@@ -130,6 +133,8 @@ function TierRow({ tier }: { tier: RateTier }) {
 // global address book (shared across jobs); this section only manages which of them are
 // assigned to *this* job, via the JobManager join rows.
 function ManagerAssignment({ jobId }: { jobId: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [assignments, setAssignments] = useState<JobManager[]>([]);
   const [newName, setNewName] = useState("");
@@ -208,6 +213,8 @@ function ManagerAssignment({ jobId }: { jobId: string }) {
 }
 
 export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [name, setName] = useState(job.name);
   const [color, setColor] = useState(job.colorHex);
   const [tiers, setTiers] = useState<RateTier[]>([]);
@@ -514,7 +521,7 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
           <>
             <Text style={styles.hint}>First day of a current period (fixes which week pairs with which)</Text>
             <TouchableOpacity style={styles.input} onPress={pickAnchor}>
-              <Text>{new Date(timesheet.biweeklyAnchor).toLocaleDateString()}</Text>
+              <Text style={{ color: colors.text }}>{new Date(timesheet.biweeklyAnchor).toLocaleDateString()}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -569,42 +576,44 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: "700" },
-  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
-  sectionLabel: { fontWeight: "600", color: "#444", marginTop: 12, marginBottom: 6, fontSize: 13 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, backgroundColor: "#fff" },
-  swatches: { flexDirection: "row", gap: 8 },
-  swatch: { width: 24, height: 24, borderRadius: 12 },
-  swatchSelected: { borderWidth: 3, borderColor: "#111" },
-  tierRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
-  tierName: { fontWeight: "500", fontSize: 14 },
-  tierRate: { color: "#666", fontSize: 12, marginTop: 1 },
-  tierRateInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 6, width: 64 },
-  tierAction: { paddingHorizontal: 5, paddingVertical: 3 },
-  tierActionText: { color: "#2563eb", fontSize: 12, fontWeight: "600" },
-  tierActionMuted: { color: "#999" },
-  addTierRow: { flexDirection: "row", gap: 6, marginTop: 8 },
-  addTierInput: { flex: 2 },
-  addTierRateInput: { flex: 1 },
-  secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#2563eb" },
-  secondaryButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
-  overtimeHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 },
-  overtimeRow: { flexDirection: "row", gap: 10, marginTop: 6 },
-  hint: { color: "#999", fontSize: 11, marginTop: 8, marginBottom: 8 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
-  dayChip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6 },
-  chipSelected: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  chipText: { color: "#333", fontSize: 13 },
-  chipTextSelected: { color: "#fff", fontWeight: "600" },
-  managerRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 6 },
-  checkbox: { padding: 4 },
-  checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#999", alignItems: "center", justifyContent: "center" },
-  checkboxBoxChecked: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  checkmark: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  managerName: { fontSize: 14, fontWeight: "500" },
-  archivedText: { color: "#999", textDecorationLine: "line-through" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+    title: { fontSize: 17, fontWeight: "700", color: colors.text },
+    doneText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+    sectionLabel: { fontWeight: "600", color: colors.textSecondary, marginTop: 12, marginBottom: 6, fontSize: 13 },
+    input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 8, backgroundColor: colors.card, color: colors.text },
+    swatches: { flexDirection: "row", gap: 8 },
+    swatch: { width: 24, height: 24, borderRadius: 12 },
+    swatchSelected: { borderWidth: 3, borderColor: colors.text },
+    tierRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 8 },
+    tierName: { fontWeight: "500", fontSize: 14, color: colors.text },
+    tierRate: { color: colors.textMuted3, fontSize: 12, marginTop: 1 },
+    tierRateInput: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 6, width: 64, color: colors.text },
+    tierAction: { paddingHorizontal: 5, paddingVertical: 3 },
+    tierActionText: { color: colors.primary, fontSize: 12, fontWeight: "600" },
+    tierActionMuted: { color: colors.textMuted2 },
+    addTierRow: { flexDirection: "row", gap: 6, marginTop: 8 },
+    addTierInput: { flex: 2 },
+    addTierRateInput: { flex: 1 },
+    secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.primary },
+    secondaryButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+    overtimeHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 },
+    overtimeRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+    hint: { color: colors.textMuted2, fontSize: 11, marginTop: 8, marginBottom: 8 },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    chip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.card },
+    dayChip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: colors.card },
+    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { color: colors.textSecondary, fontSize: 13 },
+    chipTextSelected: { color: colors.onPrimary, fontWeight: "600" },
+    managerRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 6 },
+    checkbox: { padding: 4 },
+    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
+    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
+    managerName: { fontSize: 14, fontWeight: "500", color: colors.text },
+    archivedText: { color: colors.textMuted2, textDecorationLine: "line-through" },
+  });
+}

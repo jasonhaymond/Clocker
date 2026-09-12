@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Switch, Tex
 import { listBreaksForShifts, listJobs, listRateTiersForJobs, listRateVersionsForTiers, listShiftsInRange } from "../db/database";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   buildCsv,
   buildEmailHtml,
@@ -62,6 +63,8 @@ function defaultSubject(rangeLabel: string, jobName: string | null): string {
 }
 
 export function ExportScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [jobs, setJobs] = useState<Job[]>([]);
   // Defaults to every job selected once jobs first load (see the effect below) — after
   // that it's purely user-driven, including a job added later is a deliberate choice via
@@ -269,14 +272,21 @@ export function ExportScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <View style={styles.chipRow}>
-        {jobs.map((job) => (
-          <TouchableOpacity key={job.id} style={[styles.chip, selectedJobIds.has(job.id) && styles.chipSelected]} onPress={() => toggleJob(job.id)}>
-            <Text style={[styles.chipText, selectedJobIds.has(job.id) && styles.chipTextSelected]}>{job.name}</Text>
-          </TouchableOpacity>
-        ))}
+      <ScrollView style={styles.jobSelectList} nestedScrollEnabled>
+        {jobs.map((job) => {
+          const selected = selectedJobIds.has(job.id);
+          return (
+            <TouchableOpacity key={job.id} style={styles.jobSelectRow} onPress={() => toggleJob(job.id)}>
+              <View style={[styles.checkboxBox, selected && styles.checkboxBoxChecked]}>
+                {selected && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <View style={[styles.jobSelectDot, { backgroundColor: job.colorHex }]} />
+              <Text style={styles.jobSelectName}>{job.name}</Text>
+            </TouchableOpacity>
+          );
+        })}
         {jobs.length === 0 && <Text style={styles.hint}>Add a job in the Jobs tab first.</Text>}
-      </View>
+      </ScrollView>
 
       <View style={styles.summary}>
         <Text style={styles.summaryLabel}>{shifts.length} shift{shifts.length === 1 ? "" : "s"}</Text>
@@ -329,32 +339,45 @@ export function ExportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: 14, paddingBottom: 40 },
-  sectionLabel: { fontWeight: "600", color: "#444", marginBottom: 6, marginTop: 8, fontSize: 13 },
-  jobHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  jobHeaderLabel: { marginBottom: 6, marginTop: 8 },
-  jobHeaderActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  linkAction: { color: "#2563eb", fontWeight: "600", fontSize: 12 },
-  linkSeparator: { color: "#ccc", fontSize: 12 },
-  hint: { color: "#999", fontSize: 12 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  customRangeRow: { flexDirection: "row", gap: 10, marginTop: 10 },
-  customDateButton: { flex: 1, borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 10, alignItems: "center" },
-  customDateLabel: { fontSize: 11, color: "#999" },
-  customDateValue: { fontSize: 14, fontWeight: "600", marginTop: 2 },
-  chipSelected: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  chipText: { color: "#333", fontSize: 13 },
-  chipTextSelected: { color: "#fff", fontWeight: "600" },
-  summary: { alignItems: "center", marginTop: 18, marginBottom: 14 },
-  summaryLabel: { color: "#666", fontSize: 13 },
-  summaryValue: { fontSize: 26, fontWeight: "700", marginTop: 2 },
-  exportButton: { backgroundColor: "#16a34a", borderRadius: 10, padding: 12, alignItems: "center" },
-  exportButtonText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  emailButton: { backgroundColor: "#2563eb", marginTop: 10 },
-  divider: { height: 1, backgroundColor: "#eee", marginTop: 18 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 9, marginBottom: 8, backgroundColor: "#fff" },
-  optionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5 },
-  optionLabel: { fontSize: 14, color: "#333" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { padding: 14, paddingBottom: 40 },
+    sectionLabel: { fontWeight: "600", color: colors.textSecondary, marginBottom: 6, marginTop: 8, fontSize: 13 },
+    jobHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    jobHeaderLabel: { marginBottom: 6, marginTop: 8 },
+    jobHeaderActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+    linkAction: { color: colors.primary, fontWeight: "600", fontSize: 12 },
+    linkSeparator: { color: colors.textMuted2, fontSize: 12 },
+    hint: { color: colors.textMuted2, fontSize: 12 },
+    // A scrolling checklist rather than wrapping chips, since job lists can run long and a
+    // multi-select reads more clearly as checkable rows than as a wall of buttons. Needs an
+    // explicit maxHeight (RN can't size a nested ScrollView to its content) and
+    // nestedScrollEnabled since this whole screen is already one ScrollView.
+    jobSelectList: { maxHeight: 180, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10 },
+    jobSelectRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+    jobSelectDot: { width: 11, height: 11, borderRadius: 6 },
+    jobSelectName: { fontSize: 14, color: colors.text },
+    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
+    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    chip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.card },
+    customRangeRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+    customDateButton: { flex: 1, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10, padding: 10, alignItems: "center" },
+    customDateLabel: { fontSize: 11, color: colors.textMuted2 },
+    customDateValue: { fontSize: 14, fontWeight: "600", marginTop: 2, color: colors.text },
+    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { color: colors.textSecondary, fontSize: 13 },
+    chipTextSelected: { color: colors.onPrimary, fontWeight: "600" },
+    summary: { alignItems: "center", marginTop: 18, marginBottom: 14 },
+    summaryLabel: { color: colors.textMuted3, fontSize: 13 },
+    summaryValue: { fontSize: 26, fontWeight: "700", marginTop: 2, color: colors.text },
+    exportButton: { backgroundColor: colors.success, borderRadius: 10, padding: 12, alignItems: "center" },
+    exportButtonText: { color: colors.onPrimary, fontWeight: "700", fontSize: 14 },
+    emailButton: { backgroundColor: colors.primary, marginTop: 10 },
+    divider: { height: 1, backgroundColor: colors.border, marginTop: 18 },
+    input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 9, marginBottom: 8, backgroundColor: colors.card, color: colors.text },
+    optionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5 },
+    optionLabel: { fontSize: 14, color: colors.textSecondary },
+  });
+}

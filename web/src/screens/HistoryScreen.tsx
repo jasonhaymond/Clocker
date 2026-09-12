@@ -11,14 +11,20 @@ import {
   type ShiftPay,
 } from "@clocker/shared";
 import { useMemo, useRef, useState } from "react";
+import { IoTrashOutline } from "react-icons/io5";
 import { ShiftEditor } from "../components/ShiftEditor";
 import { useStore } from "../store";
 
 const DAYS_BACK = 90;
 const LONG_PRESS_MS = 500;
 // How far a pointer can drift while held before it counts as a scroll/drag rather than a
-// long press, in CSS pixels.
+// long press, in CSS pixels. Also used to distinguish an intentional horizontal swipe
+// from a stationary press.
 const LONG_PRESS_MOVE_TOLERANCE = 10;
+const SWIPE_ACTION_WIDTH = 72;
+// How far left a row must be dragged before releasing it snaps to fully open rather than
+// springing back closed.
+const SWIPE_OPEN_THRESHOLD = 40;
 
 export function HistoryScreen() {
   const store = useStore();
@@ -61,6 +67,17 @@ export function HistoryScreen() {
     return map;
   }, [shifts, jobsById, store.rateTiers, store.rateVersions, store.breaks]);
 
+  // Total across everything currently loaded (the last DAYS_BACK days) — only counts
+  // shifts that actually resolved to a real rate, same condition each row already checks
+  // before showing its own pay figure.
+  const totalCents = useMemo(() => {
+    let sum = 0;
+    for (const pay of payByShiftId.values()) {
+      if (pay.rateCentsPerHour != null) sum += pay.totalCents;
+    }
+    return sum;
+  }, [payByShiftId]);
+
   const sections = useMemo(() => {
     const byDay = new Map<string, Shift[]>();
     for (const shift of shifts) {
@@ -88,17 +105,37 @@ export function HistoryScreen() {
     });
   }
 
+  // Which row (if any) currently has its swipe-revealed delete action open. Only ever
+  // one at a time — starting a new swipe, or tapping anywhere else, closes it.
+  const [swipedId, setSwipedId] = useState<string | null>(null);
+  // The actively-dragging row's live offset, while a swipe gesture is in progress (not
+  // yet released). Separate from swipedId, which only reflects the *settled* state.
+  const [dragState, setDragState] = useState<{ id: string; dx: number } | null>(null);
+
   // There was previously no way to ENTER selection mode at all here — nothing ever set
   // selectedIds to non-empty except actions that already require selection mode to be
   // active. Pointer Events (not separate mouse/touch handlers) so one implementation
   // covers mouse, touch, and pen alike — long-press-with-mouse works the same as
   // long-press-with-touch, matching the mobile app's onLongPress for entering selection.
-  const press = useRef<{ timer: ReturnType<typeof setTimeout> | null; id: string | null; x: number; y: number; fired: boolean }>({
+  // The same pointer stream also now drives swipe-to-delete: a mostly-horizontal drag
+  // past the move tolerance switches from "maybe a long press" to "definitely a swipe"
+  // and cancels the long-press timer, matching how a real touch UI disambiguates the two.
+  const press = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    id: string | null;
+    x: number;
+    y: number;
+    fired: boolean;
+    swiping: boolean;
+    dismissedSwipe: boolean;
+  }>({
     timer: null,
     id: null,
     x: 0,
     y: 0,
     fired: false,
+    swiping: false,
+    dismissedSwipe: false,
   });
 
   function clearPressTimer() {
@@ -109,12 +146,25 @@ export function HistoryScreen() {
   }
 
   function onRowPointerDown(e: React.PointerEvent, id: string) {
-    // Right-click / non-primary buttons shouldn't start a long-press.
+    // Right-click / non-primary buttons shouldn't start a long-press or a swipe.
     if (e.button !== 0) return;
+    // Starting a fresh gesture on any row closes whatever was previously swiped open —
+    // standard behavior for this pattern (tap/drag elsewhere dismisses it). Recorded here
+    // (checked and cleared in onRowClick, same reasoning as `fired`/`swiping` below) so
+    // that dismissal *replaces* this click's normal action instead of merely happening
+    // alongside it — otherwise tapping a different row while one is swiped open would
+    // both close the swipe AND open that row's editor in the same tap.
+    press.current.dismissedSwipe = swipedId !== null && swipedId !== id;
+    if (press.current.dismissedSwipe) setSwipedId(null);
+    // Explicit capture so a drag that moves outside this row's box (finger/mouse
+    // slipping up or down slightly while swiping) still delivers its move/up events
+    // here instead of wherever the pointer physically ends up.
+    e.currentTarget.setPointerCapture(e.pointerId);
     press.current.id = id;
     press.current.x = e.clientX;
     press.current.y = e.clientY;
     press.current.fired = false;
+    press.current.swiping = false;
     clearPressTimer();
     press.current.timer = setTimeout(() => {
       press.current.fired = true;
@@ -122,19 +172,61 @@ export function HistoryScreen() {
     }, LONG_PRESS_MS);
   }
 
-  function onRowPointerMove(e: React.PointerEvent) {
-    if (press.current.timer == null) return;
+  function onRowPointerMove(e: React.PointerEvent, id: string) {
+    if (press.current.id !== id) return;
     const dx = e.clientX - press.current.x;
     const dy = e.clientY - press.current.y;
-    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearPressTimer();
+    if (!press.current.swiping) {
+      if (Math.hypot(dx, dy) <= LONG_PRESS_MOVE_TOLERANCE) return;
+      clearPressTimer();
+      // Only commit to a swipe if the drag is predominantly horizontal — a vertical
+      // drag here is a page scroll, which should be left alone entirely.
+      if (Math.abs(dx) <= Math.abs(dy)) return;
+      press.current.swiping = true;
+    }
+    // Only swiping leftward (revealing a right-side action) is supported; block any
+    // rightward drag from opening rather than letting it push the row past 0.
+    setDragState({ id, dx: Math.max(-SWIPE_ACTION_WIDTH, Math.min(0, dx)) });
+  }
+
+  function onRowPointerUp(id: string) {
+    clearPressTimer();
+    // Deliberately does NOT reset press.current.swiping here — pointerup fires before
+    // the click event that follows it, and onRowClick below needs to see this gesture
+    // was a swipe (the same reason `fired` is only ever cleared there, not here).
+    if (press.current.swiping && press.current.id === id) {
+      const finalDx = dragState?.id === id ? dragState.dx : 0;
+      setSwipedId(finalDx <= -SWIPE_OPEN_THRESHOLD ? id : null);
+    }
+    setDragState(null);
+  }
+
+  // A genuine cancel (browser takes over for something else) or the pointer leaving the
+  // row's box mid-drag — abort back to closed rather than committing an open, unlike a
+  // real pointerup which judges the final position.
+  function onRowPointerLeaveOrCancel(id: string) {
+    clearPressTimer();
+    if (dragState?.id === id) setDragState(null);
   }
 
   function onRowClick(shift: Shift) {
-    // Swallow the click that a long-press's pointerup still generates — without this, a
-    // long press would both enter selection mode AND open the shift editor in the same
-    // gesture.
-    if (press.current.fired) {
+    // Swallow the click that a long-press's or a swipe's pointerup still generates —
+    // without this, either gesture would also open the shift editor in the same motion.
+    if (press.current.fired || press.current.swiping) {
       press.current.fired = false;
+      press.current.swiping = false;
+      return;
+    }
+    // This tap already dismissed a *different* row's open swipe on pointerdown above —
+    // that's the click's entire effect, it doesn't also act on the row actually tapped.
+    if (press.current.dismissedSwipe) {
+      press.current.dismissedSwipe = false;
+      return;
+    }
+    // A tap on the SAME row that's swiped open just closes it (pointerdown only clears
+    // swipedId when tapping a *different* row, so this only reaches here in that case).
+    if (swipedId) {
+      setSwipedId(null);
       return;
     }
     if (selectionMode) toggleSelected(shift.id);
@@ -155,6 +247,12 @@ export function HistoryScreen() {
 
   return (
     <div className="screen">
+      {!selectionMode && shifts.length > 0 && totalCents > 0 && (
+        <div className="total-bar">
+          <span className="total-label">Total earned (last {DAYS_BACK} days)</span>
+          <span className="total-value">{formatCents(totalCents)}</span>
+        </div>
+      )}
       {selectionMode && (
         <div className="selection-bar">
           <button className="link-button" onClick={() => setSelectedIds(new Set())}>
@@ -164,8 +262,8 @@ export function HistoryScreen() {
           <button className="link-button" onClick={() => setSelectedIds(new Set(shifts.map((s) => s.id)))}>
             Select All
           </button>
-          <button className="link-button danger" onClick={confirmDeleteSelected}>
-            Delete
+          <button className="link-button danger" onClick={confirmDeleteSelected} aria-label="Delete selected">
+            <IoTrashOutline />
           </button>
         </div>
       )}
@@ -181,40 +279,55 @@ export function HistoryScreen() {
             const worked = roundedWorkedMillis(shift, shiftBreaks, job);
             const pay = payByShiftId.get(shift.id);
             const selected = selectedIds.has(shift.id);
+            const isDraggingThis = dragState?.id === shift.id;
+            const offset = isDraggingThis ? dragState.dx : swipedId === shift.id ? -SWIPE_ACTION_WIDTH : 0;
             return (
-              <div
-                key={shift.id}
-                className={`row clickable no-callout${selected ? " selected" : ""}`}
-                onPointerDown={(e) => onRowPointerDown(e, shift.id)}
-                onPointerMove={onRowPointerMove}
-                onPointerUp={clearPressTimer}
-                onPointerLeave={clearPressTimer}
-                onPointerCancel={clearPressTimer}
-                onClick={() => onRowClick(shift)}
-              >
-                {selectionMode && <input type="checkbox" checked={selected} readOnly />}
-                <span className="dot" style={{ backgroundColor: job?.colorHex ?? "#999" }} />
-                <div className="row-main">
-                  <div className="row-title">{job?.name ?? "Deleted job"}</div>
-                  <div className="row-subtitle">
-                    {formatClock(shift.clockIn)} – {shift.clockOut ? formatClock(shift.clockOut) : "in progress"}
-                    {shiftBreaks.length > 0 ? ` · ${shiftBreaks.length} break${shiftBreaks.length > 1 ? "s" : ""}` : ""}
-                  </div>
-                  {shift.notes && <div className="notes-preview">{shift.notes}</div>}
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div className="duration">{formatDuration(worked)}</div>
-                  {pay && pay.rateCentsPerHour != null && <div className="pay">{formatCents(pay.totalCents)}</div>}
-                </div>
+              <div key={shift.id} className="swipe-row">
                 <button
-                  className="link-button muted"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  className="swipe-action-reveal"
+                  aria-label="Delete shift"
+                  onClick={() => {
+                    setSwipedId(null);
                     confirmDelete(shift);
                   }}
                 >
-                  Delete
+                  <IoTrashOutline />
                 </button>
+                <div
+                  className={`row clickable no-callout${selected ? " selected" : ""}`}
+                  style={{ transform: `translateX(${offset}px)`, transition: isDraggingThis ? "none" : "transform 0.2s" }}
+                  onPointerDown={(e) => onRowPointerDown(e, shift.id)}
+                  onPointerMove={(e) => onRowPointerMove(e, shift.id)}
+                  onPointerUp={() => onRowPointerUp(shift.id)}
+                  onPointerLeave={() => onRowPointerLeaveOrCancel(shift.id)}
+                  onPointerCancel={() => onRowPointerLeaveOrCancel(shift.id)}
+                  onClick={() => onRowClick(shift)}
+                >
+                  {selectionMode && <input type="checkbox" checked={selected} readOnly />}
+                  <span className="dot" style={{ backgroundColor: job?.colorHex ?? "#999" }} />
+                  <div className="row-main">
+                    <div className="row-title">{job?.name ?? "Deleted job"}</div>
+                    <div className="row-subtitle">
+                      {formatClock(shift.clockIn)} – {shift.clockOut ? formatClock(shift.clockOut) : "in progress"}
+                      {shiftBreaks.length > 0 ? ` · ${shiftBreaks.length} break${shiftBreaks.length > 1 ? "s" : ""}` : ""}
+                    </div>
+                    {shift.notes && <div className="notes-preview">{shift.notes}</div>}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="duration">{formatDuration(worked)}</div>
+                    {pay && pay.rateCentsPerHour != null && <div className="pay">{formatCents(pay.totalCents)}</div>}
+                  </div>
+                  <button
+                    className="link-button muted row-delete-icon"
+                    aria-label="Delete shift"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      confirmDelete(shift);
+                    }}
+                  >
+                    <IoTrashOutline />
+                  </button>
+                </div>
               </div>
             );
           })}

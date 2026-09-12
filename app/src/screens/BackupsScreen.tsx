@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   getBackupArchives,
   getBackupConfig,
@@ -23,6 +24,8 @@ function pad2(n: number): string {
 }
 
 function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; onRestored: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState(false);
   const [restoreDb, setRestoreDb] = useState(true);
   const [restoreEnv, setRestoreEnv] = useState(false);
@@ -78,7 +81,7 @@ function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; on
             onPress={doRestore}
             disabled={busy || confirmText !== archive.name || (!restoreDb && !restoreEnv)}
           >
-            {busy ? <ActivityIndicator color="#dc2626" /> : <Text style={styles.dangerButtonText}>Restore</Text>}
+            {busy ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.dangerButtonText}>Restore</Text>}
           </TouchableOpacity>
         </View>
       )}
@@ -98,6 +101,8 @@ const KEY_POLL_ATTEMPTS = 5;
 const KEY_POLL_INTERVAL_MS = 1500;
 
 export function BackupsScreen({ onClose }: { onClose: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [config, setConfig] = useState<BackupConfig | null>(null);
   const [keyPollAttempt, setKeyPollAttempt] = useState(0);
   const [repoUrl, setRepoUrl] = useState("");
@@ -119,31 +124,43 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [archives, setArchives] = useState<BackupArchive[]>([]);
-  const [archivesError, setArchivesError] = useState<string | null>(null);
   const [runs, setRuns] = useState<BackupRun[]>([]);
 
   const loadConfig = useCallback(() => {
-    getBackupConfig().then((cfg) => {
-      setConfig(cfg);
-      setRepoUrl(cfg.repoUrl ?? "");
-      setRetentionCount(cfg.retentionCount != null ? String(cfg.retentionCount) : "");
-      if (cfg.schedule) {
-        setFrequency(cfg.schedule.frequency);
-        setHour(String(cfg.schedule.hour));
-        setMinute(String(cfg.schedule.minute));
-        if (cfg.schedule.weekday != null) setWeekday(cfg.schedule.weekday);
-        if (cfg.schedule.dayOfMonth != null) setDayOfMonth(String(cfg.schedule.dayOfMonth));
-      } else {
-        setFrequency("off");
-      }
-    });
+    getBackupConfig()
+      .then((cfg) => {
+        if (!cfg) return;
+        setConfig(cfg);
+        setRepoUrl(cfg.repoUrl ?? "");
+        setRetentionCount(cfg.retentionCount != null ? String(cfg.retentionCount) : "");
+        if (cfg.schedule) {
+          setFrequency(cfg.schedule.frequency);
+          setHour(String(cfg.schedule.hour));
+          setMinute(String(cfg.schedule.minute));
+          if (cfg.schedule.weekday != null) setWeekday(cfg.schedule.weekday);
+          if (cfg.schedule.dayOfMonth != null) setDayOfMonth(String(cfg.schedule.dayOfMonth));
+        } else {
+          setFrequency("off");
+        }
+      })
+      // A malformed/empty response leaves `config` null — the retry effect below no
+      // longer requires `config` to already be set to keep trying, so this doesn't need
+      // to do anything beyond not crashing; swallowed so it doesn't spam the console on
+      // every retry attempt against a server stuck in that state.
+      .catch(() => {});
   }, []);
 
-  // Auto-retry a few times while the key is still missing with no reported error (the
-  // normal near-instant case caught mid-flight), then stop and let the error/manual-retry
-  // UI below take over rather than polling forever.
+  // Auto-retry a few times while we don't yet have either a key or an error, then stop
+  // and let the manual-retry UI below take over rather than polling forever. Previously
+  // this required `config` to already be non-null before it would even start — meaning
+  // if /backup/config itself never resolved to a real object (the same "empty response"
+  // failure mode fixed for /backup/archives above), the retry loop never began at all:
+  // keyPollAttempt stayed 0 forever, and the UI was stuck on "Generating..." permanently
+  // with no fallback and no way to recover short of reloading the app. This is exactly
+  // the bug behind a real report of the key staying stuck even after a redeploy.
   useEffect(() => {
-    if (config && !config.sshPublicKey && !config.sshPublicKeyError && keyPollAttempt < KEY_POLL_ATTEMPTS) {
+    const haveResolution = !!config?.sshPublicKey || !!config?.sshPublicKeyError;
+    if (!haveResolution && keyPollAttempt < KEY_POLL_ATTEMPTS) {
       const timer = setTimeout(() => {
         setKeyPollAttempt((n) => n + 1);
         loadConfig();
@@ -157,17 +174,22 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
     loadConfig();
   }
 
+  // Same treatment as loadRuns below: a malformed/empty response (seen in practice
+  // against a stale or misbehaving deployment) previously crashed here with a raw
+  // "Cannot read properties of undefined" — now it's just an empty list, same as
+  // genuinely having no archives yet. Not worth a dedicated error state; there's nothing
+  // actionable to tell the user beyond what the SSH key / server sections already
+  // surface if the host agent itself is unreachable.
   const loadArchives = useCallback(() => {
     getBackupArchives()
-      .then((r) => {
-        setArchives(r.archives);
-        setArchivesError(null);
-      })
-      .catch((e: any) => setArchivesError(e?.message ?? "Couldn't load archives"));
+      .then((r) => setArchives(r?.archives ?? []))
+      .catch(() => {});
   }, []);
 
   const loadRuns = useCallback(() => {
-    getBackupRuns().then((r) => setRuns(r.runs));
+    getBackupRuns()
+      .then((r) => setRuns(r?.runs ?? []))
+      .catch(() => {});
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -295,13 +317,14 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
               <Text style={styles.link}>Retry</Text>
             </TouchableOpacity>
           </>
-        ) : config && keyPollAttempt >= KEY_POLL_ATTEMPTS ? (
+        ) : keyPollAttempt >= KEY_POLL_ATTEMPTS ? (
           // No sshPublicKeyError doesn't necessarily mean nothing's wrong — an older
-          // deployed host agent (predating that field) would leave this permanently
-          // undefined even while genuinely stuck, which is exactly what previously left
-          // this stuck on "Generating..." forever with no way out. Once the auto-retry
-          // budget is spent with still no key, always offer a manual retry rather than
-          // trusting the absence of an error field.
+          // deployed host agent (predating that field), or /backup/config itself never
+          // resolving to a real object at all, would both leave this branch permanently
+          // unreachable via config alone, which is exactly what previously left this
+          // stuck on "Generating..." forever with no way out (see the retry effect's
+          // comment above). Deliberately does NOT require `config` to be set — once the
+          // auto-retry budget is spent with still no key, always offer a manual retry.
           <>
             <Text style={styles.error}>
               Still generating a backup key after several tries — the host agent may be running an older version. Try
@@ -411,8 +434,7 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         ) : null}
 
         <Text style={styles.sectionLabel}>Archives</Text>
-        {archivesError ? <Text style={styles.error}>{archivesError}</Text> : null}
-        {archives.length === 0 && !archivesError && <Text style={styles.hint}>No archives yet.</Text>}
+        {archives.length === 0 && <Text style={styles.hint}>No archives yet.</Text>}
         {archives.map((a) => (
           <ArchiveRestoreRow key={a.name} archive={a} onRestored={onRestored} />
         ))}
@@ -432,43 +454,45 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: "700" },
-  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
-  sectionLabel: { fontWeight: "600", color: "#444", marginTop: 16, marginBottom: 6, fontSize: 13 },
-  setupSteps: { gap: 6 },
-  setupStep: { fontSize: 13, color: "#333", lineHeight: 18 },
-  fieldLabel: { color: "#666", fontSize: 12, marginTop: 8, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, backgroundColor: "#fff" },
-  row: { flexDirection: "row", gap: 8, alignItems: "center" },
-  hint: { color: "#999", fontSize: 11, marginTop: 4, marginBottom: 4 },
-  error: { color: "#dc2626", fontSize: 12, marginTop: 4, marginBottom: 4 },
-  link: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
-  clearButton: { paddingHorizontal: 6 },
-  button: { backgroundColor: "#2563eb", borderRadius: 10, padding: 12, alignItems: "center", marginTop: 10 },
-  buttonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  dangerButton: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#dc2626", marginTop: 8 },
-  dangerButtonText: { color: "#dc2626", fontSize: 14, fontWeight: "600" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
-  chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
-  dayChip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6 },
-  chipSelected: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  chipText: { color: "#333", fontSize: 13 },
-  chipTextSelected: { color: "#fff", fontWeight: "600" },
-  logText: { fontFamily: "monospace", fontSize: 10, color: "#ddd", backgroundColor: "#111", padding: 8, borderRadius: 6, marginTop: 4 },
-  rowTitle: { fontSize: 14, fontWeight: "500" },
-  archiveRow: { borderBottomWidth: 1, borderBottomColor: "#eee", paddingVertical: 8 },
-  archiveRowHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  restorePanel: { marginTop: 10, padding: 10, backgroundColor: "#fef2f2", borderRadius: 8, borderWidth: 1, borderColor: "#fecaca" },
-  checkboxRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#999", alignItems: "center", justifyContent: "center" },
-  checkboxBoxChecked: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  checkmark: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  checkboxLabel: { flex: 1, fontSize: 12, color: "#333" },
-  runRow: { borderBottomWidth: 1, borderBottomColor: "#eee", paddingVertical: 6, gap: 2 },
-  runStatus: { fontWeight: "700", fontSize: 10, textTransform: "uppercase", alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  runStatusSuccess: { backgroundColor: "#dcfce7", color: "#166534" },
-  runStatusError: { backgroundColor: "#fef2f2", color: "#991b1b" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+    title: { fontSize: 17, fontWeight: "700", color: colors.text },
+    doneText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+    sectionLabel: { fontWeight: "600", color: colors.textSecondary, marginTop: 16, marginBottom: 6, fontSize: 13 },
+    setupSteps: { gap: 6 },
+    setupStep: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+    fieldLabel: { color: colors.textMuted3, fontSize: 12, marginTop: 8, marginBottom: 4 },
+    input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 8, backgroundColor: colors.card, color: colors.text },
+    row: { flexDirection: "row", gap: 8, alignItems: "center" },
+    hint: { color: colors.textMuted2, fontSize: 11, marginTop: 4, marginBottom: 4 },
+    error: { color: colors.danger, fontSize: 12, marginTop: 4, marginBottom: 4 },
+    link: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+    clearButton: { paddingHorizontal: 6 },
+    button: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: "center", marginTop: 10 },
+    buttonText: { color: colors.onPrimary, fontSize: 14, fontWeight: "600" },
+    dangerButton: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.danger, marginTop: 8 },
+    dangerButtonText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
+    chip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.card },
+    dayChip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: colors.card },
+    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { color: colors.textSecondary, fontSize: 13 },
+    chipTextSelected: { color: colors.onPrimary, fontWeight: "600" },
+    logText: { fontFamily: "monospace", fontSize: 10, color: colors.invertText, backgroundColor: colors.invertBg, padding: 8, borderRadius: 6, marginTop: 4 },
+    rowTitle: { fontSize: 14, fontWeight: "500", color: colors.text },
+    archiveRow: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 8 },
+    archiveRowHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+    restorePanel: { marginTop: 10, padding: 10, backgroundColor: colors.dangerBg, borderRadius: 8, borderWidth: 1, borderColor: colors.dangerBorder },
+    checkboxRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
+    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
+    checkboxLabel: { flex: 1, fontSize: 12, color: colors.textSecondary },
+    runRow: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 6, gap: 2 },
+    runStatus: { fontWeight: "700", fontSize: 10, textTransform: "uppercase", alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    runStatusSuccess: { backgroundColor: colors.successBg, color: colors.successText },
+    runStatusError: { backgroundColor: colors.dangerBg, color: colors.dangerText },
+  });
+}

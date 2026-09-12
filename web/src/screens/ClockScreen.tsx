@@ -1,4 +1,4 @@
-import { calculateWeeklyProgress, formatClock, formatDuration, workedMillis, type Break, type Job, type Shift } from "@clocker/shared";
+import { calculateShiftPay, calculateWeeklyProgress, formatCents, formatClock, formatDuration, workedMillis, type Break, type Job, type Shift } from "@clocker/shared";
 import { useEffect, useState } from "react";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { useDateTimePrompt } from "../lib/useDateTimePrompt";
@@ -47,6 +47,22 @@ export function ClockScreen() {
     const breaksByShift: Record<string, Break[]> = {};
     for (const b of store.breaks) (breaksByShift[b.shiftId] ??= []).push(b);
     return calculateWeeklyProgress({ job, shifts: jobShifts, breaksByShift });
+  }
+
+  // Live pay for a still-open shift — the same calculation History/Timesheets/Export use
+  // for closed ones, just fed the shift's currently-elapsed hours so it counts up
+  // alongside the timer instead of a fixed final duration.
+  function payFor(shift: Shift, job: Job | null, worked: number): { cents: number; hasRate: boolean } | null {
+    if (!job) return null;
+    const jobTiers = store.rateTiers.filter((t) => t.jobId === job.id);
+    if (jobTiers.length === 0) return null;
+    const [pay] = calculateShiftPay({
+      job,
+      tiers: jobTiers,
+      versions: store.rateVersions,
+      shiftsWithHours: [{ shift, workedHours: worked / 3_600_000 }],
+    });
+    return pay ? { cents: pay.totalCents, hasRate: pay.rateCentsPerHour != null } : null;
   }
 
   async function handleClockIn(customTime?: Date) {
@@ -110,12 +126,14 @@ export function ClockScreen() {
         const openBreak = openBreakFor(shift.id);
         const worked = workedMillis(shift, shiftBreaks);
         const progress = weeklyProgressFor(job);
+        const pay = payFor(shift, job, worked);
         return (
           <div key={shift.id} className="clock-card">
             <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#2563eb" }}>
               {job?.name ?? "Job"}
             </span>
             <div className="clock-timer">{formatDuration(worked)}</div>
+            {pay?.hasRate && <div className="clock-earnings">{formatCents(pay.cents)} so far</div>}
             <div className="clock-since">Since {formatClock(shift.clockIn)}</div>
             {openBreak && <div className="clock-on-break">On break since {formatClock(openBreak.start)}</div>}
             {progress && (
@@ -187,14 +205,32 @@ export function ClockScreen() {
         )}
 
         {availableJobs.length > 0 && (
-          <div className="split-row" style={{ maxWidth: 360, margin: "0 auto" }}>
-            <button className="big-button flex-button clock-in" onClick={() => handleClockIn()} disabled={!selectedJobId}>
-              Clock In
-            </button>
-            <button className="at-button" onClick={handleClockInAt} disabled={!selectedJobId}>
-              At...
-            </button>
-          </div>
+          <>
+            {(() => {
+              // Deliberately just the remaining-hours figure here, not expectedClockOut —
+              // "expected clock-out" only means something once you're actually on the
+              // clock; showing it before you've clocked in would read as a prediction
+              // this screen has no basis for yet.
+              const selectedJob = store.jobs.find((j) => j.id === selectedJobId) ?? null;
+              const progress = weeklyProgressFor(selectedJob);
+              if (!progress) return null;
+              return (
+                <div className="clock-weekly-progress">
+                  {progress.remainingMinutes > 0
+                    ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
+                    : "Weekly target reached"}
+                </div>
+              );
+            })()}
+            <div className="split-row" style={{ maxWidth: 360, margin: "0 auto" }}>
+              <button className="big-button flex-button clock-in" onClick={() => handleClockIn()} disabled={!selectedJobId}>
+                Clock In Now
+              </button>
+              <button className="at-button" onClick={handleClockInAt} disabled={!selectedJobId}>
+                Start At...
+              </button>
+            </div>
+          </>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
 interface HelpTopic {
   title: string;
@@ -69,11 +70,13 @@ const TOPICS: HelpTopic[] = [
 ];
 
 function TopicRow({ topic, expanded, onToggle }: { topic: HelpTopic; expanded: boolean; onToggle: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.topic}>
       <TouchableOpacity style={styles.topicHeader} onPress={onToggle}>
         <Text style={styles.topicTitle}>{topic.title}</Text>
-        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color="#666" />
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted3} />
       </TouchableOpacity>
       {expanded && (
         <View style={styles.topicBody}>
@@ -89,6 +92,8 @@ function TopicRow({ topic, expanded, onToggle }: { topic: HelpTopic; expanded: b
 }
 
 export function HelpScreen({ onClose }: { onClose: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState<string | null>(TOPICS[0].title);
 
   return (
@@ -114,14 +119,16 @@ export function HelpScreen({ onClose }: { onClose: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: "700" },
-  doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
-  topic: { borderBottomWidth: 1, borderBottomColor: "#eee" },
-  topicHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 },
-  topicTitle: { fontSize: 14, fontWeight: "600" },
-  topicBody: { paddingBottom: 12, gap: 8 },
-  topicLine: { fontSize: 13, color: "#444", lineHeight: 18 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+    title: { fontSize: 17, fontWeight: "700", color: colors.text },
+    doneText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
+    topic: { borderBottomWidth: 1, borderBottomColor: colors.border },
+    topicHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 },
+    topicTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
+    topicBody: { paddingBottom: 12, gap: 8 },
+    topicLine: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  });
+}

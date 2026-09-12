@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useCallback, useMemo, useState } from "react";
 import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import {
   deleteShift,
   listBreaksForShifts,
@@ -11,6 +12,7 @@ import {
 } from "../db/database";
 import { ShiftEditor } from "../components/ShiftEditor";
 import { useDbRefresh } from "../lib/useDbRefresh";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   addDays,
   formatClock,
@@ -31,6 +33,8 @@ import {
 const DAYS_BACK = 90;
 
 export function HistoryScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [breaksByShift, setBreaksByShift] = useState<Record<string, Break[]>>({});
   const [jobsById, setJobsById] = useState<Record<string, Job>>({});
@@ -82,6 +86,17 @@ export function HistoryScreen() {
     }
     return map;
   }, [shifts, jobsById, tiers, versions, breaksByShift]);
+
+  // Total across everything currently loaded (the last DAYS_BACK days) — only counts
+  // shifts that actually resolved to a real rate, same condition each row already checks
+  // before showing its own pay figure.
+  const totalCents = useMemo(() => {
+    let sum = 0;
+    for (const pay of payByShiftId.values()) {
+      if (pay.rateCentsPerHour != null) sum += pay.totalCents;
+    }
+    return sum;
+  }, [payByShiftId]);
 
   const sections = useMemo(() => {
     const byDay = new Map<string, Shift[]>();
@@ -135,6 +150,12 @@ export function HistoryScreen() {
 
   return (
     <>
+      {!selectionMode && shifts.length > 0 && totalCents > 0 && (
+        <View style={styles.totalBar}>
+          <Text style={styles.totalLabel}>Total earned (last {DAYS_BACK} days)</Text>
+          <Text style={styles.totalValue}>{formatCents(totalCents)}</Text>
+        </View>
+      )}
       {selectionMode && (
         <View style={styles.selectionBar}>
           <TouchableOpacity onPress={() => setSelectedIds(new Set())} style={styles.selectionAction}>
@@ -145,7 +166,7 @@ export function HistoryScreen() {
             <Text style={styles.selectionActionText}>Select All</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={confirmDeleteSelected} style={styles.selectionAction}>
-            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
           </TouchableOpacity>
         </View>
       )}
@@ -162,34 +183,44 @@ export function HistoryScreen() {
           const pay = payByShiftId.get(item.id);
           const selected = selectedIds.has(item.id);
           return (
-            <TouchableOpacity
-              style={[styles.row, selected && styles.rowSelected]}
-              onPress={() => (selectionMode ? toggleSelected(item.id) : setEditingShift(item))}
-              onLongPress={() => (selectionMode ? confirmDelete(item) : toggleSelected(item.id))}
-            >
-              {selectionMode && (
-                <View style={[styles.checkboxBox, selected && styles.checkboxBoxChecked]}>
-                  {selected && <Ionicons name="checkmark" size={13} color="#fff" />}
-                </View>
+            <Swipeable
+              enabled={!selectionMode}
+              overshootRight={false}
+              renderRightActions={() => (
+                <TouchableOpacity style={styles.swipeDeleteAction} onPress={() => confirmDelete(item)}>
+                  <Ionicons name="trash-outline" size={22} color="#fff" />
+                </TouchableOpacity>
               )}
-              <View style={[styles.dot, { backgroundColor: job?.colorHex ?? "#999" }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.jobName}>{job?.name ?? "Deleted job"}</Text>
-                <Text style={styles.times}>
-                  {formatClock(item.clockIn)} – {item.clockOut ? formatClock(item.clockOut) : "in progress"}
-                  {shiftBreaks.length > 0 ? ` · ${shiftBreaks.length} break${shiftBreaks.length > 1 ? "s" : ""}` : ""}
-                </Text>
-                {item.notes ? (
-                  <Text style={styles.notesPreview} numberOfLines={1}>
-                    {item.notes}
+            >
+              <TouchableOpacity
+                style={[styles.row, selected && styles.rowSelected]}
+                onPress={() => (selectionMode ? toggleSelected(item.id) : setEditingShift(item))}
+                onLongPress={() => (selectionMode ? confirmDelete(item) : toggleSelected(item.id))}
+              >
+                {selectionMode && (
+                  <View style={[styles.checkboxBox, selected && styles.checkboxBoxChecked]}>
+                    {selected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                )}
+                <View style={[styles.dot, { backgroundColor: job?.colorHex ?? "#999" }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.jobName}>{job?.name ?? "Deleted job"}</Text>
+                  <Text style={styles.times}>
+                    {formatClock(item.clockIn)} – {item.clockOut ? formatClock(item.clockOut) : "in progress"}
+                    {shiftBreaks.length > 0 ? ` · ${shiftBreaks.length} break${shiftBreaks.length > 1 ? "s" : ""}` : ""}
                   </Text>
-                ) : null}
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={styles.duration}>{formatDuration(worked)}</Text>
-                {pay && pay.rateCentsPerHour != null && <Text style={styles.pay}>{formatCents(pay.totalCents)}</Text>}
-              </View>
-            </TouchableOpacity>
+                  {item.notes ? (
+                    <Text style={styles.notesPreview} numberOfLines={1}>
+                      {item.notes}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.duration}>{formatDuration(worked)}</Text>
+                  {pay && pay.rateCentsPerHour != null && <Text style={styles.pay}>{formatCents(pay.totalCents)}</Text>}
+                </View>
+              </TouchableOpacity>
+            </Swipeable>
           );
         }}
         ListEmptyComponent={<Text style={styles.empty}>No shifts in the last {DAYS_BACK} days.</Text>}
@@ -201,31 +232,49 @@ export function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  sectionHeader: { fontWeight: "700", fontSize: 13, color: "#444", backgroundColor: "#fff", paddingVertical: 5 },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#eee", gap: 8 },
-  rowSelected: { backgroundColor: "#eff6ff" },
-  checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: "#999", alignItems: "center", justifyContent: "center" },
-  checkboxBoxChecked: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  dot: { width: 11, height: 11, borderRadius: 6 },
-  jobName: { fontSize: 15, fontWeight: "500" },
-  times: { color: "#666", fontSize: 12, marginTop: 1 },
-  notesPreview: { color: "#999", fontSize: 11, marginTop: 1, fontStyle: "italic" },
-  duration: { fontWeight: "600", fontSize: 14 },
-  pay: { color: "#16a34a", fontSize: 12, marginTop: 1 },
-  empty: { textAlign: "center", color: "#999", marginTop: 24 },
-  selectionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    backgroundColor: "#f7f8fa",
-    gap: 8,
-  },
-  selectionAction: { paddingHorizontal: 6, paddingVertical: 4 },
-  selectionActionText: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
-  selectionCount: { flex: 1, textAlign: "center", fontWeight: "600", fontSize: 13, color: "#333" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.card },
+    sectionHeader: { fontWeight: "700", fontSize: 13, color: colors.textSecondary, backgroundColor: colors.card, paddingVertical: 5 },
+    // Needs an explicit (opaque) background — it's the child Swipeable slides to reveal
+    // the red delete action sitting behind it; without one, the row would be transparent
+    // and show the action through it even before swiping.
+    row: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 8, backgroundColor: colors.card },
+    rowSelected: { backgroundColor: colors.selectedBg },
+    swipeDeleteAction: { backgroundColor: colors.danger, justifyContent: "center", alignItems: "center", width: 72 },
+    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
+    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    dot: { width: 11, height: 11, borderRadius: 6 },
+    jobName: { fontSize: 15, fontWeight: "500", color: colors.text },
+    times: { color: colors.textMuted3, fontSize: 12, marginTop: 1 },
+    notesPreview: { color: colors.textMuted2, fontSize: 11, marginTop: 1, fontStyle: "italic" },
+    duration: { fontWeight: "600", fontSize: 14, color: colors.text },
+    pay: { color: colors.success, fontSize: 12, marginTop: 1 },
+    empty: { textAlign: "center", color: colors.textMuted2, marginTop: 24 },
+    totalBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    totalLabel: { color: colors.textMuted3, fontSize: 12 },
+    totalValue: { color: colors.success, fontSize: 16, fontWeight: "700" },
+    selectionBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 8,
+    },
+    selectionAction: { paddingHorizontal: 6, paddingVertical: 4 },
+    selectionActionText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+    selectionCount: { flex: 1, textAlign: "center", fontWeight: "600", fontSize: 13, color: colors.textSecondary },
+  });
+}

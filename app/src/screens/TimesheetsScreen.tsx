@@ -14,6 +14,7 @@ import {
   listShiftsInRange,
 } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   buildCsv,
   buildPlainText,
@@ -35,6 +36,8 @@ import {
 } from "@clocker/shared";
 
 export function TimesheetsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period | null>(null);
@@ -175,14 +178,14 @@ export function TimesheetsScreen() {
         <>
           <View style={styles.periodBar}>
             <TouchableOpacity onPress={() => goToPeriod(-1)} style={styles.periodArrow}>
-              <Ionicons name="chevron-back" size={20} color="#2563eb" />
+              <Ionicons name="chevron-back" size={20} color={colors.primary} />
             </TouchableOpacity>
             <Text style={styles.periodLabel}>{period.label}</Text>
             <TouchableOpacity onPress={() => goToPeriod(1)} style={styles.periodArrow}>
-              <Ionicons name="chevron-forward" size={20} color="#2563eb" />
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setEditingJob(job)} style={styles.settingsButton}>
-              <Ionicons name="settings-outline" size={20} color="#666" />
+              <Ionicons name="settings-outline" size={20} color={colors.textMuted3} />
             </TouchableOpacity>
           </View>
 
@@ -226,50 +229,52 @@ export function TimesheetsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#fff" },
-  // alignItems: "flex-start" is load-bearing, not decorative: a horizontal ScrollView's
-  // content container defaults to alignItems "stretch" like any row, and on Android that
-  // stretches every chip to the ScrollView's full available height instead of just
-  // matching its siblings' content height (every OTHER chip row in this app uses
-  // flexWrap instead of a horizontal ScrollView, which sidesteps this — this is the only
-  // one that didn't). alignSelf on jobChip itself is a second, redundant guard against
-  // the same failure mode.
-  jobBar: { paddingHorizontal: 10, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: "#eee", alignItems: "flex-start" },
-  jobChip: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, alignSelf: "flex-start" },
-  jobChipText: { fontWeight: "600", fontSize: 13 },
-  jobChipTextSelected: { color: "#fff" },
-  periodBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  periodArrow: { padding: 6 },
-  periodLabel: { flex: 1, textAlign: "center", fontWeight: "700", fontSize: 15 },
-  settingsButton: { padding: 6 },
-  container: { padding: 12, paddingBottom: 90 },
-  totalsRow: { flexDirection: "row", justifyContent: "center", alignItems: "baseline", gap: 10, marginVertical: 10 },
-  totalsHours: { fontSize: 26, fontWeight: "700" },
-  totalsPay: { fontSize: 16, color: "#16a34a", fontWeight: "600" },
-  empty: { textAlign: "center", color: "#999", marginTop: 24 },
-  entryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  entryDay: { fontSize: 12, color: "#444", width: 76 },
-  entryTimes: { fontSize: 12, color: "#666" },
-  entryHours: { fontSize: 12, fontWeight: "600", marginLeft: "auto" },
-  entryNotes: { fontSize: 11, color: "#999", fontStyle: "italic", width: "100%" },
-  submitButton: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 12,
-    backgroundColor: "#2563eb",
-    borderRadius: 12,
-    padding: 14,
-    alignItems: "center",
-  },
-  submitButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.card },
+    // alignItems: "flex-start" is load-bearing, not decorative: a horizontal ScrollView's
+    // content container defaults to alignItems "stretch" like any row, and on Android that
+    // stretches every chip to the ScrollView's full available height instead of just
+    // matching its siblings' content height (every OTHER chip row in this app uses
+    // flexWrap instead of a horizontal ScrollView, which sidesteps this — this is the only
+    // one that didn't). alignSelf on jobChip itself is a second, redundant guard against
+    // the same failure mode.
+    jobBar: { paddingHorizontal: 10, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: "flex-start" },
+    jobChip: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, alignSelf: "flex-start", backgroundColor: colors.card },
+    jobChipText: { fontWeight: "600", fontSize: 13, color: colors.text },
+    jobChipTextSelected: { color: "#fff" },
+    periodBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+    periodArrow: { padding: 6 },
+    periodLabel: { flex: 1, textAlign: "center", fontWeight: "700", fontSize: 15, color: colors.text },
+    settingsButton: { padding: 6 },
+    container: { padding: 12, paddingBottom: 90 },
+    totalsRow: { flexDirection: "row", justifyContent: "center", alignItems: "baseline", gap: 10, marginVertical: 10 },
+    totalsHours: { fontSize: 26, fontWeight: "700", color: colors.text },
+    totalsPay: { fontSize: 16, color: colors.success, fontWeight: "600" },
+    empty: { textAlign: "center", color: colors.textMuted2, marginTop: 24 },
+    entryRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    entryDay: { fontSize: 12, color: colors.textSecondary, width: 76 },
+    entryTimes: { fontSize: 12, color: colors.textMuted3 },
+    entryHours: { fontSize: 12, fontWeight: "600", marginLeft: "auto", color: colors.text },
+    entryNotes: { fontSize: 11, color: colors.textMuted2, fontStyle: "italic", width: "100%" },
+    submitButton: {
+      position: "absolute",
+      left: 12,
+      right: 12,
+      bottom: 12,
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      padding: 14,
+      alignItems: "center",
+    },
+    submitButtonText: { color: colors.onPrimary, fontWeight: "700", fontSize: 15 },
+  });
+}

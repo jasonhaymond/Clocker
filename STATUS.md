@@ -90,6 +90,26 @@ chips could render badly oversized on Android, traced to a known React Native ho
 a wrapping layout instead — see §3 for detail. The mobile fix is unverified on a real
 device (none available this session).
 
+**Amended again (2026-09-12, same day, later session):** turned Export's job filter into
+a scrolling checklist (checkboxes + color dots) instead of a wrapping grid of chip
+buttons, both clients. Then fixed two more user-reported bugs: Backups' archives section
+crashed with "Cannot read properties of undefined (reading 'archives')" when the response
+was empty (now shows nothing, like Recent Runs, instead of an error); and a deeper bug in
+the SSH-key retry-polling logic — it required `/backup/config` to have already resolved
+successfully before it would even start retrying, so if that endpoint itself ever
+returned a malformed/empty body, the UI stayed on "Generating..." forever with no
+recourse. Confirmed with the user this was still happening on the live deployed site (not
+just stale deployment) before fixing.
+
+**Amended again (2026-09-12, same day, later session):** shipped a full dark/light/system
+theme system on both clients, a constant-branded header ("Clocker" + brand color,
+replacing the per-screen title), swipe-to-delete on History (both clients) with a
+trashcan icon replacing the text delete button, total money earned shown on History and
+live on Clock while clocked in, weekly-hours-remaining shown on Clock even before
+clocking in, and two Clock button relabels ("Clock In Now"/"Start At...") — `1.9.0` (§3).
+Re-diagnosed (still no SSH access) that "Update Server" not working is the same external-
+proxy Caddy config gap identified in the prior amendment, not a new/different bug.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -116,7 +136,7 @@ them bumps together on every release, whether or not that release actually touch
 three, and the number is shown in Settings on both clients (mobile: `Application.
 nativeApplicationVersion`/`app.json`, already existed; web: `__APP_VERSION__`, baked in
 from `web/package.json` via a `define` in `vite.config.ts` — new). All four are at
-`1.8.0` as of this session. `server/package.json` stays on its own independent `0.x`
+`1.9.0` as of this session. `server/package.json` stays on its own independent `0.x`
 track (currently `0.5.0`) — deliberately NOT unified with the client version, since it's
 a backend service versioned separately, not something "clients" (the user's own word)
 covers. A version bump + CHANGELOG entry should land with each shipping commit.
@@ -464,6 +484,62 @@ Verified present in the repo (code + docs, not just described in memory):
   every other mobile UI change) — this is a confident diagnosis of a known failure mode
   with its standard fix, not something seen corrected on an actual phone. Watch for this
   specifically the next time someone has one in hand.
+
+- **Full dark/light/system theme, both clients** (`app/src/theme/ThemeContext.tsx`,
+  `web/src/theme.tsx`) — a three-way mode (`system`/`light`/`dark`), chosen from a new
+  "Appearance" section in Settings, persisted per-client (`AsyncStorage`/`localStorage`)
+  and defaulting to `system` (which tracks the OS preference live via `useColorScheme()`
+  on mobile, a `prefers-color-scheme` media query on web). Web uses CSS custom properties
+  (`:root` for light, overridden under a dark-preference media query and again under an
+  explicit `[data-theme="dark"]`); mobile uses a `useTheme()` context exposing a
+  `ThemeColors` token object, with every screen/component converted from a module-level
+  `StyleSheet.create` to a `useMemo`-wrapped `createStyles(colors)` so restyling actually
+  re-renders on a mode change. Both palettes share the same token names/semantics
+  (background/surface/card/text/border tiers, primary/danger/success/warning, etc.) so the
+  two clients read as the same app. Brand colors (primary, header background/text, white
+  text on colored buttons) are deliberately NOT themed — constant in both modes.
+- **Header now shows a constant branded app name, both clients** — "Clocker" in the brand
+  color, replacing the previous per-screen title (web) / default screen-title header
+  (mobile). Which screen you're on is conveyed by the active tab icon instead, mirroring
+  how a native app typically separates "app identity" from "current location."
+- **Total money earned, both clients**: History now shows a total for pay-eligible shifts
+  in the visible range (a `.total-bar`/`totalBar` summary), and the Clock screen shows a
+  live "$X.XX so far" figure while clocked in, updating on the same 30s tick as the timer
+  — reusing `calculateShiftPay` from `shared` fed the shift's currently-elapsed hours
+  instead of a final duration. Timesheets already had pay totals on both clients before
+  this session; deliberately left unchanged.
+- **Weekly hours remaining now also shows before clocking in** (Clock screen, both
+  clients) — for whichever job is currently selected in the picker, using the same
+  `calculateWeeklyProgress` already used for an open shift's card, just without the
+  "expected clock-out" line (which only makes sense once actually on the clock).
+- **History: swipe-to-delete, both clients**, coexisting with the existing long-press
+  multi-select. Mobile uses `react-native-gesture-handler`'s `Swipeable` (new dependency,
+  `~2.32.0`, requires wrapping the app root in `GestureHandlerRootView` — done in
+  `App.tsx`); web uses a custom Pointer Events drag on the same `press` ref that already
+  tracks long-press state, so mouse/touch/pen all work through one code path. The delete
+  action on both is now a trashcan icon button instead of a text "Delete" button. Web
+  verified for real via Playwright, including a tricky edge case: clicking a different row
+  while another was swiped open used to correctly close the swipe but ALSO incorrectly
+  open that other row's editor (the swipe-dismiss and the row-click were racing); fixed by
+  recording that a dismiss just happened and swallowing the very next click. Mobile's
+  gesture code is typecheck/bundle-verified only — no device/emulator access this session.
+- **Backups: archives section no longer shows any error** — an empty/malformed
+  `/backup/archives` response now renders nothing, matching how "Recent Runs" already
+  behaved, instead of crashing with "Cannot read properties of undefined (reading
+  'archives')".
+- **Backups: fixed the SSH-key retry loop's real structural bug.** The polling `useEffect`
+  required `config` to already be truthy before it would retry at all — so if
+  `/backup/config` itself ever returned a malformed/empty body (the same failure mode
+  already known to affect `/backup/archives`), retries never started, leaving "Generating…"
+  showing forever with zero recourse. The retry trigger no longer depends on `config` being
+  set first; confirmed against the user (who had already redeployed) that this was a real,
+  still-reproducing bug and not stale deployment.
+- **Export's job filter is now a scrolling checklist, not a wrapping grid of chip
+  buttons** — checkboxes + each job's color dot, in a ~180px scrollable list. Explicit
+  user request after the multi-select chip version shipped; same Select All/Deselect All
+  behavior underneath.
+- **Clock screen button relabels**: "Clock In" → "Clock In Now"; the clock-in row's
+  "At..." → "Start At..." (clock-out/break "At..." buttons unchanged).
 
 ## 4. Known gaps / open work
 

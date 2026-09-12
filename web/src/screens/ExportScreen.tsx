@@ -224,11 +224,13 @@ export function ExportScreen() {
           </button>
         </div>
       </div>
-      <div className="chip-row">
+      <div className="job-select-list">
         {store.jobs.map((job) => (
-          <button key={job.id} className={`chip${selectedJobIds.has(job.id) ? " selected" : ""}`} onClick={() => toggleJob(job.id)}>
-            {job.name}
-          </button>
+          <label key={job.id} className="job-select-row">
+            <input type="checkbox" checked={selectedJobIds.has(job.id)} onChange={() => toggleJob(job.id)} />
+            <span className="dot" style={{ backgroundColor: job.colorHex }} />
+            <span className="job-select-name">{job.name}</span>
+          </label>
         ))}
         {store.jobs.length === 0 && <p className="hint">Add a job in the Jobs tab first.</p>}
       </div>

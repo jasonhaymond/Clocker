@@ -1,6 +1,7 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
 // iOS-only rendering: Android is handled imperatively via pickDateTimeAndroid instead
 // (see useDateTimePicker), since Android has no inline combined date+time widget worth
@@ -18,6 +19,8 @@ export function DateTimePickerModal({
   onConfirm: (date: Date) => void;
   onCancel: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [value, setValue] = useState(initialValue);
 
   if (!visible) return null;
@@ -47,13 +50,15 @@ export function DateTimePickerModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  card: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
-  title: { fontSize: 16, fontWeight: "700", marginBottom: 8, textAlign: "center" },
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 12 },
-  button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  buttonText: { fontWeight: "600", color: "#333" },
-  confirmButton: { backgroundColor: "#2563eb" },
-  confirmText: { color: "#fff" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: "flex-end" },
+    card: { backgroundColor: colors.card, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
+    title: { fontSize: 16, fontWeight: "700", marginBottom: 8, textAlign: "center", color: colors.text },
+    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 12 },
+    button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+    buttonText: { fontWeight: "600", color: colors.textSecondary },
+    confirmButton: { backgroundColor: colors.primary },
+    confirmText: { color: colors.onPrimary },
+  });
+}

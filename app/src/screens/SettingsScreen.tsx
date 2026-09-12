@@ -1,18 +1,25 @@
 import * as Application from "expo-application";
 import Constants from "expo-constants";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../sync/api";
 import { synchronize } from "../sync/sync";
+import { useTheme, type ThemeColors, type ThemeMode } from "../theme/ThemeContext";
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
 import { HelpScreen } from "./HelpScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
+
+const THEME_OPTIONS: { key: ThemeMode; label: string }[] = [
+  { key: "system", label: "System" },
+  { key: "light", label: "Light" },
+  { key: "dark", label: "Dark" },
+];
 
 function updateStatusText(state: UpdateState): string {
   switch (state.status) {
@@ -35,6 +42,8 @@ function updateStatusText(state: UpdateState): string {
 
 export function SettingsScreen() {
   const { signOut } = useAuth();
+  const { mode, setMode, colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -123,6 +132,21 @@ export function SettingsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
+        <Text style={styles.label}>Appearance</Text>
+        <View style={styles.chipRow}>
+          {THEME_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              style={[styles.themeChip, mode === opt.key && styles.themeChipSelected]}
+              onPress={() => setMode(opt.key)}
+            >
+              <Text style={[styles.themeChipText, mode === opt.key && styles.themeChipTextSelected]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.label}>Last synced</Text>
         <Text style={styles.value}>{lastSynced ? new Date(lastSynced).toLocaleString() : "Never"}</Text>
         {syncError && <Text style={styles.error}>{syncError}</Text>}
@@ -150,7 +174,7 @@ export function SettingsScreen() {
             disabled={update.status === "checking" || update.status === "downloading"}
           >
             {update.status === "checking" || update.status === "downloading" ? (
-              <ActivityIndicator color="#2563eb" />
+              <ActivityIndicator color={colors.primary} />
             ) : (
               <Text style={styles.checkButtonText}>Check for Updates</Text>
             )}
@@ -219,20 +243,27 @@ export function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 14, backgroundColor: "#fff" },
-  card: { backgroundColor: "#f4f5f7", borderRadius: 10, padding: 14, marginBottom: 14 },
-  label: { color: "#666", fontSize: 13 },
-  value: { fontSize: 16, fontWeight: "600", marginTop: 3, marginBottom: 6 },
-  updateStatus: { color: "#666", marginBottom: 10, fontSize: 13 },
-  error: { color: "#dc2626", marginBottom: 8, fontSize: 13 },
-  syncButton: { backgroundColor: "#2563eb", borderRadius: 10, padding: 11, alignItems: "center" },
-  syncButtonText: { color: "#fff", fontWeight: "600", fontSize: 14 },
-  updateButton: { backgroundColor: "#16a34a", borderRadius: 10, padding: 11, alignItems: "center" },
-  checkButton: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#2563eb" },
-  checkButtonText: { color: "#2563eb", fontWeight: "600", fontSize: 14 },
-  signOutButton: { padding: 11, alignItems: "center" },
-  signOutText: { color: "#dc2626", fontWeight: "600", fontSize: 14 },
-  logToggle: { color: "#2563eb", fontSize: 13, marginTop: 10, textAlign: "center" },
-  logText: { fontFamily: "monospace", fontSize: 10, color: "#333", marginTop: 8, backgroundColor: "#fff", padding: 8, borderRadius: 6 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 14, backgroundColor: colors.card },
+    card: { backgroundColor: colors.surface, borderRadius: 10, padding: 14, marginBottom: 14 },
+    label: { color: colors.textMuted3, fontSize: 13 },
+    value: { fontSize: 16, fontWeight: "600", marginTop: 3, marginBottom: 6, color: colors.text },
+    updateStatus: { color: colors.textMuted3, marginBottom: 10, fontSize: 13 },
+    error: { color: colors.danger, marginBottom: 8, fontSize: 13 },
+    chipRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+    themeChip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.card },
+    themeChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    themeChipText: { fontWeight: "600", fontSize: 13, color: colors.text },
+    themeChipTextSelected: { color: colors.onPrimary },
+    syncButton: { backgroundColor: colors.primary, borderRadius: 10, padding: 11, alignItems: "center" },
+    syncButtonText: { color: colors.onPrimary, fontWeight: "600", fontSize: 14 },
+    updateButton: { backgroundColor: colors.success, borderRadius: 10, padding: 11, alignItems: "center" },
+    checkButton: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary },
+    checkButtonText: { color: colors.primary, fontWeight: "600", fontSize: 14 },
+    signOutButton: { padding: 11, alignItems: "center" },
+    signOutText: { color: colors.danger, fontWeight: "600", fontSize: 14 },
+    logToggle: { color: colors.primary, fontSize: 13, marginTop: 10, textAlign: "center" },
+    logText: { fontFamily: "monospace", fontSize: 10, color: colors.textSecondary, marginTop: 8, backgroundColor: colors.card, padding: 8, borderRadius: 6 },
+  });
+}

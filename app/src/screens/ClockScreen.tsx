@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import {
@@ -12,6 +12,8 @@ import {
   listBreaksForShifts,
   listJobs,
   listRateTiers,
+  listRateTiersForJobs,
+  listRateVersionsForTiers,
   listShiftsInRange,
   startBreak,
 } from "../db/database";
@@ -19,9 +21,12 @@ import { requestClockedInNotificationPermission, updateClockedInNotification } f
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   addDays,
+  calculateShiftPay,
   calculateWeeklyProgress,
+  formatCents,
   formatClock,
   formatDuration,
   mostRecentWeekStart,
@@ -29,6 +34,7 @@ import {
   type Break,
   type Job,
   type RateTier,
+  type RateVersion,
   type Shift,
   type WeeklyProgress,
 } from "@clocker/shared";
@@ -41,6 +47,8 @@ interface OpenShiftDetail {
 }
 
 export function ClockScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [openShiftDetails, setOpenShiftDetails] = useState<OpenShiftDetail[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -49,11 +57,18 @@ export function ClockScreen() {
   const [tick, setTick] = useState(0);
   const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
   const [weekDataByJobId, setWeekDataByJobId] = useState<Record<string, { shifts: Shift[]; breaksByShift: Record<string, Break[]> }>>({});
+  // Every job's rate tiers/versions, loaded once — needed to show live pay for an open
+  // shift (below) the same way History/Timesheets/Export compute it for closed ones.
+  const [allTiers, setAllTiers] = useState<RateTier[]>([]);
+  const [allVersions, setAllVersions] = useState<RateVersion[]>([]);
   const { pick, modal } = useDateTimePicker();
 
   const load = useCallback(() => {
     listJobs(false).then(async (allJobs) => {
       setJobs(allJobs);
+      const jobTiers = await listRateTiersForJobs(allJobs.map((j) => j.id));
+      setAllTiers(jobTiers);
+      setAllVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
       // Only jobs with a weekly target need their week's shifts loaded — everything else
       // has nothing to compute. Each job can define its own week (expectedHoursWeekStartDay),
       // so the range is computed per job, not once for all of them.
@@ -202,17 +217,35 @@ export function ClockScreen() {
     return calculateWeeklyProgress({ job, shifts: weekData.shifts, breaksByShift: weekData.breaksByShift });
   }
 
+  // Live pay for a still-open shift — reuses the exact same calculation History/
+  // Timesheets/Export use for closed ones, just fed the shift's currently-elapsed hours
+  // instead of a fixed final duration, so it counts up right alongside the timer.
+  function payFor(shift: Shift, job: Job | null, worked: number): { cents: number; hasRate: boolean } | null {
+    if (!job) return null;
+    const jobTiers = allTiers.filter((t) => t.jobId === job.id);
+    if (jobTiers.length === 0) return null;
+    const [pay] = calculateShiftPay({
+      job,
+      tiers: jobTiers,
+      versions: allVersions,
+      shiftsWithHours: [{ shift, workedHours: worked / 3_600_000 }],
+    });
+    return pay ? { cents: pay.totalCents, hasRate: pay.rateCentsPerHour != null } : null;
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {openShiftDetails.map(({ shift, job, breaks, openBreak }) => {
         const worked = workedMillis(shift, breaks);
         const progress = weeklyProgressFor(job);
+        const pay = payFor(shift, job, worked);
         return (
           <View key={shift.id} style={styles.openShiftCard}>
-            <View style={[styles.jobBadge, { backgroundColor: job?.colorHex ?? "#2563eb" }]}>
+            <View style={[styles.jobBadge, { backgroundColor: job?.colorHex ?? colors.primary }]}>
               <Text style={styles.jobBadgeText}>{job?.name ?? "Job"}</Text>
             </View>
             <Text style={styles.timer}>{formatDuration(worked)}</Text>
+            {pay?.hasRate && <Text style={styles.earnings}>{formatCents(pay.cents)} so far</Text>}
             <Text style={styles.since}>Since {formatClock(shift.clockIn)}</Text>
             {openBreak && <Text style={styles.onBreak}>On break since {formatClock(openBreak.start)}</Text>}
             {progress && (
@@ -290,18 +323,36 @@ export function ClockScreen() {
         )}
 
         {availableJobs.length > 0 && (
-          <View style={styles.splitRow}>
-            <TouchableOpacity
-              style={[styles.bigButton, styles.clockInButton, styles.flexButton]}
-              onPress={() => handleClockIn()}
-              disabled={!selectedJobId}
-            >
-              <Text style={styles.bigButtonText}>Clock In</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.atButton} onPress={handleClockInAt} disabled={!selectedJobId}>
-              <Text style={styles.atButtonText}>At...</Text>
-            </TouchableOpacity>
-          </View>
+          <>
+            {(() => {
+              const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
+              const progress = weeklyProgressFor(selectedJob);
+              // Deliberately just the remaining-hours figure here, not expectedClockOut —
+              // "expected clock-out" only means something once you're actually on the
+              // clock; showing it before you've clocked in would read as a prediction
+              // this screen has no basis for yet.
+              if (!progress) return null;
+              return (
+                <Text style={styles.weeklyProgress}>
+                  {progress.remainingMinutes > 0
+                    ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
+                    : "Weekly target reached"}
+                </Text>
+              );
+            })()}
+            <View style={styles.splitRow}>
+              <TouchableOpacity
+                style={[styles.bigButton, styles.clockInButton, styles.flexButton]}
+                onPress={() => handleClockIn()}
+                disabled={!selectedJobId}
+              >
+                <Text style={styles.bigButtonText}>Clock In Now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.atButton} onPress={handleClockInAt} disabled={!selectedJobId}>
+                <Text style={styles.atButtonText}>Start At...</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
       </View>
 
@@ -317,32 +368,35 @@ export function ClockScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 14, paddingTop: 16, backgroundColor: "#fff", gap: 12 },
-  openShiftCard: { backgroundColor: "#f4f5f7", borderRadius: 12, padding: 14, alignItems: "center" },
-  label: { color: "#666", fontSize: 13, marginBottom: 8, textAlign: "center" },
-  jobBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16, marginBottom: 12 },
-  jobBadgeText: { color: "#fff", fontWeight: "600", fontSize: 14 },
-  timer: { fontSize: 32, fontWeight: "700", marginBottom: 4, fontVariant: ["tabular-nums"] },
-  since: { color: "#999", marginBottom: 10, fontSize: 13 },
-  onBreak: { color: "#d97706", fontWeight: "600", marginBottom: 8, fontSize: 13 },
-  weeklyProgress: { color: "#2563eb", fontSize: 12, marginBottom: 8, textAlign: "center" },
-  newShiftSection: { alignItems: "center" },
-  jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
-  jobOption: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
-  jobOptionText: { fontWeight: "600", fontSize: 14 },
-  jobOptionTextSelected: { color: "#fff" },
-  tierOption: { borderWidth: 2, borderColor: "#999", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
-  tierOptionSelected: { backgroundColor: "#111", borderColor: "#111" },
-  bigButton: { borderRadius: 12, padding: 13, alignItems: "center" },
-  bigButtonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  clockInButton: { backgroundColor: "#16a34a" },
-  clockOutButton: { backgroundColor: "#dc2626" },
-  breakButton: { backgroundColor: "#d97706" },
-  resumeButton: { backgroundColor: "#2563eb" },
-  splitRow: { flexDirection: "row", gap: 8, width: "100%", marginTop: 8 },
-  flexButton: { flex: 1 },
-  atButton: { borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#999" },
-  atButtonText: { color: "#333", fontWeight: "700", fontSize: 13 },
-  empty: { color: "#999", fontSize: 13 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flexGrow: 1, padding: 14, paddingTop: 16, backgroundColor: colors.card, gap: 12 },
+    openShiftCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, alignItems: "center" },
+    label: { color: colors.textMuted3, fontSize: 13, marginBottom: 8, textAlign: "center" },
+    jobBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16, marginBottom: 12 },
+    jobBadgeText: { color: "#fff", fontWeight: "600", fontSize: 14 },
+    timer: { fontSize: 32, fontWeight: "700", marginBottom: 4, fontVariant: ["tabular-nums"], color: colors.text },
+    earnings: { fontSize: 15, fontWeight: "600", color: colors.success, marginBottom: 4 },
+    since: { color: colors.textMuted2, marginBottom: 10, fontSize: 13 },
+    onBreak: { color: colors.warning, fontWeight: "600", marginBottom: 8, fontSize: 13 },
+    weeklyProgress: { color: colors.primary, fontSize: 12, marginBottom: 8, textAlign: "center" },
+    newShiftSection: { alignItems: "center" },
+    jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
+    jobOption: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.card },
+    jobOptionText: { fontWeight: "600", fontSize: 14, color: colors.text },
+    jobOptionTextSelected: { color: "#fff" },
+    tierOption: { borderWidth: 2, borderColor: colors.textMuted2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
+    tierOptionSelected: { backgroundColor: colors.invertBg, borderColor: colors.invertBg },
+    bigButton: { borderRadius: 12, padding: 13, alignItems: "center" },
+    bigButtonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+    clockInButton: { backgroundColor: colors.success },
+    clockOutButton: { backgroundColor: colors.danger },
+    breakButton: { backgroundColor: colors.warning },
+    resumeButton: { backgroundColor: colors.primary },
+    splitRow: { flexDirection: "row", gap: 8, width: "100%", marginTop: 8 },
+    flexButton: { flex: 1 },
+    atButton: { borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.textMuted2, backgroundColor: colors.card },
+    atButtonText: { color: colors.textSecondary, fontWeight: "700", fontSize: 13 },
+    empty: { color: colors.textMuted2, fontSize: 13 },
+  });
+}

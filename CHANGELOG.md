@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.9.0] - 2026-09-12
+
+### Added
+
+- Dark/light/system theme mode, both clients — a new "Appearance" section in Settings
+  (System/Light/Dark). System follows the OS preference live; an explicit choice persists
+  (`localStorage` on web, `AsyncStorage` on mobile). Built on a shared token system (CSS
+  custom properties on web, a `useTheme()`/`ThemeColors` context on mobile) so every
+  screen, not just a few, follows the chosen theme.
+- Header now shows the app's own name/brand ("Clocker") in a constant brand color on both
+  clients, instead of the current screen's title — which tab you're on is shown by the
+  active icon in the bottom bar/tab bar instead. The brand color is deliberately NOT
+  themed (stays the same in dark mode).
+- Total money earned is now shown on the History screen (sum of pay-eligible shifts in the
+  visible range) and live on the Clock screen while clocked in ("$X.XX so far", updating
+  alongside the timer) — Timesheets already showed pay totals on both clients, so no
+  change was needed there.
+- Weekly hours remaining (per job's weekly hours target) now also shows on the Clock
+  screen before clocking in, for whichever job is currently selected — previously this
+  only appeared once a shift was already open.
+- History: swipe-to-delete on both mobile (native swipe via
+  `react-native-gesture-handler`'s `Swipeable`) and web (custom Pointer Events drag,
+  mouse/touch/pen) — coexists with the existing long-press multi-select. The delete
+  button/action is now a trashcan icon instead of text.
+
+### Changed
+
+- Clock screen button labels: "Clock In" → "Clock In Now"; the clock-in row's "At..." →
+  "Start At..." (the clock-out/break "At..." buttons are unchanged).
+
+### Fixed
+
+- Backups: the archives section no longer shows an error message at all when there are no
+  archives yet — it now behaves like "Recent Runs" and just shows nothing, instead of
+  "Cannot read properties of undefined (reading 'archives')".
+- Backups: fixed a deeper bug behind the backup key getting stuck on "Generating…"
+  forever with no way to retry. The SSH-key retry-polling logic required `/backup/config`
+  itself to have already returned a valid, non-empty response before it would even start
+  retrying — so if that endpoint ever returned a malformed/empty body (the same failure
+  mode already seen on `/backup/archives`), retries never began at all and there was no
+  recourse. The retry trigger no longer depends on `config` being non-null first.
+
 ## [1.8.0] - 2026-09-12
 
 App, web, and shared versions are unified from this release on — see `STATUS.md`'s

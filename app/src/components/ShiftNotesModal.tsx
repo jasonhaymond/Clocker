@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { updateShiftTimes } from "../db/database";
+import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
 // Shared between History (editing an existing note) and the Clock screen (optionally
 // prompting for one right after clocking out, per the job's promptForNotesOnClockOut
@@ -14,6 +15,8 @@ export function ShiftNotesModal({
   initialNotes: string | null;
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [notes, setNotes] = useState(initialNotes ?? "");
 
   async function save() {
@@ -48,14 +51,16 @@ export function ShiftNotesModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 24 },
-  card: { backgroundColor: "#fff", borderRadius: 16, padding: 20 },
-  title: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 12, minHeight: 100, textAlignVertical: "top" },
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
-  button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  primaryButton: { backgroundColor: "#2563eb" },
-  buttonText: { fontWeight: "600", color: "#333" },
-  primaryText: { color: "#fff" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: "center", padding: 24 },
+    card: { backgroundColor: colors.card, borderRadius: 16, padding: 20 },
+    title: { fontSize: 16, fontWeight: "700", marginBottom: 12, color: colors.text },
+    input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 12, minHeight: 100, textAlignVertical: "top", color: colors.text },
+    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
+    button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+    primaryButton: { backgroundColor: colors.primary },
+    buttonText: { fontWeight: "600", color: colors.textSecondary },
+    primaryText: { color: colors.onPrimary },
+  });
+}
