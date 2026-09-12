@@ -17,6 +17,7 @@ interface StoreState {
   jobManagers: JobManager[];
   loading: boolean;
   error: string | null;
+  lastSyncedAt: string | null;
 }
 
 const EMPTY_STATE: StoreState = {
@@ -29,6 +30,7 @@ const EMPTY_STATE: StoreState = {
   jobManagers: [],
   loading: true,
   error: null,
+  lastSyncedAt: null,
 };
 
 function newId(): string {
@@ -110,6 +112,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         jobManagers: pulled.jobManagers.filter((jm) => !jm.deletedAt),
         loading: false,
         error: null,
+        lastSyncedAt: nowIso(),
       });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err instanceof Error ? err.message : "Couldn't load data" }));

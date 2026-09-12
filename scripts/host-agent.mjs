@@ -165,10 +165,39 @@ function parseCron(cronStr) {
 // nothing else (see docs/deployment.md#the-host-agent for the matching
 // `authorized_keys` `command=` restriction to set up on the backup server's end).
 // ---------------------------------------------------------------------------
+// Tracks why generation hasn't produced a key yet, so the client can show a real error
+// instead of a "Generating..." placeholder that never resolves. Previously this function
+// swallowed both a missing `ssh-keygen` binary and a non-zero exit unconditionally —
+// nothing ever surfaced that failure, so the UI just showed "Generating..." forever with
+// no way to know why or to retry. Called again (cheap: one existsSync check when a key
+// already exists) from both /backup/config handlers below, so a fixed environment (e.g.
+// `ssh-keygen` installed after the fact) retries on the next request instead of needing a
+// process restart.
+let backupSshKeyError = null;
+
 function ensureBackupSshKey() {
-  if (existsSync(backupSshKeyPath)) return;
-  mkdirSync(backupSshDir, { recursive: true });
-  spawnSync("ssh-keygen", ["-t", "ed25519", "-f", backupSshKeyPath, "-N", "", "-C", "clocker-backup"]);
+  if (existsSync(backupSshKeyPath)) {
+    backupSshKeyError = null;
+    return;
+  }
+  try {
+    mkdirSync(backupSshDir, { recursive: true });
+    const result = spawnSync("ssh-keygen", ["-t", "ed25519", "-f", backupSshKeyPath, "-N", "", "-C", "clocker-backup"]);
+    if (result.error) {
+      backupSshKeyError = `ssh-keygen isn't available on this host (${result.error.message}) — install OpenSSH's client tools (e.g. \`apt install openssh-client\`).`;
+      console.warn(`Warning: ${backupSshKeyError}`);
+      return;
+    }
+    if (result.status !== 0) {
+      backupSshKeyError = result.stderr?.toString().trim() || `ssh-keygen exited with code ${result.status}`;
+      console.warn(`Warning: backup SSH key generation failed: ${backupSshKeyError}`);
+      return;
+    }
+    backupSshKeyError = null;
+  } catch (err) {
+    backupSshKeyError = err.message;
+    console.warn(`Warning: backup SSH key generation failed: ${err.message}`);
+  }
 }
 
 function getBackupSshPublicKey() {
@@ -456,6 +485,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/backup/config") {
+      ensureBackupSshKey();
       const cfg = loadBackupConfig();
       return send(200, {
         repoUrl: cfg.repoUrl,
@@ -463,6 +493,7 @@ const server = createServer(async (req, res) => {
         retentionCount: cfg.retentionCount,
         schedule: parseCron(cfg.schedule),
         sshPublicKey: getBackupSshPublicKey(),
+        sshPublicKeyError: backupSshKeyError,
       });
     }
 
@@ -476,12 +507,14 @@ const server = createServer(async (req, res) => {
       else if (body.schedule && typeof body.schedule === "object") cfg.schedule = buildCron(body.schedule);
       saveBackupConfig(cfg);
       rescheduleBackupCron();
+      ensureBackupSshKey();
       return send(200, {
         repoUrl: cfg.repoUrl,
         passphraseSet: !!cfg.passphrase,
         retentionCount: cfg.retentionCount,
         schedule: parseCron(cfg.schedule),
         sshPublicKey: getBackupSshPublicKey(),
+        sshPublicKeyError: backupSshKeyError,
       });
     }
 

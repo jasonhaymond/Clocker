@@ -1,4 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
+import {
+  IoBriefcase,
+  IoBriefcaseOutline,
+  IoDocumentText,
+  IoDocumentTextOutline,
+  IoList,
+  IoListOutline,
+  IoSettings,
+  IoSettingsOutline,
+  IoShare,
+  IoShareOutline,
+  IoTime,
+  IoTimeOutline,
+} from "react-icons/io5";
 import { clearToken, getCaptcha, getToken, login, register, setToken } from "./api";
 import { StoreProvider, useStore } from "./store";
 import { ClockScreen } from "./screens/ClockScreen";
@@ -90,13 +104,16 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
 }
 
 type Tab = "clock" | "jobs" | "history" | "timesheets" | "export" | "settings";
-const TABS: { key: Tab; label: string }[] = [
-  { key: "clock", label: "Clock" },
-  { key: "jobs", label: "Jobs" },
-  { key: "history", label: "History" },
-  { key: "timesheets", label: "Timesheets" },
-  { key: "export", label: "Export" },
-  { key: "settings", label: "Settings" },
+// Same icon set (Ionicons) as app/src/navigation/RootNavigator.tsx's bottom tab bar, via
+// react-icons/io5 — this bar is deliberately styled to mimic that one as closely as a web
+// page reasonably can, right down to which icon goes with which tab.
+const TABS: { key: Tab; label: string; icon: ComponentType; iconActive: ComponentType }[] = [
+  { key: "clock", label: "Clock", icon: IoTimeOutline, iconActive: IoTime },
+  { key: "jobs", label: "Jobs", icon: IoBriefcaseOutline, iconActive: IoBriefcase },
+  { key: "history", label: "History", icon: IoListOutline, iconActive: IoList },
+  { key: "timesheets", label: "Timesheets", icon: IoDocumentTextOutline, iconActive: IoDocumentText },
+  { key: "export", label: "Export", icon: IoShareOutline, iconActive: IoShare },
+  { key: "settings", label: "Settings", icon: IoSettingsOutline, iconActive: IoSettings },
 ];
 
 // Every store action's failure sets store.error (see store.tsx's `guarded` wrapper) —
@@ -120,20 +137,17 @@ function ErrorBanner() {
 
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("clock");
+  const current = TABS.find((t) => t.key === tab)!;
 
   return (
     <StoreProvider>
       <div className="app-shell">
+        {/* Mirrors app/'s per-screen navigation header (always the current screen's
+            title), now that the tab switcher itself lives at the bottom like the mobile
+            bottom tab bar. */}
         <header className="app-header">
-          <h1>Clocker</h1>
+          <h1>{current.label}</h1>
         </header>
-        <nav className="tab-bar">
-          {TABS.map((t) => (
-            <button key={t.key} className={`tab${tab === t.key ? " active" : ""}`} onClick={() => setTab(t.key)}>
-              {t.label}
-            </button>
-          ))}
-        </nav>
         <ErrorBanner />
         <main className="app-main">
           {tab === "clock" && <ClockScreen />}
@@ -143,6 +157,17 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
           {tab === "export" && <ExportScreen />}
           {tab === "settings" && <SettingsScreen onSignOut={onSignOut} />}
         </main>
+        <nav className="tab-bar">
+          {TABS.map((t) => {
+            const Icon = tab === t.key ? t.iconActive : t.icon;
+            return (
+              <button key={t.key} className={`tab${tab === t.key ? " active" : ""}`} onClick={() => setTab(t.key)}>
+                <Icon />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </StoreProvider>
   );

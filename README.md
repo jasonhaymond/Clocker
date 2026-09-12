@@ -222,6 +222,8 @@ dependencies, and applies any new migrations.
   background sync push changes and pull updates from other devices
 - Over-the-air JS updates via `expo-updates` (once `eas update:configure` is run once),
   with a Settings screen banner/button to check for and apply them
+- An in-app Help screen (Settings → Help, both clients) covering how to use every part of
+  the app, plus a step-by-step setup guide at the top of Settings → Backups
 
 ## Notes for future work
 

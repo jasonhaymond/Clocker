@@ -253,12 +253,18 @@ setup: [`deployment.md#backups-borgbackup`](./deployment.md#backups-borgbackup).
   "passphraseSet": true,
   "retentionCount": 14,
   "schedule": { "frequency": "daily", "hour": 3, "minute": 0, "weekday": null, "dayOfMonth": null },
-  "sshPublicKey": "ssh-ed25519 AAAA... clocker-backup"
+  "sshPublicKey": "ssh-ed25519 AAAA... clocker-backup",
+  "sshPublicKeyError": null
 }
 ```
 
 `passphraseSet` is the only signal about the passphrase — it's never returned.
-`sshPublicKey` is generated once on first use and always present.
+`sshPublicKey` is generated once (via `ssh-keygen`, on the host, not in any container) on
+first use and reused forever after. If that generation ever failed (most commonly:
+`ssh-keygen`/OpenSSH's client tools aren't installed on the host), `sshPublicKey` stays
+`null` and `sshPublicKeyError` explains why — every call to this endpoint (and to `PATCH`
+below) retries generation first, so fixing the host (e.g. installing OpenSSH) resolves it
+on the next request with no restart needed.
 
 ### `PATCH /backup/config`
 

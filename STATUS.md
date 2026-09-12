@@ -59,6 +59,13 @@ custom dev/production build (not Expo Go); **never run on a real device this ses
 `docs/deployment.md#security-gaps-to-close-before-this-is-public` — CORS is no longer
 `{ origin: true }`, `server` bumped to `0.5.0` (§3/§4). No client-side changes.
 
+**Amended again (2026-09-12, later session):** added an in-app Help screen and a backup
+setup walkthrough (both clients), fixed a real bug where a failed backup SSH key
+generation got stuck showing "Generating..." forever with no error or retry, reworked the
+web client's tab switcher into a bottom icon bar mimicking the mobile app's, added a "Last
+synced" display to web Settings, and removed a stale leftover Settings message on both
+clients — `1.6.0`/`server` untouched this round (§3).
+
 ## 1. What this is
 
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
@@ -78,9 +85,11 @@ pay calculation, CSV/email export). Two clients, one API:
 npm workspaces monorepo (`shared`, `app`, `server`, `web`). **`CHANGELOG.md` started
 2026-09-11** (Keep a Changelog format) after the user asked to make version-tracking
 default practice — earlier history isn't backfilled, only `git log`/§7 cover that.
-`app/package.json`, `web/package.json`, `shared/package.json`, and `app/app.json` are at
-`1.1.0`; `server/package.json` is at `0.2.0`. Going forward, a version bump + CHANGELOG
-entry should land with each shipping commit, not after the fact.
+`app/package.json`/`app/app.json` and `web/package.json` are at `1.6.0`; `shared/package.json`
+is at `1.4.0` (last touched then); `server/package.json` is at `0.5.0`. Each package's
+version only bumps in a release that actually touches it — the numbers aren't expected to
+match across packages. Going forward, a version bump + CHANGELOG entry should land with
+each shipping commit, not after the fact.
 
 **Project policy (see `CLAUDE.md` at repo root, authoritative — not duplicated here):**
 every client must expose the same feature set; architecture can differ per platform
@@ -300,6 +309,43 @@ Verified present in the repo (code + docs, not just described in memory):
   Closes one of the two items in
   `docs/deployment.md#security-gaps-to-close-before-this-is-public`; the refresh-token
   gap remains open (see §4).
+- **In-app Help screen, both clients** (`{app,web}/src/screens/HelpScreen.tsx`) — an
+  accordion of end-user documentation (clocking in/out, jobs/rates/overtime, History,
+  Timesheets, Export, sync, backups) reachable from Settings, next to Backups. Deliberately
+  end-user-focused, not a copy of the developer docs in `docs/`.
+- **Backup SSH key generation: fixed a real "stuck forever" bug, plus an in-app setup
+  walkthrough.** `scripts/host-agent.mjs`'s `ensureBackupSshKey()` ran `ssh-keygen` via
+  `spawnSync` but never checked whether it actually succeeded — if it failed (most likely:
+  OpenSSH's client tools aren't installed on the host), nothing was ever logged and the key
+  silently stayed missing forever, so Settings → Backups showed "Generating..." with no way
+  to know why or recover short of restarting the host agent process. Fixed: the function
+  now tracks and logs the real failure reason, both `/backup/config` handlers retry
+  generation on every request (cheap — one `existsSync` check when a key already exists),
+  and the response carries a new `sshPublicKeyError` field. Both clients now show that
+  error with a Retry button instead of an endless "Generating...", with a few automatic
+  quick retries first to smooth over the normal near-instant case. **Verified for real, not
+  just by reading the code**: ran the host agent standalone with `ssh-keygen` deliberately
+  removed from `PATH`, confirmed the error surfaced correctly over HTTP and the process
+  stayed alive; then made `ssh-keygen` reachable again *without restarting the process* and
+  confirmed the very next request generated the key — proving the retry-without-restart
+  behavior, not just the initial failure. Also added a numbered "How to set this up" guide
+  at the top of Backups on both clients. Docs (`docs/api-reference.md`) updated to match.
+- **Web: bottom icon tab bar, mimicking the mobile app's** (`web/src/App.tsx`) — replaced
+  the row of plain text tab links under a static "Clocker" header with a fixed bottom bar
+  using the same Ionicons the mobile bottom tab navigator uses (via the new `react-icons`
+  dependency), icon-over-label, active tab picked out by color. The header now shows the
+  current tab's title instead of a static app name, mirroring `app/`'s per-screen
+  navigation header. Verified with a real headless-browser pass (see §4) at both a desktop
+  and a mobile viewport — including that the fixed bar's `screen` bottom padding actually
+  clears scrolled content (a `fullPage` screenshot alone made it look like it didn't;
+  scrolling to the bottom in a real viewport confirmed it does).
+- **Web: "Last synced" shown above the Refresh button in Settings** (`web/src/store.tsx`
+  gained `lastSyncedAt`, set on every successful `refresh()`) — matches what the mobile
+  app already showed above its own Sync Now button.
+- **Removed a stale leftover Settings message, both clients** — "Prompt for notes on clock
+  out has moved to a per-job setting" was never cleaned up after that setting actually
+  moved back in `1.2.0`; deleted from both `SettingsScreen.tsx` files (and the
+  now-unused RN styles that only supported it, on mobile).
 
 ## 4. Known gaps / open work
 
@@ -336,10 +382,15 @@ Verified present in the repo (code + docs, not just described in memory):
   layer, and a real crash bug caught and fixed in it). Needs `apt install borgbackup` (or
   equivalent) on the real host before Settings → Backups can do anything beyond configure
   itself. First real backup and first real restore should both be watched closely.
-- **Web client's real-browser click-through pass** — parity work was verified by
-  typecheck + production build + a scripted store-action replay against a real local
-  server, not yet by a human actually clicking through in a browser. Worth doing before
-  fully trusting it.
+- **Web client's real-browser click-through pass** — the original feature-parity work
+  (Jobs editor, Clock, History, Export, Timesheets) was verified by typecheck + production
+  build + a scripted store-action replay, not yet by a human actually clicking through.
+  The 2026-09-12 session (bottom tab bar, Help, Backups walkthrough/key-error UI) *was*
+  driven end-to-end with a real headless Chromium (Playwright, via a throwaway path-router
+  proxy standing in for Caddy) at both desktop and mobile viewports, screenshots taken at
+  every step and inspected — but that's an automated pass, not the same as an actual human
+  clicking through, and it doesn't cover the earlier-shipped screens. Worth a real
+  human pass before fully trusting either.
 - **iOS EAS builds** need a paid Apple Developer membership + `eas device:create` — not
   done; Android internal-distribution builds are the tested path.
 - **No live device/emulator screenshot verification** has been done from any Claude

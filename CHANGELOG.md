@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.6.0] - 2026-09-12
+
+### Added
+
+- An in-app Help screen (Settings → Help, both clients) covering how to use every part of
+  the app — clocking in/out, jobs/rates/overtime, History, Timesheets, Export, sync, and
+  backups — written for the person using the app, not a developer.
+- A step-by-step setup guide at the top of Settings → Backups (both clients): what to do,
+  in order, to get backups actually working.
+- Web: the tab switcher moved from a row of plain text links under the header to a fixed
+  bottom icon bar using the same icon set as the mobile app's bottom tabs (Ionicons via
+  `react-icons`), styled to mimic the native app as closely as a web page reasonably can.
+  The header now shows the current tab's title instead of a static "Clocker".
+- Web: Settings now shows a "Last synced" timestamp above the Refresh button, matching
+  what the mobile app already showed above its own Sync Now button.
+
+### Fixed
+
+- The backup destination SSH key could get permanently stuck showing "Generating..." if
+  key generation ever failed on the host (most commonly: OpenSSH's client tools aren't
+  installed) — the failure was silently swallowed with no error and no way to retry short
+  of restarting the host agent process. Settings → Backups now shows the real error and a
+  Retry button, and every fetch of the backup config retries generation server-side, so a
+  fixed host recovers on the next request with no restart needed.
+- Removed a leftover "prompt for notes on clock out has moved" message from Settings on
+  both clients — that setting has lived per-job since `1.2.0`; the message was never
+  cleaned up after the migration.
+
 ## [server 0.5.0] - 2026-09-11 (server only, no client changes)
 
 ### Security

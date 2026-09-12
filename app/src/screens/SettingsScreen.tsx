@@ -10,6 +10,7 @@ import { synchronize } from "../sync/sync";
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
+import { HelpScreen } from "./HelpScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
 
@@ -43,6 +44,7 @@ export function SettingsScreen() {
   const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
   const [showServerLog, setShowServerLog] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
@@ -190,9 +192,9 @@ export function SettingsScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.preferenceHint}>
-          "Prompt for notes when clocking out" is now a per-job setting — open a job's settings (Timesheets tab) to configure it.
-        </Text>
+        <TouchableOpacity style={styles.syncButton} onPress={() => setShowHelp(true)}>
+          <Text style={styles.syncButtonText}>Help</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
@@ -212,6 +214,7 @@ export function SettingsScreen() {
       </TouchableOpacity>
 
       {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
+      {showHelp && <HelpScreen onClose={() => setShowHelp(false)} />}
     </View>
   );
 }
@@ -223,9 +226,6 @@ const styles = StyleSheet.create({
   value: { fontSize: 16, fontWeight: "600", marginTop: 3, marginBottom: 6 },
   updateStatus: { color: "#666", marginBottom: 10, fontSize: 13 },
   error: { color: "#dc2626", marginBottom: 8, fontSize: 13 },
-  preferenceRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  preferenceLabel: { fontSize: 14, fontWeight: "600" },
-  preferenceHint: { color: "#666", fontSize: 12, marginTop: 1 },
   syncButton: { backgroundColor: "#2563eb", borderRadius: 10, padding: 11, alignItems: "center" },
   syncButtonText: { color: "#fff", fontWeight: "600", fontSize: 14 },
   updateButton: { backgroundColor: "#16a34a", borderRadius: 10, padding: 11, alignItems: "center" },

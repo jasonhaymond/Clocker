@@ -86,8 +86,20 @@ function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; on
   );
 }
 
+// The SSH key is generated once on the host (`ssh-keygen`, not in any container) and is
+// near-instant when it works — but if it fails (most commonly: OpenSSH's client tools
+// aren't installed on the host), the server has nothing to return and previously the UI
+// just showed "Generating..." forever with no error and no way to retry short of manually
+// re-opening this screen. Every GET/PATCH /backup/config now retries generation
+// server-side, so a few quick automatic re-fetches cover the normal near-instant case,
+// and a real error (surfaced via sshPublicKeyError) plus a manual Retry button covers a
+// genuinely broken host instead of spinning silently forever.
+const KEY_POLL_ATTEMPTS = 5;
+const KEY_POLL_INTERVAL_MS = 1500;
+
 export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<BackupConfig | null>(null);
+  const [keyPollAttempt, setKeyPollAttempt] = useState(0);
   const [repoUrl, setRepoUrl] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [retentionCount, setRetentionCount] = useState("");
@@ -126,6 +138,24 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
       }
     });
   }, []);
+
+  // Auto-retry a few times while the key is still missing with no reported error (the
+  // normal near-instant case caught mid-flight), then stop and let the error/manual-retry
+  // UI below take over rather than polling forever.
+  useEffect(() => {
+    if (config && !config.sshPublicKey && !config.sshPublicKeyError && keyPollAttempt < KEY_POLL_ATTEMPTS) {
+      const timer = setTimeout(() => {
+        setKeyPollAttempt((n) => n + 1);
+        loadConfig();
+      }, KEY_POLL_INTERVAL_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [config, keyPollAttempt, loadConfig]);
+
+  function retryKeyGeneration() {
+    setKeyPollAttempt(0);
+    loadConfig();
+  }
 
   const loadArchives = useCallback(() => {
     getBackupArchives()
@@ -242,9 +272,32 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.sectionLabel}>How to set this up</Text>
+        <View style={styles.setupSteps}>
+          <Text style={styles.setupStep}>
+            1. If backing up to a remote server over SSH, copy the key below into that
+            server's ~/.ssh/authorized_keys (a local folder path needs no key at all —
+            skip to step 2).
+          </Text>
+          <Text style={styles.setupStep}>2. Enter the repository location and a passphrase below, then Save Settings.</Text>
+          <Text style={styles.setupStep}>3. Set a schedule so backups happen on their own, or just use Back Up Now whenever you want one.</Text>
+          <Text style={styles.setupStep}>4. Once you have at least one archive, do a test restore below so you know it actually works before you ever need it for real.</Text>
+        </View>
+
         <Text style={styles.sectionLabel}>Backup destination (SSH)</Text>
         <Text style={styles.hint}>For a remote repository, grant this key access on the backup server — see docs/deployment.md#the-host-agent.</Text>
-        <Text style={styles.logText}>{config?.sshPublicKey ?? "Generating…"}</Text>
+        {config?.sshPublicKey ? (
+          <Text style={styles.logText}>{config.sshPublicKey}</Text>
+        ) : config?.sshPublicKeyError ? (
+          <>
+            <Text style={styles.error}>Couldn't generate a backup key: {config.sshPublicKeyError}</Text>
+            <TouchableOpacity onPress={retryKeyGeneration}>
+              <Text style={styles.link}>Retry</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <Text style={styles.logText}>Generating…</Text>
+        )}
 
         <Text style={styles.sectionLabel}>Repository</Text>
         <Text style={styles.fieldLabel}>Repo URL (local path or user@host:path)</Text>
@@ -369,6 +422,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: "700" },
   doneText: { color: "#2563eb", fontWeight: "600", fontSize: 15 },
   sectionLabel: { fontWeight: "600", color: "#444", marginTop: 16, marginBottom: 6, fontSize: 13 },
+  setupSteps: { gap: 6 },
+  setupStep: { fontSize: 13, color: "#333", lineHeight: 18 },
   fieldLabel: { color: "#666", fontSize: 12, marginTop: 8, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8, backgroundColor: "#fff" },
   row: { flexDirection: "row", gap: 8, alignItems: "center" },

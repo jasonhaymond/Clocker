@@ -88,8 +88,20 @@ function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; on
   );
 }
 
+// The SSH key is generated once on the host (`ssh-keygen`, not in any container) and is
+// near-instant when it works — but if it fails (most commonly: OpenSSH's client tools
+// aren't installed on the host), the server has nothing to return and previously the UI
+// just showed "Generating..." forever with no error and no way to retry short of manually
+// re-opening this screen. Every GET/PATCH /backup/config now retries generation
+// server-side, so a few quick automatic re-fetches cover the normal near-instant case,
+// and a real error (surfaced via sshPublicKeyError) plus a manual Retry button covers a
+// genuinely broken host instead of spinning silently forever.
+const KEY_POLL_ATTEMPTS = 5;
+const KEY_POLL_INTERVAL_MS = 1500;
+
 export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<BackupConfig | null>(null);
+  const [keyPollAttempt, setKeyPollAttempt] = useState(0);
   const [repoUrl, setRepoUrl] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [retentionCount, setRetentionCount] = useState("");
@@ -128,6 +140,24 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
       }
     });
   }, []);
+
+  // Auto-retry a few times while the key is still missing with no reported error (the
+  // normal near-instant case caught mid-flight), then stop and let the error/manual-retry
+  // UI below take over rather than polling forever.
+  useEffect(() => {
+    if (config && !config.sshPublicKey && !config.sshPublicKeyError && keyPollAttempt < KEY_POLL_ATTEMPTS) {
+      const timer = setTimeout(() => {
+        setKeyPollAttempt((n) => n + 1);
+        loadConfig();
+      }, KEY_POLL_INTERVAL_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [config, keyPollAttempt, loadConfig]);
+
+  function retryKeyGeneration() {
+    setKeyPollAttempt(0);
+    loadConfig();
+  }
 
   const loadArchives = useCallback(() => {
     getBackupArchives()
@@ -226,11 +256,36 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
       </div>
 
       <section>
+        <div className="row-title">How to set this up</div>
+        <ol className="setup-steps">
+          <li>
+            If backing up to a remote server over SSH, copy the key below into that
+            server's <code>~/.ssh/authorized_keys</code> (a local folder path needs no key
+            at all — skip to step 2).
+          </li>
+          <li>Enter the repository location and a passphrase below, then Save Settings.</li>
+          <li>Set a schedule so backups happen on their own, or just use Back Up Now whenever you want one.</li>
+          <li>Once you have at least one archive, do a test restore below so you know it actually works before you ever need it for real.</li>
+        </ol>
+      </section>
+
+      <section>
         <div className="row-title">Backup destination (SSH)</div>
         <div className="hint">
           For a remote repository, grant this key access on the backup server — see docs/deployment.md#the-host-agent.
         </div>
-        <pre className="update-log">{config?.sshPublicKey ?? "Generating…"}</pre>
+        {config?.sshPublicKey ? (
+          <pre className="update-log">{config.sshPublicKey}</pre>
+        ) : config?.sshPublicKeyError ? (
+          <>
+            <p className="error">Couldn't generate a backup key: {config.sshPublicKeyError}</p>
+            <button className="link" onClick={retryKeyGeneration}>
+              Retry
+            </button>
+          </>
+        ) : (
+          <pre className="update-log">Generating…</pre>
+        )}
       </section>
 
       <section>

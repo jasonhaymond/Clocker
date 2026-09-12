@@ -122,6 +122,7 @@ export interface BackupConfig {
   retentionCount: number | null;
   schedule: BackupSchedule | null;
   sshPublicKey: string | null;
+  sshPublicKeyError: string | null;
 }
 
 export interface BackupConfigUpdate {

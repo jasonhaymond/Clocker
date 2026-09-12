@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
 import { useStore } from "../store";
 import { BackupsScreen } from "./BackupsScreen";
+import { HelpScreen } from "./HelpScreen";
 
 export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
   const [showBackups, setShowBackups] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -61,13 +63,15 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   if (showBackups) {
     return <BackupsScreen onClose={() => setShowBackups(false)} />;
   }
+  if (showHelp) {
+    return <HelpScreen onClose={() => setShowHelp(false)} />;
+  }
 
   return (
     <div className="screen">
       <section>
-        <p className="hint">
-          "Prompt for notes on clock out" is now a per-job setting — open a job's ⚙ Settings (Timesheets tab) to configure it.
-        </p>
+        <div className="row-title">Last synced</div>
+        <div className="hint">{store.lastSyncedAt ? new Date(store.lastSyncedAt).toLocaleString() : "Never"}</div>
         <button className="secondary-button" onClick={() => store.refresh()} disabled={store.loading}>
           {store.loading ? "Refreshing…" : "Refresh"}
         </button>
@@ -96,6 +100,12 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
             {showLog && <pre className="update-log">{serverUpdate.log}</pre>}
           </>
         )}
+      </section>
+
+      <section>
+        <button className="secondary-button" onClick={() => setShowHelp(true)}>
+          Help
+        </button>
       </section>
 
       <section>

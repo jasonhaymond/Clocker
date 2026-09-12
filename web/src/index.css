@@ -78,6 +78,60 @@ hr {
   color: #888;
   font-size: 12px;
 }
+.setup-steps {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #333;
+}
+.setup-steps li {
+  margin-bottom: 6px;
+}
+.setup-steps li:last-child {
+  margin-bottom: 0;
+}
+.setup-steps code {
+  background: #eef0f3;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+.help-section {
+  padding: 4px 6px;
+}
+.help-topic {
+  border-bottom: 1px solid #eee;
+}
+.help-topic:last-child {
+  border-bottom: none;
+}
+.help-topic-header {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 12px 4px;
+  text-align: left;
+  cursor: pointer;
+}
+.help-chevron {
+  color: #888;
+  font-size: 12px;
+}
+.help-topic-body {
+  padding: 0 4px 12px;
+}
+.help-topic-body p {
+  font-size: 13px;
+  color: #444;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+.help-topic-body p:last-child {
+  margin-bottom: 0;
+}
 .link {
   border: none;
   background: none;
@@ -207,36 +261,56 @@ hr {
 }
 .app-header {
   padding: 14px 16px 6px;
-}
-.tab-bar {
-  display: flex;
-  overflow-x: auto;
   border-bottom: 1px solid #eee;
-  padding: 0 8px;
+}
+.app-header h1 {
+  font-size: 17px;
+}
+/* A fixed bottom icon bar, styled to mimic app/'s bottom tab navigator (see
+   app/src/navigation/RootNavigator.tsx) as closely as a web page reasonably can: same
+   icon set, icon-over-label per tab, active tab picked out by color. Fixed (not just
+   sticky) so it stays put the same way a native tab bar does regardless of scroll
+   position within a screen. */
+.tab-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  background: #fff;
+  border-top: 1px solid #eee;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   border: none;
-  border-radius: 0;
   background: none;
-  padding: 10px 12px;
+  padding: 6px 4px 8px;
+  font-size: 10px;
   font-weight: 600;
   color: #888;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
+}
+.tab svg {
+  font-size: 22px;
 }
 .tab:hover {
   background: #f7f8fa;
 }
 .tab.active {
   color: #2563eb;
-  border-bottom-color: #2563eb;
 }
 .app-main {
   flex: 1;
 }
 
 .screen {
-  padding: 14px 16px 60px;
+  padding: 14px 16px calc(76px + env(safe-area-inset-bottom, 0px));
 }
 .screen section {
   background: #f7f8fa;
