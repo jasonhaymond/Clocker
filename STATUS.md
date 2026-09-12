@@ -126,6 +126,15 @@ permission doesn't carry over between sessions (see `~/.claude` memory
 a remote Borg server, softened the brand blue/red slightly, and fixed web's reload-resets-
 tab bug — `1.10.0` (§3).
 
+**Amended again (2026-09-12, same day, later session):** fixed the "Update Server"
+button/`npm run update` refusing to run over a solely-`package-lock.json`-dirty tree (§3)
+— shipped this initially with no version bump at all since it only touched `scripts/`
+and docs, corrected once to bump `server` alone on its then-independent `0.x` track, then
+corrected again per explicit instruction that backend and client-facing versions must
+always be the same: `server`'s independent track is now abolished entirely and it's
+unified into the same version as `app`/`web`/`shared` — `1.11.0` (§1 now says so
+explicitly, to not repeat either mistake).
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -144,18 +153,25 @@ npm workspaces monorepo (`shared`, `app`, `server`, `web`). **`CHANGELOG.md` sta
 2026-09-11** (Keep a Changelog format) after the user asked to make version-tracking
 default practice — earlier history isn't backfilled, only `git log`/§7 cover that.
 
-**Versioning policy, revised 2026-09-12** (per explicit request — previously each package
-bumped independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/
-shared at `1.4.0`): `app/package.json`, `app/app.json`, `web/package.json`, and
-`shared/package.json` are now kept in lockstep as one "project version" — every one of
-them bumps together on every release, whether or not that release actually touched all
-three, and the number is shown in Settings on both clients (mobile: `Application.
-nativeApplicationVersion`/`app.json`, already existed; web: `__APP_VERSION__`, baked in
-from `web/package.json` via a `define` in `vite.config.ts` — new). All four are at
-`1.10.0` as of this session. `server/package.json` stays on its own independent `0.x`
-track (currently `0.5.0`) — deliberately NOT unified with the client version, since it's
-a backend service versioned separately, not something "clients" (the user's own word)
-covers. A version bump + CHANGELOG entry should land with each shipping commit.
+**Versioning policy, revised 2026-09-12, then revised again same day**: originally
+unified only `app/package.json`, `app/app.json`, `web/package.json`, and
+`shared/package.json` into one "project version" (previously each package bumped
+independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/shared at
+`1.4.0`), while `server/package.json` stayed on its own independent `0.x` track as a
+"backend service versioned separately." **Per explicit instruction later the same day,
+that split is gone**: `server/package.json` is now unified into the exact same "project
+version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
+full stop. All five (four packages, one version) are at `1.11.0` as of this session; the
+number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+`app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
+a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every
+shipping commit, and **this applies to `scripts/`/deploy-tooling/docs-only changes too,
+not just source changes in one of the four packages** — there's no separate "scripts"
+version, so a repo-wide change that isn't client-facing still bumps all four
+`package.json`s together and gets its own changelog entry (e.g. the `1.11.0` "Update
+Server" lockfile-handling fix below, which only touched `scripts/` and docs) —
+corrected twice in a row: first shipped with no version bump at all, then re-shipped with
+only `server` bumped on its own separate track before that track was abolished entirely.
 
 **Project policy (see `CLAUDE.md` at repo root, authoritative — not duplicated here):**
 every client must expose the same feature set; architecture can differ per platform
@@ -583,7 +599,9 @@ Verified present in the repo (code + docs, not just described in memory):
   correctly re-derives the host/path shown in the script.
 
 - **"Update Server" (and `npm run update`) now tolerate a locally modified
-  `package-lock.json` on their own, not just when it's the *only* dirty file.** Previously
+  `package-lock.json` on their own, not just when it's the *only* dirty file** —
+  `1.11.0` (this is `scripts/`/deploy-tooling, not client code, but per §1's revised
+  versioning policy every repo change still bumps the one unified version). Previously
   a real `npm install` run directly on the host (as happened during this session's live
   incident, see §4) could leave `package-lock.json` git-dirty in a way that would have
   permanently 409'd the "Update Server" button (it required a fully clean tree) even
@@ -784,10 +802,9 @@ and "security gaps" sections — read it before touching production).
 **`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
 `1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
 here.** Everything before that, plus full commit-level detail for anything after, is
-`git log` (`0fa2363` most recent — a scripts/docs-only follow-up after the `1.10.0`
-commit, `cd2c8d9`; no client version bump since neither `app`/`web`/`shared` changed). A
-few highlights
-predating the changelog, newest-first, kept for orientation rather than completeness:
+`git log` (`PENDING` most recent — the `1.11.0` commit, the first under the newly-unified
+backend+client versioning policy described in §1). A few highlights predating the
+changelog, newest-first, kept for orientation rather than completeness:
 
 - `f157682` Add full shift editing (times, breaks, notes) on both clients
 - `ab55f88`/`fbc3d9f` Added STATUS.md, then had to recover it after overwriting it without
@@ -800,7 +817,7 @@ predating the changelog, newest-first, kept for orientation rather than complete
 - Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
   export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
-**Working tree**: clean as of `0fa2363` above (`git status` — nothing staged or
+**Working tree**: clean as of `PENDING` above (`git status` — nothing staged or
 modified), pushed to `origin/master` this session. One stray untracked file still exists
 (present since at least the last audit, deliberately left alone again):
 `app/assets/2A87F0F4-4604-43E5-88A9-353575B87AD4-05daea287739b47c27cea4102e72ecd9.lrprev`
