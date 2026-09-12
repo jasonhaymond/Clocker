@@ -766,7 +766,7 @@ and "security gaps" sections — read it before touching production).
 **`CHANGELOG.md` (started 2026-09-11) is now the authoritative "what shipped" record for
 `1.1.0` onward — read it instead of trying to keep an exhaustive commit list current
 here.** Everything before that, plus full commit-level detail for anything after, is
-`git log` (`79af696` most recent — the `1.9.0` commit described above). A few highlights
+`git log` (`cd2c8d9` most recent — the `1.10.0` commit described above). A few highlights
 predating the changelog, newest-first, kept for orientation rather than completeness:
 
 - `f157682` Add full shift editing (times, breaks, notes) on both clients
@@ -780,7 +780,7 @@ predating the changelog, newest-first, kept for orientation rather than complete
 - Earlier: initial scaffold, docs, dev-port auto-selection, rate tiers/overtime/CSV/email
   export, Caddy deployment, Manager/Timesheets/rounding features — see full `git log`.
 
-**Working tree**: clean as of the `1.9.0` commit (`79af696`) above (`git status` —
+**Working tree**: clean as of the `1.10.0` commit (`cd2c8d9`) above (`git status` —
 nothing staged or modified), pushed to `origin/master` this session. One stray untracked
 file still exists
 (present since at least the last audit, deliberately left alone again):
