@@ -230,6 +230,65 @@ correctly discarded, landing cleanly on `origin`'s latest commit) — the full c
 `npm install`/`npm run deploy` tail was not exercised against the real production host (no
 SSH access this session).
 
+**Amended again (2026-09-12, same day, later session):** the user reported (with a
+screenshot) that the Backups screen on Android rendered under the status bar/notification
+area, hiding its "Done" button entirely. Turned out to be a bug shared by every full-screen
+mobile modal, not just Backups — `BackupsScreen`, `SettingsScreen`, `HelpScreen`,
+`ImportScreen`, `JobDetailModal`, and `ShiftEditor` all render a plain `<Modal>` with no
+safe-area handling, so each one's header (title + Done/close button, always the first
+thing inside the scroll content) sat under the status bar identically. Fixed all six
+consistently: each now calls `useSafeAreaInsets()` and adds `insets.top` to its scroll
+content's top padding, rather than only patching the one screen that happened to get
+screenshotted. Mobile-only, `web` untouched (no OS status bar to overlap) — `1.17.3` (§3).
+Verified with `tsc --noEmit` (clean) and `expo export --platform android` (bundles
+successfully); not exercised on a real device/emulator (none available this session).
+
+**Amended again (2026-09-12, same day, later session):** the user asked for restore to
+offer "data only" and "full app restore" as distinct named options, plus asked whether a
+third "app only, no data" restore was even plausible. It already was, structurally — the
+restore handler (`scripts/host-agent.mjs`) has always restored the database and
+`.env.prod` (JWT secret, DB credentials, proxy/backup settings) via two fully independent
+flags; the UI just exposed them as two raw checkboxes instead of naming the three
+meaningful combinations. Replaced the checkboxes with three named, mutually-exclusive
+options — "Data only", "App config only", "Full (data + app config)" — on both clients'
+Archives and Disaster Recovery restore panels, computing the same two flags underneath;
+the previously-reachable-but-meaningless "neither checked" state is now structurally
+impossible. Confirmed there's no plausible fourth "app code" option: the app's source is
+git-managed and was never part of a backup archive at all (only `pg_dump` + `.env.prod`
+are). `1.17.4` (§3). Verified with clean `tsc --noEmit` on both clients, `expo export
+--platform android`, and a live Playwright load of the web Backups screen (no React/JS
+errors — only pre-existing local CORS noise from host-agent's dev-port mismatch, unrelated
+to this change and already a known limitation); the actual restore call wasn't exercised
+end-to-end since this dev environment has no `borg` install and no existing archives,
+consistent with this feature's previously-documented testing gap.
+
+**Amended again (2026-09-12, same day, later session):** the user followed up asking
+whether a full app-code (not just config) restore was even plausible, whether backups were
+already snapshot-based, and asked for a genuine third independently-restorable component
+("app environment"/version) alongside data and config. Answered: yes, already
+snapshot-based — every Borg archive is an atomic, immutable, point-in-time capture, and
+picking an archive already means picking a moment in time; but no, there was no way to
+restore the app's actual *code* at all before this — "App config only" only ever meant
+`.env.prod`. Added it for real: `runBackupNow` now also stages `app-version.json`
+(`git rev-parse HEAD`/`--abbrev-ref HEAD` — just the ref, git is already the durable store
+for source, no need to duplicate the tree into Borg) into every new archive; `restoreBackup`
+gained a `restoreVersion` flag that does `git fetch && git checkout <branch> && git reset
+--hard <commit>` (moving the branch backward locally — deliberately not a detached
+checkout, verified for real against an isolated scratch clone: rolling back then re-running
+the "Update Server" hard-reset command correctly re-advanced to origin's latest, undoing
+the rollback with no special-casing needed anywhere) followed by `npm install && npm run
+deploy -- --skip-app`. Both clients' restore UI now offers four named modes: Data only, App
+config only, App version only, and Full (all three, the only combination guaranteed
+internally consistent, since Prisma migrations are forward-only and there's no way to
+downgrade a schema to match an older app version or config restored alone) — `1.18.0`
+(minor bump, this is a real new capability, not a fix) (§3). `docs/deployment.md` and
+`docs/api-reference.md` updated to match. Verified: the git-rollback sequence for real
+against an isolated scratch clone (confirmed above); clean `tsc --noEmit` on both clients;
+`expo export --platform android`. The actual `runBackupNow`/`restoreBackup` host-agent
+code paths (staging `app-version.json`, the live `git`/`npm`/`docker compose` sequence)
+were not exercised end-to-end — no `borg` install, no host-agent reachable from this dev
+environment's browser (CORS), consistent with this feature's standing testing gap.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -256,7 +315,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.17.2` as of this session; the
+full stop. All five (four packages, one version) are at `1.18.0` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every

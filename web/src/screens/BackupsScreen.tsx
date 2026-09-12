@@ -24,6 +24,37 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+// The three things a backup archive can contain — the database, .env.prod (JWT secret, DB
+// credentials, proxy/backup settings), and the exact git commit that was deployed when the
+// archive was taken — restore independently server-side (see restoreBackup in
+// scripts/host-agent.mjs), so each combination here is genuinely meaningful, not just UI:
+// data-only leaves a botched local .env.prod edit or a bad deploy alone; app-config-only
+// rolls back config/secrets without touching the database; app-version-only rolls the
+// running code back (redeploying) without touching data or secrets. "Full" restores all
+// three together from the same archive — the only combination guaranteed internally
+// consistent, since app-version-only or app-config-only against today's database can mean
+// running that code/config against a schema newer than what it was ever tested against
+// (Prisma migrations are forward-only — there's no way to downgrade a schema to match).
+const RESTORE_MODES = [
+  { key: "data", label: "Data only", hint: "Restores the database. Doesn't touch app secrets/config or the app's code." },
+  {
+    key: "config",
+    label: "App config only",
+    hint: "Restores .env.prod (JWT secret, DB credentials, proxy/backup settings). Doesn't touch the database or the app's code. Every signed-in device will need to sign in again if this changes JWT_SECRET, and you'll need to redeploy (Update Server) for it to take effect.",
+  },
+  {
+    key: "version",
+    label: "App version only",
+    hint: "Rolls the app's code back to exactly what was deployed when this archive was taken, and redeploys (restarts the server). Doesn't touch the database or secrets — if the database schema has changed since, the rolled-back code may not work correctly against it. Only available for archives taken after this feature shipped.",
+  },
+  {
+    key: "full",
+    label: "Full (data + app config + app version)",
+    hint: "Restores the database, .env.prod, and the app's code together from this one archive — the only option guaranteed consistent, since all three were captured at the same moment. Every signed-in device will need to sign in again if this changes JWT_SECRET, and this restarts the server while redeploying.",
+  },
+] as const;
+type RestoreMode = (typeof RESTORE_MODES)[number]["key"];
+
 // `repo`, when given, restores from that ad-hoc repo/passphrase instead of the saved
 // backup config — used by the disaster-recovery section below, which lists/restores
 // archives from any repository typed in on the spot. Omitted for the normal Archives
@@ -38,8 +69,7 @@ function ArchiveRestoreRow({
   onRestored: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [restoreDb, setRestoreDb] = useState(true);
-  const [restoreEnv, setRestoreEnv] = useState(false);
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>("data");
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,11 +77,14 @@ function ArchiveRestoreRow({
   async function doRestore() {
     setBusy(true);
     setError(null);
+    const restoreDb = restoreMode === "data" || restoreMode === "full";
+    const restoreEnv = restoreMode === "config" || restoreMode === "full";
+    const restoreVersion = restoreMode === "version" || restoreMode === "full";
     try {
       if (repo) {
-        await restoreFromDisasterRecovery(repo.repoUrl, repo.passphrase, archive.name, restoreDb, restoreEnv);
+        await restoreFromDisasterRecovery(repo.repoUrl, repo.passphrase, archive.name, restoreDb, restoreEnv, restoreVersion);
       } else {
-        await restoreBackup(archive.name, restoreDb, restoreEnv);
+        await restoreBackup(archive.name, restoreDb, restoreEnv, restoreVersion);
       }
       setExpanded(false);
       setConfirmText("");
@@ -76,14 +109,19 @@ function ArchiveRestoreRow({
       </div>
       {expanded && (
         <div className="restore-panel">
-          <label className="checkbox-row">
-            <input type="checkbox" checked={restoreDb} onChange={(e) => setRestoreDb(e.target.checked)} />
-            Restore database
-          </label>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={restoreEnv} onChange={(e) => setRestoreEnv(e.target.checked)} />
-            Restore secrets (.env.prod) — every signed-in device will need to sign in again if this changes JWT_SECRET
-          </label>
+          <div className="chip-row">
+            {RESTORE_MODES.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={`chip${restoreMode === m.key ? " selected" : ""}`}
+                onClick={() => setRestoreMode(m.key)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{RESTORE_MODES.find((m) => m.key === restoreMode)!.hint}</p>
           <p className="hint">
             This overwrites live data. Type the archive name (<code>{archive.name}</code>) to confirm.
           </p>
@@ -94,11 +132,7 @@ function ArchiveRestoreRow({
             placeholder="Type the archive name"
           />
           {error && <p className="error">{error}</p>}
-          <button
-            className="secondary-button danger-button"
-            onClick={doRestore}
-            disabled={busy || confirmText !== archive.name || (!restoreDb && !restoreEnv)}
-          >
+          <button className="secondary-button danger-button" onClick={doRestore} disabled={busy || confirmText !== archive.name}>
             {busy ? "Starting…" : "Restore"}
           </button>
         </div>

@@ -2,6 +2,7 @@ import { buildImportPreview, HOURS_TRACKER_CSV_HEADER, parseHoursTrackerCsv, typ
 import { File } from "expo-file-system";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listJobs } from "../db/database";
 import { runImport, type ImportSummary } from "../lib/importHoursTracker";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
@@ -9,6 +10,7 @@ import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 export function ImportScreen({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<ParsedImportRow[]>([]);
@@ -66,7 +68,7 @@ export function ImportScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14, paddingTop: insets.top + 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Import Data</Text>
           <TouchableOpacity onPress={onClose}>

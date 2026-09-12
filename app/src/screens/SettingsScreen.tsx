@@ -2,6 +2,7 @@ import * as Application from "expo-application";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
@@ -44,6 +45,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const { signOut } = useAuth();
   const { mode, setMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 14 }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Settings</Text>
           <TouchableOpacity onPress={onClose}>

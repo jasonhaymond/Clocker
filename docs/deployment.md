@@ -435,11 +435,19 @@ stays — it's a quick pre-deploy rollback point, not a retained backup history)
 logs a warning at startup if it's missing).
 
 **What's backed up, and how**: each run stages a `pg_dump -Fc` (custom format) of the
-database plus a copy of `.env.prod` (the secrets a database-only backup can't recover —
-per the global backup standard, a restore that only brings back the database still leaves
-the app unable to start) into a temp directory, then `borg create --compression zstd
-<repo>::clocker-<timestamp> .`. If a retention count is set, `borg prune --keep-last N`
-runs afterward — a single most-recent-N count, not tiered daily/weekly/monthly retention.
+database, a copy of `.env.prod` (the secrets a database-only backup can't recover — per
+the global backup standard, a restore that only brings back the database still leaves the
+app unable to start), and an `app-version.json` recording the exact git branch+commit
+currently checked out on the host (`git rev-parse HEAD`/`--abbrev-ref HEAD` — just the
+ref, not the tree, since git itself is already the durable store for the app's source) —
+all into a temp directory, then `borg create --compression zstd <repo>::clocker-<timestamp>
+.`. If a retention count is set, `borg prune --keep-last N` runs afterward — a single
+most-recent-N count, not tiered daily/weekly/monthly retention. Each archive is therefore
+one atomic, immutable, point-in-time snapshot of all three — restoring all three together
+from the same archive is the only combination guaranteed internally consistent (see
+Restoring below); a host that somehow isn't a git checkout still gets a DB+secrets backup,
+just without an app-version component in that archive, and archives taken before this
+field existed can't offer an app-version restore either.
 
 **Where it's configured**: unlike everything else in `.env.prod`, backup settings
 (repo URL, passphrase, retention, schedule) live in their own file on the host,
@@ -477,13 +485,25 @@ the key from it, and it's stored write-only (Settings never redisplays it, only 
 one is set). Save it somewhere real (a password manager) the moment you set it; there's no
 recovery path in this app if it's lost, only for-the-future rotation.
 
-**Restoring**: pick an archive in Settings → Backups, choose database and/or secrets, type
-the archive's name to confirm (matches Haydrop's own restore-confirmation pattern), and
-restore. Before touching anything, the host agent takes its own quick pre-restore
-`pg_dump --clean --if-exists` safety snapshot to `backups/` — independent of Borg
-entirely — so a bad restore is itself recoverable. Restoring secrets that changed
-`JWT_SECRET` signs every device out; restoring the database always runs `pg_restore
---clean --if-exists`, which drops and recreates existing objects rather than merging.
+**Restoring**: pick an archive in Settings → Backups, choose one of four named modes —
+**Data only** (database), **App config only** (`.env.prod`), **App version only** (the
+app's code, via git), or **Full** (all three together, the only mode guaranteed
+internally consistent since all three came from the same archive) — type the archive's
+name to confirm (matches Haydrop's own restore-confirmation pattern), and restore. Before
+touching anything, the host agent takes its own quick pre-restore `pg_dump --clean
+--if-exists` safety snapshot to `backups/` — independent of Borg entirely — so a bad
+restore is itself recoverable. Restoring secrets that changed `JWT_SECRET` signs every
+device out; restoring the database always runs `pg_restore --clean --if-exists`, which
+drops and recreates existing objects rather than merging; restoring the app version runs
+`git fetch && git checkout <branch> && git reset --hard <commit>` (moving the local
+branch backward, not a detached checkout — a later "Update Server" tap naturally moves it
+forward to origin's latest again, undoing the rollback, with no special-casing needed)
+followed by `npm install && npm run deploy -- --skip-app`, restarting the server. Choosing
+app-version-only or app-config-only without also restoring the database means the
+rolled-back code/config runs against whatever the database currently is, which may not
+match — Prisma migrations are forward-only (see the global standard), so there's no way to
+downgrade a schema to match older code; the UI warns about this per mode, but it's a real
+constraint, not something the restore flow can paper over.
 
 **Disaster recovery**: Settings → Backups has a collapsed-by-default "Disaster recovery:
 restore from another location" section — lists and restores from *any* repository URL and

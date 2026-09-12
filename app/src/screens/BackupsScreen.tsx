@@ -1,6 +1,7 @@
 import { buildBackupRemoteUserScript } from "@clocker/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   getBackupArchives,
@@ -26,6 +27,37 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+// The three things a backup archive can contain — the database, .env.prod (JWT secret, DB
+// credentials, proxy/backup settings), and the exact git commit that was deployed when the
+// archive was taken — restore independently server-side (see restoreBackup in
+// scripts/host-agent.mjs), so each combination here is genuinely meaningful, not just UI:
+// data-only leaves a botched local .env.prod edit or a bad deploy alone; app-config-only
+// rolls back config/secrets without touching the database; app-version-only rolls the
+// running code back (redeploying) without touching data or secrets. "Full" restores all
+// three together from the same archive — the only combination guaranteed internally
+// consistent, since app-version-only or app-config-only against today's database can mean
+// running that code/config against a schema newer than what it was ever tested against
+// (Prisma migrations are forward-only — there's no way to downgrade a schema to match).
+const RESTORE_MODES = [
+  { key: "data", label: "Data only", hint: "Restores the database. Doesn't touch app secrets/config or the app's code." },
+  {
+    key: "config",
+    label: "App config only",
+    hint: "Restores .env.prod (JWT secret, DB credentials, proxy/backup settings). Doesn't touch the database or the app's code. Every signed-in device will need to sign in again if this changes JWT_SECRET, and you'll need to redeploy (Update Server) for it to take effect.",
+  },
+  {
+    key: "version",
+    label: "App version only",
+    hint: "Rolls the app's code back to exactly what was deployed when this archive was taken, and redeploys (restarts the server). Doesn't touch the database or secrets — if the database schema has changed since, the rolled-back code may not work correctly against it. Only available for archives taken after this feature shipped.",
+  },
+  {
+    key: "full",
+    label: "Full (data + app config + app version)",
+    hint: "Restores the database, .env.prod, and the app's code together from this one archive — the only option guaranteed consistent, since all three were captured at the same moment. Every signed-in device will need to sign in again if this changes JWT_SECRET, and this restarts the server while redeploying.",
+  },
+] as const;
+type RestoreMode = (typeof RESTORE_MODES)[number]["key"];
+
 // `repo`, when given, restores from that ad-hoc repo/passphrase instead of the saved
 // backup config — used by the disaster-recovery section below, which lists/restores
 // archives from any repository typed in on the spot. Omitted for the normal Archives
@@ -42,8 +74,7 @@ function ArchiveRestoreRow({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState(false);
-  const [restoreDb, setRestoreDb] = useState(true);
-  const [restoreEnv, setRestoreEnv] = useState(false);
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>("data");
   const [confirmText, setConfirmText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,11 +82,14 @@ function ArchiveRestoreRow({
   async function doRestore() {
     setBusy(true);
     setError(null);
+    const restoreDb = restoreMode === "data" || restoreMode === "full";
+    const restoreEnv = restoreMode === "config" || restoreMode === "full";
+    const restoreVersion = restoreMode === "version" || restoreMode === "full";
     try {
       if (repo) {
-        await restoreFromDisasterRecovery(repo.repoUrl, repo.passphrase, archive.name, restoreDb, restoreEnv);
+        await restoreFromDisasterRecovery(repo.repoUrl, repo.passphrase, archive.name, restoreDb, restoreEnv, restoreVersion);
       } else {
-        await restoreBackup(archive.name, restoreDb, restoreEnv);
+        await restoreBackup(archive.name, restoreDb, restoreEnv, restoreVersion);
       }
       setExpanded(false);
       setConfirmText("");
@@ -80,26 +114,22 @@ function ArchiveRestoreRow({
       </View>
       {expanded && (
         <View style={styles.restorePanel}>
-          <TouchableOpacity style={styles.checkboxRow} onPress={() => setRestoreDb(!restoreDb)}>
-            <View style={[styles.checkboxBox, restoreDb && styles.checkboxBoxChecked]}>
-              {restoreDb && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkboxLabel}>Restore database</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.checkboxRow} onPress={() => setRestoreEnv(!restoreEnv)}>
-            <View style={[styles.checkboxBox, restoreEnv && styles.checkboxBoxChecked]}>
-              {restoreEnv && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={styles.checkboxLabel}>Restore secrets (.env.prod) — every device will need to sign in again if this changes JWT_SECRET</Text>
-          </TouchableOpacity>
+          <View style={styles.chipRow}>
+            {RESTORE_MODES.map((m) => (
+              <TouchableOpacity
+                key={m.key}
+                style={[styles.chip, restoreMode === m.key && styles.chipSelected]}
+                onPress={() => setRestoreMode(m.key)}
+              >
+                <Text style={[styles.chipText, restoreMode === m.key && styles.chipTextSelected]}>{m.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.hint}>{RESTORE_MODES.find((m) => m.key === restoreMode)!.hint}</Text>
           <Text style={styles.hint}>This overwrites live data. Type the archive name to confirm.</Text>
           <TextInput style={styles.input} value={confirmText} onChangeText={setConfirmText} placeholder={archive.name} autoCapitalize="none" />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <TouchableOpacity
-            style={[styles.button, styles.dangerButton]}
-            onPress={doRestore}
-            disabled={busy || confirmText !== archive.name || (!restoreDb && !restoreEnv)}
-          >
+          <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={doRestore} disabled={busy || confirmText !== archive.name}>
             {busy ? <ActivityIndicator color={colors.danger} /> : <Text style={styles.dangerButtonText}>Restore</Text>}
           </TouchableOpacity>
         </View>
@@ -122,6 +152,7 @@ const KEY_POLL_INTERVAL_MS = 1500;
 export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [config, setConfig] = useState<BackupConfig | null>(null);
   const [keyPollAttempt, setKeyPollAttempt] = useState(0);
   const [repoUrl, setRepoUrl] = useState("");
@@ -328,7 +359,7 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14, paddingTop: insets.top + 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Backups</Text>
           <TouchableOpacity onPress={onClose}>
@@ -590,11 +621,6 @@ function createStyles(colors: ThemeColors) {
     archiveRow: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 8 },
     archiveRowHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
     restorePanel: { marginTop: 10, padding: 10, backgroundColor: colors.dangerBg, borderRadius: 8, borderWidth: 1, borderColor: colors.dangerBorder },
-    checkboxRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
-    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
-    checkboxLabel: { flex: 1, fontSize: 12, color: colors.textSecondary },
     runRow: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 6, gap: 2 },
     runStatus: { fontWeight: "700", fontSize: 10, textTransform: "uppercase", alignSelf: "flex-start", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     runStatusSuccess: { backgroundColor: colors.successBg, color: colors.successText },

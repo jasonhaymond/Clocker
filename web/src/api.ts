@@ -240,8 +240,12 @@ export function getBackupArchives() {
   return request<{ archives: BackupArchive[] }>("/backup/archives", { auth: true });
 }
 
-export function restoreBackup(archiveName: string, restoreDb: boolean, restoreEnv: boolean) {
-  return request<{ started: true }>("/backup/restore", { method: "POST", body: { archiveName, restoreDb, restoreEnv }, auth: true });
+export function restoreBackup(archiveName: string, restoreDb: boolean, restoreEnv: boolean, restoreVersion: boolean) {
+  return request<{ started: true }>("/backup/restore", {
+    method: "POST",
+    body: { archiveName, restoreDb, restoreEnv, restoreVersion },
+    auth: true,
+  });
 }
 
 // Disaster recovery: lists/restores against any repo+passphrase typed in on the spot,
@@ -261,10 +265,11 @@ export function restoreFromDisasterRecovery(
   archiveName: string,
   restoreDb: boolean,
   restoreEnv: boolean,
+  restoreVersion: boolean,
 ) {
   return request<{ started: true }>("/backup/disaster-recovery/restore", {
     method: "POST",
-    body: { repoUrl, passphrase, archiveName, restoreDb, restoreEnv },
+    body: { repoUrl, passphrase, archiveName, restoreDb, restoreEnv, restoreVersion },
     auth: true,
   });
 }

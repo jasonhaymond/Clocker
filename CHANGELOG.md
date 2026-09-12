@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.18.0] - 2026-09-12
+
+### Added
+
+- **Backup restore now offers a fourth "App version only" option**, alongside "Data only",
+  "App config only", and "Full" (now data + app config + app version together) — the app's
+  running code can be rolled back to exactly what was deployed when a given archive was
+  taken, on both clients' Archives and Disaster Recovery restore panels. Every backup run
+  now also records the exact git branch+commit checked out on the host into the archive
+  (`app-version.json` — just the ref, not the tree, since git is already the durable store
+  for the app's source); restoring it runs `git fetch && git checkout <branch> && git
+  reset --hard <commit>` (moving the branch backward locally, never a detached checkout —
+  a later "Update Server" tap naturally re-advances to origin's latest, undoing the
+  rollback, with no special-casing needed) followed by `npm install && npm run deploy --
+  --skip-app`, restarting the server. Archives taken before this shipped have no
+  `app-version.json` and fail this option with a clear error. Restoring the app version or
+  config alone, without also restoring the database, means the rolled-back code/config
+  runs against whatever the database currently is — Prisma migrations are forward-only, so
+  there's no way to downgrade a schema to match; the UI warns about this per mode, since
+  "Full" (all three from the same archive) is the only combination guaranteed consistent.
+
+## [1.17.4] - 2026-09-12
+
+### Changed
+
+- **Backup restore: the two independent "Restore database"/"Restore secrets" checkboxes
+  are now three named, mutually-exclusive options** — "Data only", "App config only", and
+  "Full (data + app config)" — on both clients' Archives and Disaster Recovery restore
+  panels. Same two flags under the hood (`restoreDb`/`restoreEnv`, independently supported
+  server-side in `scripts/host-agent.mjs`'s restore handler already), just presented as
+  named presets instead of raw checkboxes, and the previously-possible-but-meaningless
+  "neither checked" state is no longer reachable. "App config only" restores `.env.prod`
+  (JWT secret, DB credentials, proxy/backup settings) without touching the database — there
+  is no separate "app code" restore, since the app's source is git-managed and was never
+  part of a backup archive to begin with.
+
+## [1.17.3] - 2026-09-12
+
+### Fixed
+
+- **Mobile: every full-screen modal (Backups, Settings, Help, Import Data, Job Detail, the
+  shift editor) rendered its header underneath the Android status bar/notification area**,
+  hiding the "Done"/close button entirely — reported by the user via a Backups screenshot.
+  None of these plain `<Modal>` screens accounted for the safe-area top inset; each now
+  pads its scrollable content by `useSafeAreaInsets().top`, so the header always renders
+  below the status bar. Mobile-only — web has no equivalent OS chrome to overlap.
+
 ## [1.17.2] - 2026-09-12
 
 ### Changed

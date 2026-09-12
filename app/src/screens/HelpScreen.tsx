@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useMemo, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
 interface HelpTopic {
@@ -102,11 +103,12 @@ function TopicRow({ topic, expanded, onToggle }: { topic: HelpTopic; expanded: b
 export function HelpScreen({ onClose }: { onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState<string | null>(TOPICS[0].title);
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14, paddingTop: insets.top + 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Help</Text>
           <TouchableOpacity onPress={onClose}>

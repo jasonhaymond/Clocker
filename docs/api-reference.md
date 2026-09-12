@@ -333,16 +333,22 @@ what's restorable.
 ### `POST /backup/restore`
 
 ```json
-{ "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false }
+{ "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false, "restoreVersion": false }
 ```
 
-At least one of `restoreDb`/`restoreEnv` is required. Takes its own pre-restore safety
-snapshot before touching anything — see the deployment doc.
+At least one of `restoreDb`/`restoreEnv`/`restoreVersion` is required. Takes its own
+pre-restore safety snapshot before touching anything — see the deployment doc.
+`restoreVersion` rolls the host's own git checkout back to the exact branch+commit that
+was deployed when the archive was taken (`git fetch && git checkout <branch> && git reset
+--hard <commit>`), then reinstalls dependencies and redeploys (`npm install && npm run
+deploy -- --skip-app`) — this restarts the server. Only archives taken after this field
+existed have an `app-version.json` to restore from; older archives fail this option with a
+clear error rather than silently no-opping.
 
 ```json
 → 202 { "started": true }
 → 400 { "error": "archiveName is required" }
-→ 400 { "error": "Choose at least one of restoreDb/restoreEnv" }
+→ 400 { "error": "Choose at least one of restoreDb/restoreEnv/restoreVersion" }
 → 409 { "error": "Another operation is already running" }
 ```
 
@@ -368,14 +374,14 @@ Same as `POST /backup/restore`, but restores from an ad-hoc repo/passphrase give
 body instead of the saved config.
 
 ```json
-{ "repoUrl": "...", "passphrase": "...", "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false }
+{ "repoUrl": "...", "passphrase": "...", "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false, "restoreVersion": false }
 ```
 
 ```json
 → 202 { "started": true }
 → 400 { "error": "repoUrl and passphrase are required" }
 → 400 { "error": "archiveName is required" }
-→ 400 { "error": "Choose at least one of restoreDb/restoreEnv" }
+→ 400 { "error": "Choose at least one of restoreDb/restoreEnv/restoreVersion" }
 → 409 { "error": "Another operation is already running" }
 ```
 

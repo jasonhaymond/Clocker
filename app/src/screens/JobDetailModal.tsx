@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
   addJobManager,
@@ -215,6 +216,7 @@ function ManagerAssignment({ jobId }: { jobId: string }) {
 export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState(job.name);
   const [color, setColor] = useState(job.colorHex);
   const [tiers, setTiers] = useState<RateTier[]>([]);
@@ -320,7 +322,7 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14, paddingTop: insets.top + 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Edit Job</Text>
           <TouchableOpacity onPress={onClose}>

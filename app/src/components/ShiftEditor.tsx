@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   deleteBreak,
   endBreak,
@@ -22,6 +23,7 @@ import { formatClock, formatDay, type Break, type Shift } from "@clocker/shared"
 export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [notes, setNotes] = useState(shift.notes ?? "");
   const [breaks, setBreaks] = useState<Break[]>([]);
   const { pick, modal } = useDateTimePicker();
@@ -92,7 +94,7 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 14, paddingTop: insets.top + 14 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Edit Shift</Text>
         </View>

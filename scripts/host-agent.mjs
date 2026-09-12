@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import cron from "node-cron";
 import jwt from "jsonwebtoken";
-import { composeFileFor, readEnvValue } from "./lib.mjs";
+import { captureOutput, composeFileFor, readEnvValue } from "./lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const envProdPath = join(rootDir, ".env.prod");
@@ -273,6 +273,20 @@ function runBackupNow() {
       log("[backup] No .env.prod found on this host — skipping secrets in this archive.");
     }
 
+    // Recording just the branch+commit (not the tree itself) is enough to restore the
+    // exact app version later — git is already the durable, deduplicated store for code,
+    // so there's no reason to duplicate source into the Borg archive too. Best-effort: a
+    // host that somehow isn't a git checkout still gets a DB+secrets backup, just without
+    // an app-version component in this archive.
+    const commit = captureOutput("git rev-parse HEAD", { cwd: rootDir });
+    const branch = captureOutput("git rev-parse --abbrev-ref HEAD", { cwd: rootDir });
+    if (commit && branch && branch !== "HEAD") {
+      writeFileSync(join(staging, "app-version.json"), JSON.stringify({ branch, commit, capturedAt: new Date().toISOString() }));
+      log(`[backup] Recorded app version: ${branch}@${commit}`);
+    } else {
+      log("[backup] Couldn't determine the current git branch/commit — skipping app version in this archive.");
+    }
+
     log("[backup] Ensuring the Borg repo is initialized...");
     ensureRepoInitialized(cfg);
 
@@ -345,7 +359,7 @@ function listArchives(repo) {
 // this path survives even a completely destroyed `clocker` app/database, as long as
 // `.env.prod`'s JWT_SECRET is intact and a device already holds a token issued under it.
 // Omit `repo` for the normal "restore from my configured repository" flow.
-function restoreBackup({ archiveName, restoreDb, restoreEnv, repo }) {
+function restoreBackup({ archiveName, restoreDb, restoreEnv, restoreVersion, repo }) {
   backupState.running = true;
   backupState.kind = "restore";
   backupState.archiveName = archiveName;
@@ -398,13 +412,46 @@ function restoreBackup({ archiveName, restoreDb, restoreEnv, repo }) {
       log("[restore] .env.prod restored — if JWT_SECRET changed, every signed-in device will need to sign in again. Run `npm run deploy` to apply it.");
     }
 
+    // Rolls the code itself back to whatever was deployed when this archive was taken —
+    // git already IS the durable store for the app's source, so this just moves the local
+    // branch ref backward (`reset --hard`, not a detached checkout) and rebuilds, mirroring
+    // exactly what the "Update Server" button's own command does, just targeting a specific
+    // historical commit instead of always origin's latest. That also means a later tap of
+    // Update Server naturally undoes this rollback and moves forward again — no special-
+    // casing needed there. Deliberately does NOT attempt to reconcile the database schema
+    // with the older code: Prisma migrations are forward-only (see CLAUDE.md), so there's
+    // no way to "downgrade" a schema to match. If restoreDb isn't ALSO set in this same
+    // call (i.e. not a "full" restore from the same archive), the rolled-back code runs
+    // against whatever the current database happens to be, which may not match — the UI
+    // warns about this, but it's a real constraint, not something this can paper over.
+    if (restoreVersion) {
+      const versionPath = join(extractDir, "app-version.json");
+      if (!existsSync(versionPath)) {
+        throw new Error("Archive has no app-version.json — nothing to restore for the app version (backups taken before this feature won't have it).");
+      }
+      const { branch, commit } = JSON.parse(readFileSync(versionPath, "utf8"));
+      log(`[restore] Rolling the app back to ${branch}@${commit}...`);
+      const fetch = spawnSync("git", ["fetch", "origin"], { cwd: rootDir });
+      if (fetch.status !== 0) throw new Error(`git fetch failed: ${fetch.stderr?.toString() || "unknown error"}`);
+      const checkoutBranch = spawnSync("git", ["checkout", branch], { cwd: rootDir });
+      if (checkoutBranch.status !== 0) throw new Error(`git checkout ${branch} failed: ${checkoutBranch.stderr?.toString() || "unknown error"}`);
+      const reset = spawnSync("git", ["reset", "--hard", commit], { cwd: rootDir });
+      if (reset.status !== 0) throw new Error(`git reset --hard ${commit} failed: ${reset.stderr?.toString() || "unknown error"}`);
+      log("[restore] Reinstalling dependencies and redeploying at that version (this restarts the server)...");
+      const install = spawnSync("npm", ["install"], { cwd: rootDir });
+      if (install.status !== 0) throw new Error(`npm install failed: ${install.stderr?.toString() || "unknown error"}`);
+      const deploy = spawnSync("npm", ["run", "deploy", "--", "--skip-app"], { cwd: rootDir });
+      if (deploy.status !== 0) throw new Error(`npm run deploy failed: ${deploy.stderr?.toString() || "unknown error"}`);
+      log(`[restore] App version rolled back to ${commit} and redeployed.`);
+    }
+
     backupState.exitCode = 0;
     log("[restore] Done.");
     recordBackupRun({
       kind: "restore",
       status: "success",
       archiveName,
-      message: `Restored from ${archiveName}${restoreDb ? " (db)" : ""}${restoreEnv ? " (secrets)" : ""}`,
+      message: `Restored from ${archiveName}${restoreDb ? " (db)" : ""}${restoreEnv ? " (secrets)" : ""}${restoreVersion ? " (app version)" : ""}`,
       startedAt: backupState.startedAt,
       finishedAt: new Date().toISOString(),
     });
@@ -588,14 +635,21 @@ const server = createServer(async (req, res) => {
       if (anyBusy()) return send(409, { error: "Another operation is already running" });
       const body = await readJsonBody(req);
       if (!body.archiveName) return send(400, { error: "archiveName is required" });
-      if (!body.restoreDb && !body.restoreEnv) return send(400, { error: "Choose at least one of restoreDb/restoreEnv" });
+      if (!body.restoreDb && !body.restoreEnv && !body.restoreVersion) {
+        return send(400, { error: "Choose at least one of restoreDb/restoreEnv/restoreVersion" });
+      }
       const cfg = loadBackupConfig();
       if (!cfg.repoUrl || !cfg.passphrase) {
         return send(400, { error: "Backup repo/passphrase aren't configured." });
       }
       backupState.running = true;
       setImmediate(() =>
-        restoreBackup({ archiveName: body.archiveName, restoreDb: !!body.restoreDb, restoreEnv: !!body.restoreEnv }),
+        restoreBackup({
+          archiveName: body.archiveName,
+          restoreDb: !!body.restoreDb,
+          restoreEnv: !!body.restoreEnv,
+          restoreVersion: !!body.restoreVersion,
+        }),
       );
       return send(202, { started: true });
     }
@@ -623,13 +677,16 @@ const server = createServer(async (req, res) => {
       const body = await readJsonBody(req);
       if (!body.repoUrl || !body.passphrase) return send(400, { error: "repoUrl and passphrase are required" });
       if (!body.archiveName) return send(400, { error: "archiveName is required" });
-      if (!body.restoreDb && !body.restoreEnv) return send(400, { error: "Choose at least one of restoreDb/restoreEnv" });
+      if (!body.restoreDb && !body.restoreEnv && !body.restoreVersion) {
+        return send(400, { error: "Choose at least one of restoreDb/restoreEnv/restoreVersion" });
+      }
       backupState.running = true;
       setImmediate(() =>
         restoreBackup({
           archiveName: body.archiveName,
           restoreDb: !!body.restoreDb,
           restoreEnv: !!body.restoreEnv,
+          restoreVersion: !!body.restoreVersion,
           repo: { repoUrl: body.repoUrl, passphrase: body.passphrase },
         }),
       );
