@@ -196,3 +196,28 @@ export function getBackupArchives() {
 export function restoreBackup(archiveName: string, restoreDb: boolean, restoreEnv: boolean) {
   return request<{ started: true }>("/backup/restore", { method: "POST", body: { archiveName, restoreDb, restoreEnv }, auth: true });
 }
+
+// Disaster recovery: lists/restores against any repo+passphrase typed in on the spot,
+// independent of the saved backup config — for recovering onto a fresh install, or one
+// whose own saved backup config was itself lost.
+export function getDisasterRecoveryArchives(repoUrl: string, passphrase: string) {
+  return request<{ archives: BackupArchive[] }>("/backup/disaster-recovery/archives", {
+    method: "POST",
+    body: { repoUrl, passphrase },
+    auth: true,
+  });
+}
+
+export function restoreFromDisasterRecovery(
+  repoUrl: string,
+  passphrase: string,
+  archiveName: string,
+  restoreDb: boolean,
+  restoreEnv: boolean,
+) {
+  return request<{ started: true }>("/backup/disaster-recovery/restore", {
+    method: "POST",
+    body: { repoUrl, passphrase, archiveName, restoreDb, restoreEnv },
+    auth: true,
+  });
+}

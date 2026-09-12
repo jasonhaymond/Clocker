@@ -3,6 +3,7 @@ import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from ".
 import { useStore } from "../store";
 import { useTheme, type ThemeMode } from "../theme";
 import { BackupsScreen } from "./BackupsScreen";
+import { ImportScreen } from "./ImportScreen";
 
 const THEME_OPTIONS: { key: ThemeMode; label: string }[] = [
   { key: "system", label: "System" },
@@ -14,6 +15,7 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const store = useStore();
   const { mode, setMode } = useTheme();
   const [showBackups, setShowBackups] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -68,6 +70,9 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
 
   if (showBackups) {
     return <BackupsScreen onClose={() => setShowBackups(false)} />;
+  }
+  if (showImport) {
+    return <ImportScreen onClose={() => setShowImport(false)} />;
   }
 
   return (
@@ -124,6 +129,9 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
       <section>
         <button className="secondary-button" onClick={() => setShowBackups(true)}>
           Backups
+        </button>
+        <button className="secondary-button" onClick={() => setShowImport(true)}>
+          Import Data
         </button>
       </section>
 

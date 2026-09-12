@@ -1,21 +1,35 @@
 import {
+  addDays,
   calculateShiftPay,
   formatCents,
   formatClock,
   formatDay,
   formatDuration,
+  RANGES,
+  rangeFor,
   roundedWorkedMillis,
   startOfDay,
   type Job,
+  type RangeKey,
   type Shift,
   type ShiftPay,
 } from "@clocker/shared";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IoTrashOutline } from "react-icons/io5";
 import { ShiftEditor } from "../components/ShiftEditor";
 import { useStore } from "../store";
 
-const DAYS_BACK = 90;
+// <input type="date"> works in the browser's local timezone via plain "YYYY-MM-DD"
+// strings — going through Date/toISOString would shift the value by the UTC offset.
+// Same helpers as ExportScreen's own custom-range inputs.
+function toDateInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function fromDateInputValue(value: string): Date {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 const LONG_PRESS_MS = 500;
 // How far a pointer can drift while held before it counts as a scroll/drag rather than a
 // long press, in CSS pixels. Also used to distinguish an intentional horizontal swipe
@@ -32,16 +46,62 @@ export function HistoryScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectionMode = selectedIds.size > 0;
 
-  const cutoff = useMemo(() => {
-    const d = startOfDay(new Date());
-    d.setDate(d.getDate() - DAYS_BACK);
-    return d.getTime();
-  }, []);
+  const [showFilters, setShowFilters] = useState(false);
+  const [rangeKey, setRangeKey] = useState<RangeKey>("last90");
+  const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
+  const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
+  // Defaults to every job selected once jobs first load — after that it's purely
+  // user-driven, same convention as Export's own job filter (a job added later doesn't
+  // silently join an already-customized selection).
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const didInitJobFilter = useRef(false);
+
+  const range = useMemo(() => {
+    if (rangeKey === "custom") {
+      const start = customStart;
+      const end = addDays(customEnd, 1);
+      const label = start.getTime() === customEnd.getTime() ? start.toLocaleDateString() : `${start.toLocaleDateString()} – ${customEnd.toLocaleDateString()}`;
+      return { start, end, label };
+    }
+    return rangeFor(rangeKey);
+  }, [rangeKey, customStart, customEnd]);
+
+  useEffect(() => {
+    if (!didInitJobFilter.current && store.jobs.length > 0) {
+      setSelectedJobIds(new Set(store.jobs.map((j) => j.id)));
+      didInitJobFilter.current = true;
+    }
+  }, [store.jobs]);
+
+  function toggleJob(id: string) {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const shifts = useMemo(
-    () => store.shifts.filter((s) => new Date(s.clockIn).getTime() >= cutoff).sort((a, b) => (a.clockIn < b.clockIn ? 1 : -1)),
-    [store.shifts, cutoff],
+    () =>
+      store.shifts
+        .filter((s) => {
+          const t = new Date(s.clockIn).getTime();
+          if (t < range.start.getTime() || t >= range.end.getTime()) return false;
+          return selectedJobIds.has(s.jobId);
+        })
+        .sort((a, b) => (a.clockIn < b.clockIn ? 1 : -1)),
+    [store.shifts, range, selectedJobIds],
   );
   const jobsById = useMemo(() => Object.fromEntries(store.jobs.map((j) => [j.id, j])), [store.jobs]);
+
+  // A shift selected for bulk-delete that a filter change just hid from view would
+  // otherwise leave the selection count silently out of sync with what's visible (and
+  // what confirmDeleteSelected would actually delete, since that reads from the
+  // already-filtered `shifts` array) — clearing on every filter change keeps them in sync.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [range, selectedJobIds]);
 
   const payByShiftId = useMemo(() => {
     const map = new Map<string, ShiftPay>();
@@ -245,11 +305,77 @@ export function HistoryScreen() {
     }
   }
 
+  const allJobsSelected = store.jobs.length > 0 && selectedJobIds.size === store.jobs.length;
+
   return (
     <div className="screen">
+      <div className="history-filter-toggle">
+        <button className="link" onClick={() => setShowFilters(!showFilters)}>
+          {showFilters ? "Hide Filters" : "Filters"}
+        </button>
+        <span className="hint">
+          {range.label} · {allJobsSelected ? "All jobs" : `${selectedJobIds.size} job${selectedJobIds.size === 1 ? "" : "s"}`}
+        </span>
+      </div>
+      {showFilters && (
+        <>
+          <div className="chip-row">
+            {RANGES.map((r) => (
+              <button key={r.key} className={`chip${rangeKey === r.key ? " selected" : ""}`} onClick={() => setRangeKey(r.key)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {rangeKey === "custom" && (
+            <div className="custom-range-row">
+              <label>
+                Start
+                <input
+                  type="date"
+                  value={toDateInputValue(customStart)}
+                  max={toDateInputValue(customEnd)}
+                  onChange={(e) => e.target.value && setCustomStart(fromDateInputValue(e.target.value))}
+                />
+              </label>
+              <label>
+                End
+                <input
+                  type="date"
+                  value={toDateInputValue(customEnd)}
+                  min={toDateInputValue(customStart)}
+                  onChange={(e) => e.target.value && setCustomEnd(fromDateInputValue(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
+          <div className="section-header-row">
+            <h3>Job</h3>
+            <div className="header-row-actions">
+              <button className="link" onClick={() => setSelectedJobIds(new Set(store.jobs.map((j) => j.id)))}>
+                Select All
+              </button>
+              <span className="link-separator">·</span>
+              <button className="link" onClick={() => setSelectedJobIds(new Set())}>
+                Deselect All
+              </button>
+            </div>
+          </div>
+          <div className="job-select-list">
+            {store.jobs.map((job) => (
+              <label key={job.id} className="job-select-row">
+                <input type="checkbox" checked={selectedJobIds.has(job.id)} onChange={() => toggleJob(job.id)} />
+                <span className="dot" style={{ backgroundColor: job.colorHex }} />
+                <span className="job-select-name">{job.name}</span>
+              </label>
+            ))}
+            {store.jobs.length === 0 && <p className="hint">Add a job in the Jobs tab first.</p>}
+          </div>
+        </>
+      )}
+
       {!selectionMode && shifts.length > 0 && totalCents > 0 && (
         <div className="total-bar">
-          <span className="total-label">Total earned (last {DAYS_BACK} days)</span>
+          <span className="total-label">Total earned ({range.label})</span>
           <span className="total-value">{formatCents(totalCents)}</span>
         </div>
       )}
@@ -268,7 +394,7 @@ export function HistoryScreen() {
         </div>
       )}
 
-      {shifts.length === 0 && <p className="muted">No shifts in the last {DAYS_BACK} days.</p>}
+      {shifts.length === 0 && <p className="muted">No shifts match the current filter.</p>}
 
       {sections.map((section) => (
         <div key={section.day}>

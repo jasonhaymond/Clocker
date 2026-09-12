@@ -156,11 +156,15 @@ export async function getJob(id: string): Promise<Job | null> {
 
 // Creates a job and its default "Standard" rate tier (every job always has one, even if
 // no rate is set yet — later rate entry just adds a version to this tier). Passing
-// `initialHourlyRateCents` also adds that tier's first rate version, effective now.
+// `initialHourlyRateCents` also adds that tier's first rate version, effective from
+// `rateEffectiveFrom` (defaults to now) — backdating it is what lets an imported job's
+// historical shifts (see lib/importHoursTracker.ts) resolve a real rate instead of $0,
+// since pay only ever looks at the version active *at the shift's own clock-in time*.
 export async function createJob(input: {
   name: string;
   colorHex: string;
   initialHourlyRateCents: number | null;
+  rateEffectiveFrom?: string;
 }): Promise<Job> {
   const db = await getDb();
   const id = newId();
@@ -173,7 +177,7 @@ export async function createJob(input: {
   ]);
   await markPending("job", id, "upsert");
 
-  await createRateTier(id, "Standard", input.initialHourlyRateCents, true);
+  await createRateTier(id, "Standard", input.initialHourlyRateCents, true, input.rateEffectiveFrom);
 
   dbEvents.emit();
   // Re-read rather than hand-assembling the return value, so it reflects the table's own
@@ -326,12 +330,14 @@ export async function listRateTiersForJobs(jobIds: string[]): Promise<RateTier[]
   return rows.map(rowToRateTier);
 }
 
-// Creates a rate tier under a job, optionally with its first rate version effective now.
+// Creates a rate tier under a job, optionally with its first rate version — effective
+// now unless `effectiveFrom` says otherwise (see createJob's comment for why that matters).
 export async function createRateTier(
   jobId: string,
   name: string,
   initialHourlyRateCents: number | null,
   isDefault = false,
+  effectiveFrom?: string,
 ): Promise<RateTier> {
   const db = await getDb();
   const id = newId();
@@ -345,7 +351,7 @@ export async function createRateTier(
   ]);
   await markPending("rateTier", id, "upsert");
   if (initialHourlyRateCents != null) {
-    await addRateVersion(id, initialHourlyRateCents, updatedAt);
+    await addRateVersion(id, initialHourlyRateCents, effectiveFrom ?? updatedAt);
   }
   dbEvents.emit();
   return { id, jobId, name, isDefault, archived: false, updatedAt, deletedAt: null };

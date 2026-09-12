@@ -44,7 +44,12 @@ interface StoreActions {
   refresh(): Promise<void>;
   clearError(): void;
 
-  createJob(input: { name: string; colorHex: string; initialHourlyRateCents: number | null }): Promise<Job>;
+  createJob(input: {
+    name: string;
+    colorHex: string;
+    initialHourlyRateCents: number | null;
+    rateEffectiveFrom?: string;
+  }): Promise<Job>;
   updateJobDetails(job: Job, patch: { name?: string; colorHex?: string }): Promise<void>;
   updateJobOvertime(job: Job, patch: { overtimeMultiplier: number | null; overtimeWeeklyThresholdHours: number | null }): Promise<void>;
   updateJobRounding(job: Job, patch: Pick<Job, "roundingEnabled" | "roundingMode" | "roundingIncrementMinutes">): Promise<void>;
@@ -69,7 +74,13 @@ interface StoreActions {
   setJobArchived(job: Job, archived: boolean): Promise<void>;
   deleteJob(job: Job): Promise<void>;
 
-  createRateTier(jobId: string, name: string, initialHourlyRateCents: number | null, isDefault: boolean): Promise<RateTier>;
+  createRateTier(
+    jobId: string,
+    name: string,
+    initialHourlyRateCents: number | null,
+    isDefault: boolean,
+    effectiveFrom?: string,
+  ): Promise<RateTier>;
   setRateTierArchived(tier: RateTier, archived: boolean): Promise<void>;
   deleteRateTier(tier: RateTier): Promise<void>;
   addRateVersion(tierId: string, hourlyRateCents: number, effectiveFrom?: string): Promise<RateVersion>;
@@ -148,7 +159,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setState((s) => ({ ...s, error: null }));
       },
 
-      async createJob({ name, colorHex, initialHourlyRateCents }) {
+      async createJob({ name, colorHex, initialHourlyRateCents, rateEffectiveFrom }) {
         const now = nowIso();
         const job: Job = {
           id: newId(),
@@ -175,9 +186,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           deletedAt: null,
         };
         const tier: RateTier = { id: newId(), jobId: job.id, name: "Standard", isDefault: true, archived: false, updatedAt: now, deletedAt: null };
+        // `rateEffectiveFrom` lets a backdated rate resolve for historical shifts (see the
+        // CSV importer) — pay calculation only ever looks at the version active *at a
+        // shift's own clock-in time*, so a version effective "now" would leave every
+        // imported shift showing $0.
         const versions: RateVersion[] =
           initialHourlyRateCents != null
-            ? [{ id: newId(), tierId: tier.id, hourlyRateCents: initialHourlyRateCents, effectiveFrom: now, updatedAt: now, deletedAt: null }]
+            ? [{ id: newId(), tierId: tier.id, hourlyRateCents: initialHourlyRateCents, effectiveFrom: rateEffectiveFrom ?? now, updatedAt: now, deletedAt: null }]
             : [];
         await pushChanges({ jobs: [job], rateTiers: [tier], rateVersions: versions });
         await refresh();
@@ -217,12 +232,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await refresh();
       },
 
-      async createRateTier(jobId, name, initialHourlyRateCents, isDefault) {
+      async createRateTier(jobId, name, initialHourlyRateCents, isDefault, effectiveFrom) {
         const now = nowIso();
         const tier: RateTier = { id: newId(), jobId, name, isDefault, archived: false, updatedAt: now, deletedAt: null };
         const versions: RateVersion[] =
           initialHourlyRateCents != null
-            ? [{ id: newId(), tierId: tier.id, hourlyRateCents: initialHourlyRateCents, effectiveFrom: now, updatedAt: now, deletedAt: null }]
+            ? [{ id: newId(), tierId: tier.id, hourlyRateCents: initialHourlyRateCents, effectiveFrom: effectiveFrom ?? now, updatedAt: now, deletedAt: null }]
             : [];
         await pushChanges({ rateTiers: [tier], rateVersions: versions });
         await refresh();

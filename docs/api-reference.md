@@ -346,6 +346,39 @@ snapshot before touching anything — see the deployment doc.
 → 409 { "error": "Another operation is already running" }
 ```
 
+### `POST /backup/disaster-recovery/archives`
+
+Same as `GET /backup/archives`, but lists an ad-hoc repo/passphrase given in the body
+instead of the saved config — for recovering onto a fresh install, or one whose own saved
+backup config was itself lost. Never reads or touches `.backup-config.json`.
+
+```json
+{ "repoUrl": "clocker-backup@10.1.30.64:/srv/clocker-backup/repositories/clocker", "passphrase": "..." }
+```
+
+```json
+→ 200 { "archives": [ ... ] }
+→ 400 { "error": "repoUrl and passphrase are required" }
+→ 400 { "error": "..." }   // borg itself failed (bad repo/passphrase/host unreachable)
+```
+
+### `POST /backup/disaster-recovery/restore`
+
+Same as `POST /backup/restore`, but restores from an ad-hoc repo/passphrase given in the
+body instead of the saved config.
+
+```json
+{ "repoUrl": "...", "passphrase": "...", "archiveName": "clocker-2026-09-11T18-59-01-483Z", "restoreDb": true, "restoreEnv": false }
+```
+
+```json
+→ 202 { "started": true }
+→ 400 { "error": "repoUrl and passphrase are required" }
+→ 400 { "error": "archiveName is required" }
+→ 400 { "error": "Choose at least one of restoreDb/restoreEnv" }
+→ 409 { "error": "Another operation is already running" }
+```
+
 ## Manual smoke test
 
 The exact sequence used to verify this API end-to-end during development (adjust the port

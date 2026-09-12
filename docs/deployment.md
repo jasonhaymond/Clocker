@@ -457,14 +457,16 @@ storing these settings in its own database the way a less-sandboxed app might.
   on the backup server rather than access to your own login, so it's useless for anything
   else even if it were ever leaked. Settings → Backups has a "Set up a dedicated backup
   user on the remote server" toggle right under the generated key that prints the exact
-  copy-pasteable commands (creates a system user with a real `/bin/sh` shell — **not**
-  `nologin`/`/bin/false`, which would break the forced-command restriction below, since
-  sshd runs it *through* the account's shell — the repository directory, and a restricted
-  `authorized_keys` entry scoped to just `borg serve` against that one repository) — use
-  that instead of retyping the commands here, so there's one
-  source of truth (`shared/src/backupRemoteSetup.ts`) instead of two that can drift apart.
-  Default convention it follows: user `clocker-backup`, repository
-  `/srv/clocker-backup/repositories/clocker`. Borg initializes the repository itself
+  copy-pasteable commands — mirroring Haydrop's own documented setup almost line-for-line
+  (`adduser`/`install -d`/`touch`, same `/srv/<user>/...` layout) — that create a system
+  user with a real `/bin/bash` shell — **not** `nologin`/`/bin/false`, which would break
+  the forced-command restriction below, since sshd runs it *through* the account's shell —
+  the repository directory, and a restricted `authorized_keys` entry scoped to just `borg
+  serve` against that one repository) — use that instead of retyping the commands here, so
+  there's one source of truth (`shared/src/backupRemoteSetup.ts`) instead of two that can
+  drift apart. Default convention it follows: user `clocker-backup`, home and repository
+  both under `/srv/clocker-backup/` (`/srv/clocker-backup/repositories/clocker` for the
+  repo itself). Borg initializes the repository itself
   (`borg init --encryption repokey-blake2`) the first time it's used — the directory and
   the restricted `authorized_keys` entry are yours to set up (this is exactly the kind of
   system-level, another-host config this project won't automate — see the global
@@ -482,6 +484,25 @@ restore. Before touching anything, the host agent takes its own quick pre-restor
 entirely — so a bad restore is itself recoverable. Restoring secrets that changed
 `JWT_SECRET` signs every device out; restoring the database always runs `pg_restore
 --clean --if-exists`, which drops and recreates existing objects rather than merging.
+
+**Disaster recovery**: Settings → Backups has a collapsed-by-default "Disaster recovery:
+restore from another location" section — lists and restores from *any* repository URL and
+passphrase typed in on the spot, entirely independent of whatever's saved above. Use this
+when recovering onto a fresh install, or one whose own saved backup settings were
+themselves lost. Ported from Haydrop's equivalent feature
+(`api/src/routes/backups.ts`'s disaster-recovery routes) — the underlying
+`listArchives`/`restoreBackup` functions in `scripts/host-agent.mjs` already took an
+optional ad-hoc `repo` override, same as Haydrop's service layer, so the two new routes
+(`POST /backup/disaster-recovery/archives`, `POST /backup/disaster-recovery/restore`) are
+thin wrappers with no new restore logic. Unlike Haydrop, this doesn't need an
+already-bootstrapped database or admin session to work: the host agent's own auth check
+(`verifyAuth`) is a stateless JWT verification with no DB dependency at all, so this path
+survives even a completely destroyed `clocker` app/database, as long as `.env.prod`'s
+`JWT_SECRET` is intact and a device already holds a token issued under it. A truly
+from-scratch recovery — no running app, no `.env.prod`, nothing standing at all yet — is
+still outside any UI's reach; that needs the manual `docker compose exec ... pg_restore`
+steps this doc already covers elsewhere, then a normal `npm run deploy` to bring the app
+back up before any UI (including this one) can help.
 
 **Scheduling**: the plain-language picker (Off/Daily/Weekly/Monthly + time) is converted
 to a cron string by the host agent itself (`node-cron`) — no cron syntax to write by hand,

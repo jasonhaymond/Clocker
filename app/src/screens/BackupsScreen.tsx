@@ -7,7 +7,9 @@ import {
   getBackupConfig,
   getBackupRuns,
   getBackupStatus,
+  getDisasterRecoveryArchives,
   restoreBackup,
+  restoreFromDisasterRecovery,
   triggerBackup,
   updateBackupConfig,
   type BackupArchive,
@@ -24,7 +26,19 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; onRestored: () => void }) {
+// `repo`, when given, restores from that ad-hoc repo/passphrase instead of the saved
+// backup config — used by the disaster-recovery section below, which lists/restores
+// archives from any repository typed in on the spot. Omitted for the normal Archives
+// section, which always restores from the saved config.
+function ArchiveRestoreRow({
+  archive,
+  repo,
+  onRestored,
+}: {
+  archive: BackupArchive;
+  repo?: { repoUrl: string; passphrase: string };
+  onRestored: () => void;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState(false);
@@ -38,7 +52,11 @@ function ArchiveRestoreRow({ archive, onRestored }: { archive: BackupArchive; on
     setBusy(true);
     setError(null);
     try {
-      await restoreBackup(archive.name, restoreDb, restoreEnv);
+      if (repo) {
+        await restoreFromDisasterRecovery(repo.repoUrl, repo.passphrase, archive.name, restoreDb, restoreEnv);
+      } else {
+        await restoreBackup(archive.name, restoreDb, restoreEnv);
+      }
       setExpanded(false);
       setConfirmText("");
       onRestored();
@@ -127,6 +145,13 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
 
   const [archives, setArchives] = useState<BackupArchive[]>([]);
   const [runs, setRuns] = useState<BackupRun[]>([]);
+
+  const [showDisasterRecovery, setShowDisasterRecovery] = useState(false);
+  const [drRepoUrl, setDrRepoUrl] = useState("");
+  const [drPassphrase, setDrPassphrase] = useState("");
+  const [drListing, setDrListing] = useState(false);
+  const [drError, setDrError] = useState<string | null>(null);
+  const [drArchives, setDrArchives] = useState<BackupArchive[] | null>(null);
 
   const loadConfig = useCallback(() => {
     getBackupConfig()
@@ -263,6 +288,21 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         },
       },
     ]);
+  }
+
+  async function listDrArchives() {
+    setDrListing(true);
+    setDrError(null);
+    setDrArchives(null);
+    try {
+      const r = await getDisasterRecoveryArchives(drRepoUrl, drPassphrase);
+      setDrArchives(r.archives);
+      if (r.archives.length === 0) setDrError("Connected, but this repository has no archives.");
+    } catch (e: any) {
+      setDrError(e?.message ?? "Couldn't list archives");
+    } finally {
+      setDrListing(false);
+    }
   }
 
   async function backUpNow() {
@@ -463,6 +503,46 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         {archives.map((a) => (
           <ArchiveRestoreRow key={a.name} archive={a} onRestored={onRestored} />
         ))}
+
+        <TouchableOpacity onPress={() => setShowDisasterRecovery(!showDisasterRecovery)}>
+          <Text style={styles.link}>
+            {showDisasterRecovery ? "Hide disaster recovery" : "Disaster recovery: restore from another location"}
+          </Text>
+        </TouchableOpacity>
+        {showDisasterRecovery ? (
+          <>
+            <Text style={styles.hint}>
+              For recovering onto a fresh install, or one whose own saved backup settings
+              were themselves lost — lists and restores from any repository URL and
+              passphrase entered here, entirely independent of the settings above. A truly
+              from-scratch recovery (no running app at all yet) still needs the manual
+              steps in docs/deployment.md.
+            </Text>
+            <Text style={styles.fieldLabel}>Repository URL</Text>
+            <TextInput
+              style={styles.input}
+              value={drRepoUrl}
+              onChangeText={setDrRepoUrl}
+              placeholder="/mnt/backups/clocker or user@host:path"
+              autoCapitalize="none"
+            />
+            <Text style={styles.fieldLabel}>Passphrase</Text>
+            <TextInput style={styles.input} value={drPassphrase} onChangeText={setDrPassphrase} secureTextEntry />
+            {drError ? <Text style={styles.error}>{drError}</Text> : null}
+            <TouchableOpacity style={styles.button} onPress={listDrArchives} disabled={drListing || !drRepoUrl.trim() || !drPassphrase}>
+              {drListing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>List Archives</Text>}
+            </TouchableOpacity>
+            {drArchives && drArchives.length > 0 && (
+              <View style={{ marginTop: 10 }}>
+                {drArchives.map((a) => (
+                  <ArchiveRestoreRow key={a.name} archive={a} repo={{ repoUrl: drRepoUrl, passphrase: drPassphrase }} onRestored={onRestored} />
+                ))}
+              </View>
+            )}
+          </>
+        ) : (
+          <Text style={styles.hint}>For recovering onto a fresh install, or one whose own saved backup settings were themselves lost.</Text>
+        )}
 
         <Text style={styles.sectionLabel}>Recent runs</Text>
         {runs.length === 0 && <Text style={styles.hint}>No runs yet.</Text>}

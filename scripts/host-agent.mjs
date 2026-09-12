@@ -309,8 +309,12 @@ function runBackupNow() {
   }
 }
 
-function listArchives() {
-  const cfg = loadBackupConfig();
+// `repo`, when given, lists that repo/passphrase pair directly instead of the saved
+// config — the disaster-recovery path (see the /backup/disaster-recovery/archives route),
+// which deliberately works even when this host's own saved backup config has never been
+// set or was itself lost. Omit it for the normal "list my configured repository" flow.
+function listArchives(repo) {
+  const cfg = repo ?? loadBackupConfig();
   if (!cfg.repoUrl || !cfg.passphrase) return [];
   const result = spawnSync("borg", ["list", "--json", cfg.repoUrl], { env: borgEnv(cfg) });
   if (result.status !== 0) throw new Error(result.stderr?.toString() || "borg list failed");
@@ -320,7 +324,17 @@ function listArchives() {
 
 // Same rule as runBackupNow above: called via setImmediate, so every failure path must be
 // caught inside this function — nothing upstream can catch a throw that escapes it.
-function restoreBackup({ archiveName, restoreDb, restoreEnv }) {
+//
+// `repo`, when given, restores from that repo/passphrase pair *instead of* the saved
+// backup config — the disaster-recovery path (see the /backup/disaster-recovery/restore
+// route), which works even when this host's own saved backup config was never set or is
+// itself what's being recovered. Unlike Haydrop's equivalent (which needs a DB-backed
+// admin session and therefore an already-bootstrapped install), this needs nothing beyond
+// a valid JWT — the host agent's own auth check has no database dependency at all, so
+// this path survives even a completely destroyed `clocker` app/database, as long as
+// `.env.prod`'s JWT_SECRET is intact and a device already holds a token issued under it.
+// Omit `repo` for the normal "restore from my configured repository" flow.
+function restoreBackup({ archiveName, restoreDb, restoreEnv, repo }) {
   backupState.running = true;
   backupState.kind = "restore";
   backupState.archiveName = archiveName;
@@ -332,7 +346,7 @@ function restoreBackup({ archiveName, restoreDb, restoreEnv }) {
   const log = (line) => appendLogTo(backupState, line);
   let extractDir;
   try {
-    const cfg = loadBackupConfig();
+    const cfg = repo ?? loadBackupConfig();
     if (!cfg.repoUrl || !cfg.passphrase) throw new Error("Backup repo/passphrase aren't configured.");
 
     // Pre-restore safety net, independent of Borg entirely — mirrors the pre-deploy
@@ -576,6 +590,42 @@ const server = createServer(async (req, res) => {
       backupState.running = true;
       setImmediate(() =>
         restoreBackup({ archiveName: body.archiveName, restoreDb: !!body.restoreDb, restoreEnv: !!body.restoreEnv }),
+      );
+      return send(202, { started: true });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Disaster recovery: list/restore against ANY repo+passphrase typed in on the spot,
+    // entirely independent of the saved .backup-config.json — for recovering onto a fresh
+    // install, or one whose own saved backup config was itself lost. Ported from Haydrop's
+    // equivalent feature (api/src/routes/backups.ts's disaster-recovery routes); see
+    // restoreBackup's own comment above for why this is actually less fragile here than in
+    // Haydrop (no DB-backed session required, just a valid JWT).
+    // ---------------------------------------------------------------------------
+    if (req.method === "POST" && url.pathname === "/backup/disaster-recovery/archives") {
+      const body = await readJsonBody(req);
+      if (!body.repoUrl || !body.passphrase) return send(400, { error: "repoUrl and passphrase are required" });
+      try {
+        return send(200, { archives: listArchives({ repoUrl: body.repoUrl, passphrase: body.passphrase }) });
+      } catch (err) {
+        return send(400, { error: err.message });
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/backup/disaster-recovery/restore") {
+      if (anyBusy()) return send(409, { error: "Another operation is already running" });
+      const body = await readJsonBody(req);
+      if (!body.repoUrl || !body.passphrase) return send(400, { error: "repoUrl and passphrase are required" });
+      if (!body.archiveName) return send(400, { error: "archiveName is required" });
+      if (!body.restoreDb && !body.restoreEnv) return send(400, { error: "Choose at least one of restoreDb/restoreEnv" });
+      backupState.running = true;
+      setImmediate(() =>
+        restoreBackup({
+          archiveName: body.archiveName,
+          restoreDb: !!body.restoreDb,
+          restoreEnv: !!body.restoreEnv,
+          repo: { repoUrl: body.repoUrl, passphrase: body.passphrase },
+        }),
       );
       return send(202, { started: true });
     }

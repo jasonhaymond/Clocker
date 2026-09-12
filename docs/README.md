@@ -11,6 +11,9 @@
   conflict resolution, ownership checks, and what the protocol deliberately doesn't do.
 - **[API Reference](./api-reference.md)** — every HTTP endpoint, request/response shapes,
   status codes, and a copy-pasteable curl smoke test.
+- **[Import Format](./import-format.md)** — the exact CSV column reference for importing
+  an Hours Tracker export (Settings → Import Data on both clients): what each column maps
+  to, how new jobs get their color/rate, and duplicate-safety rules.
 - **[Development Guide](./development.md)** — setup/update scripts, environment
   variables, day-to-day commands, and known issues (with workarounds already applied) you
   might otherwise lose time to.

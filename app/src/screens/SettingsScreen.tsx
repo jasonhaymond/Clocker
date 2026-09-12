@@ -12,6 +12,7 @@ import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/upda
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
 import { HelpScreen } from "./HelpScreen";
+import { ImportScreen } from "./ImportScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
 
@@ -54,6 +55,7 @@ export function SettingsScreen() {
   const [showServerLog, setShowServerLog] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
@@ -227,6 +229,12 @@ export function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.syncButton} onPress={() => setShowImport(true)}>
+          <Text style={styles.syncButtonText}>Import Data</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         style={styles.signOutButton}
         onPress={() => Alert.alert("Sign out", "You can sign back in any time; your data stays on the server.", [
@@ -239,6 +247,7 @@ export function SettingsScreen() {
 
       {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
       {showHelp && <HelpScreen onClose={() => setShowHelp(false)} />}
+      {showImport && <ImportScreen onClose={() => setShowImport(false)} />}
     </View>
   );
 }

@@ -54,6 +54,14 @@ const TOPICS: HelpTopic[] = [
     ],
   },
   {
+    title: "Import",
+    body: [
+      "Settings → Import Data brings in a CSV export from the Hours Tracker app — jobs, shifts, and breaks.",
+      "A job name that exactly matches one you already have gets its shifts added to it; any other name creates a new job automatically, with its color picked for you and its starting rate set from whichever rate shows up most often in its rows.",
+      "You'll see a preview (how many shifts, how many new jobs) before anything is actually imported, and importing the same file twice is safe — a shift that's already there (same job, same clock-in time) is skipped rather than duplicated.",
+    ],
+  },
+  {
     title: "Sync",
     body: [
       "Everything you do saves locally right away and syncs to the server automatically in the background and whenever you reopen the app.",

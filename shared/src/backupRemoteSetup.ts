@@ -1,12 +1,15 @@
 // Generates the copy-pasteable shell commands for setting up a dedicated, restricted
 // backup user on a remote Borg server — shown in both clients' Backups screen alongside
 // the generated SSH key. Pure string templating (no client-specific APIs) so both clients
-// render the exact same instructions from the exact same logic. Mirrors the path/
-// restriction convention already documented in docs/deployment.md#the-host-agent — keep
-// both in sync if either changes.
+// render the exact same instructions from the exact same logic. Mirrors Haydrop's own
+// documented setup (docs/deployment-guide.md there) almost line-for-line — same
+// `adduser`/`install -d`/`touch` shape, same `/srv/<user>/...` layout — and the path/
+// restriction convention already documented in docs/deployment.md#the-host-agent. Keep
+// all three in sync if any of them change.
 
 const DEFAULT_USERNAME = "clocker-backup";
-const DEFAULT_REPO_PATH = "/srv/clocker-backup/repositories/clocker";
+const DEFAULT_HOME = `/srv/${DEFAULT_USERNAME}`;
+const DEFAULT_REPO_PATH = `${DEFAULT_HOME}/repositories/clocker`;
 
 // `repoUrl` is whatever the user has typed into "Repo URL" — usually still their own
 // personal login (e.g. "jason@nextcloud:/mnt/backups/clocker") until they've actually
@@ -24,31 +27,28 @@ export function buildBackupRemoteUserScript(params: { repoUrl?: string; sshPubli
   const { host, path } = parseSshRepoUrl(params.repoUrl);
   const pubKey = params.sshPublicKey?.trim() || "<paste the public key shown above>";
   const user = DEFAULT_USERNAME;
+  const home = `/srv/${user}`;
+  const sshDir = `${home}/.ssh`;
 
   return [
     `# Run these on the REMOTE backup server (${host}), as an admin/sudo user —`,
-    `# not on this app's own server. Creates a dedicated account that can only run`,
-    `# "borg serve" against one repository, so this key is useless for anything else`,
-    `# even if it were ever leaked.`,
+    `# not on this app's own server.`,
     "",
-    "# Shell is a real /bin/sh, NOT /usr/sbin/nologin or /bin/false -- sshd runs the",
-    "# forced \"command=\" below THROUGH the account's login shell (`<shell> -c \"<cmd>\"`),",
-    "# so a nologin shell would swallow that command and print its own banner instead",
-    "# (\"This account is currently not available\") -- Borg would see that banner instead",
-    "# of its RPC handshake and fail immediately. The restrict+command= entry below is",
-    "# what actually locks this account down; a normal shell here is safe and required.",
-    `sudo useradd --system --create-home --home-dir /home/${user} --shell /bin/sh ${user}`,
-    `sudo mkdir -p ${path}`,
-    `sudo chown ${user}:${user} ${path}`,
-    `sudo mkdir -p /home/${user}/.ssh`,
-    `echo 'command="borg serve --restrict-to-repository ${path}",restrict ${pubKey}' | sudo tee -a /home/${user}/.ssh/authorized_keys`,
-    `sudo chown -R ${user}:${user} /home/${user}/.ssh`,
-    `sudo chmod 700 /home/${user}/.ssh`,
-    `sudo chmod 600 /home/${user}/.ssh/authorized_keys`,
+    "sudo apt update",
+    "sudo apt install -y borgbackup openssh-server",
     "",
-    "# borg itself must also be installed on this remote server (borg serve needs it",
-    "# there too, separately from the host running this app):",
-    "sudo apt install borgbackup   # or the equivalent for this server's OS",
+    `sudo adduser --system --group --shell /bin/bash --home ${home} ${user}`,
+    `sudo install -d -o ${user} -g ${user} -m 700 ${path}`,
+    `sudo install -d -o ${user} -g ${user} -m 700 ${sshDir}`,
+    `sudo touch ${sshDir}/authorized_keys`,
+    `sudo chown ${user}:${user} ${sshDir}/authorized_keys`,
+    `sudo chmod 600 ${sshDir}/authorized_keys`,
+    "",
+    "# Append the restricted command + this app's dedicated public key (shown above) —",
+    '# this is what actually locks the account down to only running "borg serve" against',
+    "# this one repository, so the key is useless for anything else even if it were ever",
+    "# leaked, regardless of the account's own shell:",
+    `echo 'command="borg serve --restrict-to-repository ${path}",restrict ${pubKey}' | sudo tee -a ${sshDir}/authorized_keys`,
     "",
     "# Borg initializes the repository itself on the first backup — nothing more to",
     "# do here beyond creating the empty directory above.",

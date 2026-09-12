@@ -1,6 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import React, { useCallback, useMemo, useState } from "react";
-import { Alert, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, ScrollView, SectionList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import {
   deleteShift,
@@ -11,6 +11,7 @@ import {
   listShiftsInRange,
 } from "../db/database";
 import { ShiftEditor } from "../components/ShiftEditor";
+import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
@@ -18,6 +19,8 @@ import {
   formatClock,
   formatDay,
   formatDuration,
+  RANGES,
+  rangeFor,
   startOfDay,
   calculateShiftPay,
   formatCents,
@@ -25,43 +28,114 @@ import {
   type ShiftPay,
   type Break,
   type Job,
+  type RangeKey,
   type RateTier,
   type RateVersion,
   type Shift,
 } from "@clocker/shared";
 
-const DAYS_BACK = 90;
-
 export function HistoryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [breaksByShift, setBreaksByShift] = useState<Record<string, Break[]>>({});
-  const [jobsById, setJobsById] = useState<Record<string, Job>>({});
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [versions, setVersions] = useState<RateVersion[]>([]);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectionMode = selectedIds.size > 0;
 
-  const load = useCallback(() => {
-    const start = addDays(startOfDay(new Date()), -DAYS_BACK);
-    const end = addDays(startOfDay(new Date()), 1);
-    Promise.all([listShiftsInRange(start.toISOString(), end.toISOString()), listJobs(true)]).then(async ([shiftRows, jobRows]) => {
-      setShifts(shiftRows);
-      setJobsById(Object.fromEntries(jobRows.map((j) => [j.id, j])));
-      const [breaks, jobTiers] = await Promise.all([
-        listBreaksForShifts(shiftRows.map((s) => s.id)),
-        listRateTiersForJobs(jobRows.map((j) => j.id)),
-      ]);
-      const grouped: Record<string, Break[]> = {};
-      for (const b of breaks) (grouped[b.shiftId] ??= []).push(b);
-      setBreaksByShift(grouped);
-      setTiers(jobTiers);
-      setVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
+  const [showFilters, setShowFilters] = useState(false);
+  const [rangeKey, setRangeKey] = useState<RangeKey>("last90");
+  const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
+  const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
+  // Defaults to every job selected once jobs first load — after that it's purely
+  // user-driven, same convention as Export's own job filter.
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const didInitJobFilter = useRef(false);
+  const { pick, modal: dateModal } = useDateTimePicker();
+
+  const loadJobs = useCallback(() => {
+    listJobs(true).then((rows) => {
+      setJobs(rows);
+      if (!didInitJobFilter.current && rows.length > 0) {
+        setSelectedJobIds(new Set(rows.map((j) => j.id)));
+        didInitJobFilter.current = true;
+      }
     });
   }, []);
-  useDbRefresh(load);
+  useDbRefresh(loadJobs);
+
+  const jobsById = useMemo(() => Object.fromEntries(jobs.map((j) => [j.id, j])), [jobs]);
+
+  function toggleJob(id: string) {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const range = useMemo(() => {
+    if (rangeKey === "custom") {
+      const start = customStart;
+      const end = addDays(customEnd, 1);
+      const label = start.getTime() === customEnd.getTime() ? start.toLocaleDateString() : `${start.toLocaleDateString()} – ${customEnd.toLocaleDateString()}`;
+      return { start, end, label };
+    }
+    return rangeFor(rangeKey);
+  }, [rangeKey, customStart, customEnd]);
+
+  async function pickCustomStart() {
+    const date = await pick(customStart, "Start Date");
+    if (!date) return;
+    const day = startOfDay(date);
+    setCustomStart(day);
+    if (day.getTime() > customEnd.getTime()) setCustomEnd(day);
+  }
+
+  async function pickCustomEnd() {
+    const date = await pick(customEnd, "End Date");
+    if (!date) return;
+    const day = startOfDay(date);
+    if (day.getTime() < customStart.getTime()) {
+      Alert.alert("Invalid range", "End date can't be before the start date.");
+      return;
+    }
+    setCustomEnd(day);
+  }
+
+  useDbRefresh(
+    useCallback(() => {
+      // Fetch everything in range, then filter to the selected jobs client-side — same
+      // approach ExportScreen already uses, simpler than teaching the query layer a
+      // multi-ID IN clause for what's normally a small list.
+      listShiftsInRange(range.start.toISOString(), range.end.toISOString()).then(async (allRows) => {
+        const rows = allRows.filter((r) => selectedJobIds.has(r.jobId));
+        setShifts(rows);
+        const jobIds = Array.from(new Set(rows.map((r) => r.jobId)));
+        const [breaks, jobTiers] = await Promise.all([
+          listBreaksForShifts(rows.map((r) => r.id)),
+          listRateTiersForJobs(jobIds),
+        ]);
+        const grouped: Record<string, Break[]> = {};
+        for (const b of breaks) (grouped[b.shiftId] ??= []).push(b);
+        setBreaksByShift(grouped);
+        setTiers(jobTiers);
+        setVersions(await listRateVersionsForTiers(jobTiers.map((t) => t.id)));
+      });
+    }, [range, selectedJobIds]),
+  );
+
+  // A shift selected for bulk-delete that a filter change just hid from view would
+  // otherwise leave the selection count silently out of sync with what's visible (and
+  // what confirmDeleteSelected would actually delete, since that reads from the
+  // already-filtered `shifts` state) — clearing on every filter change keeps them in sync.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [range, selectedJobIds]);
 
   const payByShiftId = useMemo(() => {
     const map = new Map<string, ShiftPay>();
@@ -148,11 +222,72 @@ export function HistoryScreen() {
     ]);
   }
 
+  const allJobsSelected = jobs.length > 0 && selectedJobIds.size === jobs.length;
+
   return (
     <>
+      <View style={styles.filterToggleRow}>
+        <TouchableOpacity onPress={() => setShowFilters(!showFilters)}>
+          <Text style={styles.link}>{showFilters ? "Hide Filters" : "Filters"}</Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>
+          {range.label} · {allJobsSelected ? "All jobs" : `${selectedJobIds.size} job${selectedJobIds.size === 1 ? "" : "s"}`}
+        </Text>
+      </View>
+      {showFilters && (
+        <View style={styles.filterPanel}>
+          <View style={styles.chipRow}>
+            {RANGES.map((r) => (
+              <TouchableOpacity key={r.key} style={[styles.chip, rangeKey === r.key && styles.chipSelected]} onPress={() => setRangeKey(r.key)}>
+                <Text style={[styles.chipText, rangeKey === r.key && styles.chipTextSelected]}>{r.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {rangeKey === "custom" && (
+            <View style={styles.customRangeRow}>
+              <TouchableOpacity style={styles.customDateButton} onPress={pickCustomStart}>
+                <Text style={styles.customDateLabel}>Start</Text>
+                <Text style={styles.customDateValue}>{customStart.toLocaleDateString()}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.customDateButton} onPress={pickCustomEnd}>
+                <Text style={styles.customDateLabel}>End</Text>
+                <Text style={styles.customDateValue}>{customEnd.toLocaleDateString()}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.jobHeaderRow}>
+            <Text style={styles.jobHeaderLabel}>Job</Text>
+            <View style={styles.jobHeaderActions}>
+              <TouchableOpacity onPress={() => setSelectedJobIds(new Set(jobs.map((j) => j.id)))}>
+                <Text style={styles.linkAction}>Select All</Text>
+              </TouchableOpacity>
+              <Text style={styles.linkSeparator}>·</Text>
+              <TouchableOpacity onPress={() => setSelectedJobIds(new Set())}>
+                <Text style={styles.linkAction}>Deselect All</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <ScrollView style={styles.jobSelectList} nestedScrollEnabled>
+            {jobs.map((job) => {
+              const selected = selectedJobIds.has(job.id);
+              return (
+                <TouchableOpacity key={job.id} style={styles.jobSelectRow} onPress={() => toggleJob(job.id)}>
+                  <View style={[styles.checkboxBox, selected && styles.checkboxBoxChecked]}>
+                    {selected && <Text style={styles.checkmark}>✓</Text>}
+                  </View>
+                  <View style={[styles.jobSelectDot, { backgroundColor: job.colorHex }]} />
+                  <Text style={styles.jobSelectName}>{job.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {jobs.length === 0 && <Text style={styles.hint}>Add a job in the Jobs tab first.</Text>}
+          </ScrollView>
+        </View>
+      )}
+
       {!selectionMode && shifts.length > 0 && totalCents > 0 && (
         <View style={styles.totalBar}>
-          <Text style={styles.totalLabel}>Total earned (last {DAYS_BACK} days)</Text>
+          <Text style={styles.totalLabel}>Total earned ({range.label})</Text>
           <Text style={styles.totalValue}>{formatCents(totalCents)}</Text>
         </View>
       )}
@@ -223,11 +358,12 @@ export function HistoryScreen() {
             </Swipeable>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>No shifts in the last {DAYS_BACK} days.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>No shifts match the current filter.</Text>}
       />
       {editingShift && (
         <ShiftEditor shift={editingShift} onClose={() => setEditingShift(null)} />
       )}
+      {dateModal}
     </>
   );
 }
@@ -235,6 +371,39 @@ export function HistoryScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.card },
+    filterToggleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 4,
+    },
+    filterPanel: { paddingHorizontal: 12, paddingBottom: 8 },
+    link: { color: colors.primary, fontWeight: "600", fontSize: 13 },
+    hint: { color: colors.textMuted2, fontSize: 11 },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
+    chip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.card },
+    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { color: colors.textSecondary, fontSize: 13 },
+    chipTextSelected: { color: colors.onPrimary, fontWeight: "600" },
+    customRangeRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+    customDateButton: { flex: 1, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10, padding: 10, alignItems: "center" },
+    customDateLabel: { fontSize: 11, color: colors.textMuted2 },
+    customDateValue: { fontSize: 14, fontWeight: "600", marginTop: 2, color: colors.text },
+    jobHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
+    jobHeaderLabel: { fontWeight: "600", color: colors.textSecondary, fontSize: 13 },
+    jobHeaderActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+    linkAction: { color: colors.primary, fontWeight: "600", fontSize: 12 },
+    linkSeparator: { color: colors.textMuted2, fontSize: 12 },
+    // A scrolling checklist rather than wrapping chips, same reasoning as Export's own
+    // job filter — job lists can run long and a multi-select reads more clearly as
+    // checkable rows than as a wall of buttons.
+    jobSelectList: { maxHeight: 180, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10, marginTop: 6 },
+    jobSelectRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+    jobSelectDot: { width: 11, height: 11, borderRadius: 6 },
+    jobSelectName: { fontSize: 14, color: colors.text },
+    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
     sectionHeader: { fontWeight: "700", fontSize: 13, color: colors.textSecondary, backgroundColor: colors.card, paddingVertical: 5 },
     // Needs an explicit (opaque) background — it's the child Swipeable slides to reveal
     // the red delete action sitting behind it; without one, the row would be transparent

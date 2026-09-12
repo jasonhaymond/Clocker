@@ -6,6 +6,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.15.0] - 2026-09-12
+
+### Added
+
+- **Import from Hours Tracker (both clients)** — Settings → Import Data reads a CSV
+  export from the Hours Tracker app and creates jobs, shifts, and breaks from it. A job
+  name that exactly matches one you already have gets its shifts added to it; any other
+  name creates a new job (color auto-assigned, starting rate set from whichever hourly
+  rate appears most often across that job's rows, backdated to its earliest imported
+  shift so pay resolves correctly). Comment/Tags/Adjustments/Mileage all fold into the
+  shift's notes field. A shift already present (same job, same clock-in timestamp) is
+  skipped, so re-importing the same or an overlapping file is safe. Shows a preview
+  (shift/job counts, which jobs are new) before writing anything, and a summary
+  afterward. See `docs/import-format.md` for the full column reference, also linked
+  in-app (Import screen and Help).
+  - Web batches every new record into one `pushChanges` call instead of going through
+    the one-row-at-a-time store actions, which would otherwise trigger a network
+    round-trip *and* a full re-pull per row for a few-hundred-row file.
+  - Mobile reuses the normal `clockIn`/`clockOut`/`startBreak`/`endBreak` SQLite
+    functions in a sequential loop — local writes are fast enough that hundreds complete
+    in under a second, and every row gets the same outbox bookkeeping a live clock-in
+    already gets for free.
+  - Verified for real against a genuine Hours Tracker export (286 rows, 5 distinct
+    jobs, multi-break rows, one midnight-spanning shift): all 286 rows parsed with zero
+    errors, all 5 jobs created correctly, and the resulting History total was checked
+    against the file's own reported total (a few percent apart, as expected — Hours
+    Tracker's own `Duration`/`Earnings` columns are themselves rounded per shift, while
+    Clocker computes pay from the exact clock-in/out/break timestamps instead of
+    trusting that rounded figure).
+
+## [1.14.1] - 2026-09-12
+
+### Changed
+
+- The generated remote backup user setup script (Settings → Backups) now mirrors
+  Haydrop's own documented setup block almost line-for-line, per explicit instruction:
+  `adduser --system --group --shell /bin/bash --home ...` instead of `useradd`,
+  `install -d -o -g -m 700 ...` instead of separate `mkdir`/`chown` calls, `touch` +
+  `chown` + `chmod 600` for `authorized_keys`, and an explicit `apt install -y borgbackup
+  openssh-server` up front. Home directory moved to `/srv/clocker-backup` (from
+  `/home/clocker-backup`), matching Haydrop's own single-tree layout; the repository path
+  itself was already `/srv/clocker-backup/repositories/clocker` and is unchanged. Shell
+  changed from `/bin/sh` to `/bin/bash` to match Haydrop's exact choice (both were already
+  "a real shell, not `nologin`" per `1.12.0` — this is a style match, not a second fix).
+
+## [1.14.0] - 2026-09-12
+
+### Added
+
+- **Backups: disaster recovery, ported from Haydrop.** Settings → Backups has a
+  collapsed-by-default "Disaster recovery: restore from another location" section — lists
+  and restores from any repository URL and passphrase typed in on the spot, entirely
+  independent of the saved backup settings. For recovering onto a fresh install, or one
+  whose own saved backup settings were themselves lost. New host-agent routes (`POST
+  /backup/disaster-recovery/archives`, `POST /backup/disaster-recovery/restore`), reusing
+  the existing archive-restore UI/confirmation flow on both clients.
+- **History: filtering, both clients.** A collapsible "Filters" panel (matching Export's
+  existing job/date-range picker) — date range presets (This Week/Last Week/This
+  Month/Last 90 Days/Custom Range) plus a job multi-select checklist, defaulting to the
+  same "last 90 days, every job" view History always showed before. The total-earned
+  figure and section grouping now reflect whatever's actually filtered in.
+
 ## [1.13.0] - 2026-09-12
 
 ### Changed
