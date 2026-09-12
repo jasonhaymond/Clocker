@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Job } from "@clocker/shared";
 import { JobEditor } from "../components/JobEditor";
 import { useStore } from "../store";
@@ -24,6 +24,24 @@ export function JobsScreen() {
   const [rate, setRate] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
+  // The Jobs screen is the one place archived jobs are still reachable at all (every
+  // other screen filters them out entirely) — but even here, hidden by default so a long
+  // history of old jobs doesn't clutter the list; this toggle is the deliberate exception.
+  const [showArchived, setShowArchived] = useState(false);
+
+  // The server returns jobs in no particular order — sort archived ones after active
+  // ones (matching mobile's own listJobs, which already does this via SQL), alphabetical
+  // within each group so the list reads predictably either way.
+  const sortedJobs = useMemo(
+    () =>
+      [...store.jobs].sort((a, b) => {
+        if (a.archived !== b.archived) return a.archived ? 1 : -1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }),
+    [store.jobs],
+  );
+  const archivedCount = useMemo(() => store.jobs.filter((j) => j.archived).length, [store.jobs]);
+  const visibleJobs = useMemo(() => (showArchived ? sortedJobs : sortedJobs.filter((j) => !j.archived)), [sortedJobs, showArchived]);
 
   async function addJob() {
     if (!name.trim()) return;
@@ -65,8 +83,17 @@ export function JobsScreen() {
 
       <section>
         <h3>Jobs</h3>
-        {store.jobs.length === 0 && <p className="muted">No jobs yet. Add your first one above.</p>}
-        {store.jobs.map((job) => (
+        {archivedCount > 0 && (
+          <button className="link" onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? "Hide Archived Jobs" : `Show Archived Jobs (${archivedCount})`}
+          </button>
+        )}
+        {visibleJobs.length === 0 && (
+          <p className="muted">
+            {sortedJobs.length > 0 ? 'No active jobs — click "Show Archived Jobs" above to see archived ones.' : "No jobs yet. Add your first one above."}
+          </p>
+        )}
+        {visibleJobs.map((job) => (
           <div key={job.id} className="row clickable" onClick={() => setEditingJob(job)}>
             <span className="dot" style={{ backgroundColor: job.colorHex }} />
             <div className="row-main">

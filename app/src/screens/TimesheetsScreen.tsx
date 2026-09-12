@@ -50,7 +50,8 @@ export function TimesheetsScreen() {
 
   useDbRefresh(
     useCallback(() => {
-      listJobs(true).then(setJobs);
+      // Archived jobs are hidden everywhere except the Jobs screen itself.
+      listJobs(false).then(setJobs);
     }, []),
   );
 

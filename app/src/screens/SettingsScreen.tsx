@@ -1,7 +1,7 @@
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getSyncCursor } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
@@ -11,7 +11,6 @@ import { useTheme, type ThemeColors, type ThemeMode } from "../theme/ThemeContex
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
-import { HelpScreen } from "./HelpScreen";
 import { ImportScreen } from "./ImportScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
@@ -41,7 +40,7 @@ function updateStatusText(state: UpdateState): string {
   }
 }
 
-export function SettingsScreen() {
+export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const { signOut } = useAuth();
   const { mode, setMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -54,7 +53,6 @@ export function SettingsScreen() {
   const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
   const [showServerLog, setShowServerLog] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -132,129 +130,135 @@ export function SettingsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.label}>Appearance</Text>
-        <View style={styles.chipRow}>
-          {THEME_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt.key}
-              style={[styles.themeChip, mode === opt.key && styles.themeChipSelected]}
-              onPress={() => setMode(opt.key)}
-            >
-              <Text style={[styles.themeChipText, mode === opt.key && styles.themeChipTextSelected]}>{opt.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>Last synced</Text>
-        <Text style={styles.value}>{lastSynced ? new Date(lastSynced).toLocaleString() : "Never"}</Text>
-        {syncError && <Text style={styles.error}>{syncError}</Text>}
-        <TouchableOpacity style={styles.syncButton} onPress={syncNow} disabled={syncing}>
-          {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncButtonText}>Sync Now</Text>}
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>App version</Text>
-        <Text style={styles.value}>
-          {appVersion}
-          {currentRuntimeInfo.channel ? ` · ${currentRuntimeInfo.channel}` : ""}
-        </Text>
-        <Text style={styles.updateStatus}>{updateStatusText(update)}</Text>
-
-        {update.status === "ready" ? (
-          <TouchableOpacity style={styles.updateButton} onPress={applyUpdate}>
-            <Text style={styles.syncButtonText}>Restart to Update</Text>
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Settings</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={styles.doneText}>Done</Text>
           </TouchableOpacity>
-        ) : (
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Appearance</Text>
+          <View style={styles.chipRow}>
+            {THEME_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.themeChip, mode === opt.key && styles.themeChipSelected]}
+                onPress={() => setMode(opt.key)}
+              >
+                <Text style={[styles.themeChipText, mode === opt.key && styles.themeChipTextSelected]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Last synced</Text>
+          <Text style={styles.value}>{lastSynced ? new Date(lastSynced).toLocaleString() : "Never"}</Text>
+          {syncError && <Text style={styles.error}>{syncError}</Text>}
+          <TouchableOpacity style={styles.syncButton} onPress={syncNow} disabled={syncing}>
+            {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncButtonText}>Sync Now</Text>}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>App version</Text>
+          <Text style={styles.value}>
+            {appVersion}
+            {currentRuntimeInfo.channel ? ` · ${currentRuntimeInfo.channel}` : ""}
+          </Text>
+          <Text style={styles.updateStatus}>{updateStatusText(update)}</Text>
+
+          {update.status === "ready" ? (
+            <TouchableOpacity style={styles.updateButton} onPress={applyUpdate}>
+              <Text style={styles.syncButtonText}>Restart to Update</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.updateButton, styles.checkButton]}
+              onPress={() => checkForUpdate()}
+              disabled={update.status === "checking" || update.status === "downloading"}
+            >
+              {update.status === "checking" || update.status === "downloading" ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.checkButtonText}>Check for Updates</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Server</Text>
+          {serverUpdate?.running ? (
+            <Text style={styles.updateStatus}>Updating server… this can take a minute or two.</Text>
+          ) : serverUpdate?.finishedAt ? (
+            <Text style={styles.updateStatus}>
+              {serverUpdate.exitCode === 0 ? "Last update succeeded" : `Last update failed (exit ${serverUpdate.exitCode})`}
+              {" · "}
+              {new Date(serverUpdate.finishedAt).toLocaleString()}
+            </Text>
+          ) : null}
+          {serverUpdateError && <Text style={styles.error}>{serverUpdateError}</Text>}
           <TouchableOpacity
-            style={[styles.updateButton, styles.checkButton]}
-            onPress={() => checkForUpdate()}
-            disabled={update.status === "checking" || update.status === "downloading"}
+            style={styles.syncButton}
+            onPress={confirmUpdateServer}
+            disabled={triggeringServerUpdate || !!serverUpdate?.running}
           >
-            {update.status === "checking" || update.status === "downloading" ? (
-              <ActivityIndicator color={colors.primary} />
+            {triggeringServerUpdate || serverUpdate?.running ? (
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.checkButtonText}>Check for Updates</Text>
+              <Text style={styles.syncButtonText}>Update Server</Text>
             )}
           </TouchableOpacity>
-        )}
-      </View>
+          {serverUpdate?.log ? (
+            <>
+              <TouchableOpacity onPress={() => setShowServerLog(!showServerLog)}>
+                <Text style={styles.logToggle}>{showServerLog ? "Hide log" : "Show log"}</Text>
+              </TouchableOpacity>
+              {showServerLog && <Text style={styles.logText}>{serverUpdate.log}</Text>}
+            </>
+          ) : null}
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Server</Text>
-        {serverUpdate?.running ? (
-          <Text style={styles.updateStatus}>Updating server… this can take a minute or two.</Text>
-        ) : serverUpdate?.finishedAt ? (
-          <Text style={styles.updateStatus}>
-            {serverUpdate.exitCode === 0 ? "Last update succeeded" : `Last update failed (exit ${serverUpdate.exitCode})`}
-            {" · "}
-            {new Date(serverUpdate.finishedAt).toLocaleString()}
-          </Text>
-        ) : null}
-        {serverUpdateError && <Text style={styles.error}>{serverUpdateError}</Text>}
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.syncButton} onPress={() => setShowBackups(true)}>
+            <Text style={styles.syncButtonText}>Backups</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.syncButton} onPress={() => setShowImport(true)}>
+            <Text style={styles.syncButtonText}>Import Data</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
-          style={styles.syncButton}
-          onPress={confirmUpdateServer}
-          disabled={triggeringServerUpdate || !!serverUpdate?.running}
+          style={styles.signOutButton}
+          onPress={() => Alert.alert("Sign out", "You can sign back in any time; your data stays on the server.", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Sign Out", style: "destructive", onPress: signOut },
+          ])}
         >
-          {triggeringServerUpdate || serverUpdate?.running ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.syncButtonText}>Update Server</Text>
-          )}
+          <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
-        {serverUpdate?.log ? (
-          <>
-            <TouchableOpacity onPress={() => setShowServerLog(!showServerLog)}>
-              <Text style={styles.logToggle}>{showServerLog ? "Hide log" : "Show log"}</Text>
-            </TouchableOpacity>
-            {showServerLog && <Text style={styles.logText}>{serverUpdate.log}</Text>}
-          </>
-        ) : null}
-      </View>
 
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.syncButton} onPress={() => setShowHelp(true)}>
-          <Text style={styles.syncButtonText}>Help</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.syncButton} onPress={() => setShowBackups(true)}>
-          <Text style={styles.syncButtonText}>Backups</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.syncButton} onPress={() => setShowImport(true)}>
-          <Text style={styles.syncButtonText}>Import Data</Text>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity
-        style={styles.signOutButton}
-        onPress={() => Alert.alert("Sign out", "You can sign back in any time; your data stays on the server.", [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign Out", style: "destructive", onPress: signOut },
-        ])}
-      >
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
-
-      {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
-      {showHelp && <HelpScreen onClose={() => setShowHelp(false)} />}
-      {showImport && <ImportScreen onClose={() => setShowImport(false)} />}
-    </View>
+        {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
+        {showImport && <ImportScreen onClose={() => setShowImport(false)} />}
+      </ScrollView>
+    </Modal>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    container: { flex: 1, padding: 14, backgroundColor: colors.card },
+    container: { flex: 1, backgroundColor: colors.card },
+    contentContainer: { padding: 14 },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+    title: { fontSize: 17, fontWeight: "700", color: colors.text },
+    doneText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
     card: { backgroundColor: colors.surface, borderRadius: 10, padding: 14, marginBottom: 14 },
     label: { color: colors.textMuted3, fontSize: 13 },
     value: { fontSize: 16, fontWeight: "600", marginTop: 3, marginBottom: 6, color: colors.text },

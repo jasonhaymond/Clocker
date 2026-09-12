@@ -24,11 +24,15 @@ export function TimesheetsScreen() {
   const [editingJob, setEditingJob] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  // Archived jobs are hidden everywhere except the Jobs screen itself — not selectable
+  // here, matching Export/History's own job checklists.
+  const activeJobs = useMemo(() => store.jobs.filter((j) => !j.archived), [store.jobs]);
+
   useEffect(() => {
-    if (selectedJobId && store.jobs.some((j) => j.id === selectedJobId)) return;
-    setSelectedJobId(store.jobs[0]?.id ?? null);
+    if (selectedJobId && activeJobs.some((j) => j.id === selectedJobId)) return;
+    setSelectedJobId(activeJobs[0]?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.jobs.map((j) => j.id).join(",")]);
+  }, [activeJobs.map((j) => j.id).join(",")]);
 
   const job = store.jobs.find((j) => j.id === selectedJobId) ?? null;
 
@@ -112,10 +116,10 @@ export function TimesheetsScreen() {
     setStatus(messages.join(" "));
   }
 
-  if (store.jobs.length === 0) {
+  if (activeJobs.length === 0) {
     return (
       <div className="screen">
-        <p className="muted">Add a job in the Jobs tab first.</p>
+        <p className="muted">{store.jobs.length > 0 ? "No active jobs — archived jobs aren't shown here." : "Add a job in the Jobs tab first."}</p>
       </div>
     );
   }
@@ -123,7 +127,7 @@ export function TimesheetsScreen() {
   return (
     <div className="screen">
       <div className="chip-row">
-        {store.jobs.map((j) => (
+        {activeJobs.map((j) => (
           <button
             key={j.id}
             className={`chip job-chip${selectedJobId === j.id ? " selected" : ""}`}

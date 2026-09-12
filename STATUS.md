@@ -163,6 +163,21 @@ module (`shared/src/importFormat.ts`), a documented header/column reference
 (`docs/import-format.md`), and a Settings → Import Data screen on both clients. Verified
 for real against the user's own genuine Hours Tracker export.
 
+**Amended again (2026-09-12, same day, later session):** per a user-supplied screenshot
+showing Settings as a 6th bottom tab with its lower content clipped behind the tab bar,
+moved mobile's Settings/Help behind a header hamburger menu to match web's own layout
+exactly (5 bottom tabs, same as web) — turned out the REAL bug was that Settings had no
+`ScrollView` at all, not just insufficient padding, making its lower buttons genuinely
+unreachable on-device. Also fixed, per a second screenshot: the Jobs screen (both
+clients) was interleaving archived jobs alphabetically with active ones instead of
+sorting them to the bottom — `1.16.0` (§3).
+
+**Amended again (2026-09-12, same day, later session):** archived jobs are now hidden
+everywhere except the Jobs screen (both clients) — they'd still been showing up as
+pickable options in Export/History's job checklists and Timesheets' job selector (Clock
+already excluded them). The Jobs screen itself now hides archived jobs by default too,
+with a "Show Archived Jobs (N)" toggle to reveal them — `1.17.0` (§3).
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -189,7 +204,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.15.0` as of this session; the
+full stop. All five (four packages, one version) are at `1.17.0` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every
@@ -790,6 +805,77 @@ Verified present in the repo (code + docs, not just described in memory):
     compile only (file-picking itself needs a device) — uses `expo-file-system`'s own
     built-in `File.pickFileAsync`, so no new native dependency was needed (an initial
     `expo-document-picker` install was reverted once this was discovered).
+- **Mobile: Settings/Help moved behind a header hamburger menu, matching web's layout.**
+  `app/src/navigation/RootNavigator.tsx`'s bottom tab bar is now Clock/Jobs/History/
+  Timesheets/Export — 5 tabs, same as web — with Settings and Help removed as tabs
+  entirely. A `menu` icon added via `headerRight` opens a small dropdown (Settings, Help)
+  rendered as a genuine sibling of `<Tab.Navigator>` rather than nested inside
+  `headerRight`'s own layout slot — necessary because the dropdown's full-screen dismiss
+  backdrop (`Pressable` + `StyleSheet.absoluteFill`) needs to cover the whole screen
+  including the tab bar, which it can't do from inside the header's own small bounding
+  box. Positioned via `useSafeAreaInsets()` plus a per-platform approximate header height
+  constant rather than `@react-navigation/elements`' `useHeaderHeight()`, since that hook
+  only works from inside the navigator's own header context and this dropdown is
+  deliberately rendered outside it — a few pixels of imprecision is an acceptable trade
+  for not needing a device to re-verify every time the header's own styling changes.
+  `SettingsScreen.tsx` gained an `onClose` prop and is now presented as a slide-up
+  `Modal` with its own `ScrollView` and "Done" button, matching Backups/Import Data's
+  existing structure exactly; its own internal "Help" button was removed since Help is
+  now a peer hamburger destination, matching web's own `SettingsScreen.tsx` (Backups and
+  Import Data stay as buttons nested inside Settings on both clients, unchanged).
+  - **Real bug found and fixed along the way**: `SettingsScreen`'s content sat in a plain
+    `View`, not a `ScrollView` — on any device where Appearance/Last synced/App version/
+    Server/Backups/Import Data/Sign Out together were taller than the visible area
+    (confirmed by the user's own screenshot showing "Backups" clipped at the very bottom
+    edge, just above the tab bar), everything past that point was genuinely unreachable,
+    not merely visually tight. Fixed as part of the same restructuring, which needed a
+    real `ScrollView` anyway to match the Backups/Import Data modal pattern.
+  - **Not verified on a real device or emulator** (none available this session, same
+    standing limitation as every other mobile UI change) — verified via a clean
+    `tsc --noEmit` and `expo export` bundle compile, plus careful reasoning through React
+    Native's absolute-positioning model for why the dropdown backdrop needed to move
+    outside `headerRight`'s slot (an `expo-router`/`@react-navigation/elements`
+    `useHeaderHeight()` attempt was tried first and reverted after realizing it throws/
+    misbehaves outside the header's own context — caught by reasoning about the context
+    boundary, not by running it). Worth a real-device pass to confirm the dropdown's
+    approximate vertical position actually lands just under the header as intended.
+- **Jobs screen (both clients): archived jobs now sort to the bottom.** Reported by the
+  user via a screenshot showing two archived (struck-through) jobs interleaved
+  alphabetically at the top of the list, ahead of every active job. Mobile's `listJobs`
+  query already sorted alphabetically via SQL (`ORDER BY name COLLATE NOCASE`) — added a
+  stable secondary sort in `JobsScreen.tsx` itself (`Number(a.archived) - Number(b.archived)`)
+  that moves archived jobs after active ones without disturbing the alphabetical order
+  already established within either group. Web's server returns jobs in no particular
+  order at all, so `web/src/screens/JobsScreen.tsx` now does the full sort itself
+  (archived-last, then alphabetical, `localeCompare` with base sensitivity to match
+  SQL's case-insensitive collation) — different implementations, identical resulting
+  behavior on both clients.
+- **Archived jobs hidden everywhere except the Jobs screen, both clients**, per explicit
+  instruction: "if a job is archived, hide it everywhere but the jobs page." Clock
+  already excluded archived jobs from its job picker on both clients (unchanged); fixed
+  the three spots that didn't:
+  - **Export**: mobile's `load()` switched from `listJobs(true)` to `listJobs(false)`;
+    web's job checklist, its default-select-all-on-load effect, and Select All all now
+    filter through a new `activeJobs` memo instead of `store.jobs` directly.
+  - **History**: same treatment on both clients (mobile `listJobs(false)`; web's
+    checklist/`allJobsSelected`/Select All all reading from an `activeJobs` memo).
+  - **Timesheets**: mobile's `listJobs(false)`; web's job-chip selector and its
+    auto-select-first-job effect now read from an `activeJobs` memo, so a job that gets
+    archived while selected automatically falls through to the next active one.
+  - `ImportScreen`'s job-name matching deliberately still sees archived jobs (via
+    `listJobs(true)`/`store.jobs` unchanged) — that's matching against existing data to
+    avoid creating a duplicate job on re-import, not a picker UI, so it's outside the
+    scope of "hide archived jobs" and was left alone on purpose.
+  - **Jobs screen itself**: now hides archived jobs by default too (the one screen where
+    they're still reachable at all), with a "Show Archived Jobs (N)" / "Hide Archived
+    Jobs" toggle — count only shown when there's at least one archived job. Empty-state
+    messaging distinguishes "no jobs at all" from "no *active* jobs, N archived hidden."
+  - **Verified for real via Playwright** (web): created an active job and an
+    archive-bound job, archived the second, and confirmed it disappeared from Clock's
+    picker, Export's checklist, History's checklist, and Timesheets' chips — and from
+    the Jobs screen itself until "Show Archived Jobs" was clicked, then reappeared, then
+    hid again on toggling back. Mobile verified via a clean `expo export` bundle compile
+    only — no device/emulator access this session.
 
 ## 4. Known gaps / open work
 

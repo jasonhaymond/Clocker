@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.17.0] - 2026-09-12
+
+### Changed
+
+- **Archived jobs are now hidden everywhere except the Jobs screen** (both clients) —
+  previously they still showed up as pickable options in Export's and History's job
+  filter checklists and Timesheets' job selector (Clock already excluded them). An
+  archived job's own detail/rate history is still reachable by unarchiving it first from
+  the Jobs screen.
+- **Jobs screen (both clients): archived jobs are now hidden by default**, with a "Show
+  Archived Jobs (N)" toggle to reveal them — previously every job, active or archived,
+  was always shown together (sorted archived-last as of `1.16.0`).
+
+## [1.16.0] - 2026-09-12
+
+### Added
+
+- **Mobile: Settings and Help moved behind a header hamburger menu**, matching web's own
+  layout exactly — reported by the user via a screenshot showing Settings as a 6th bottom
+  tab with its lower content clipped. The bottom tab bar is now Clock/Jobs/History/
+  Timesheets/Export (5 tabs, same as web); a menu icon in the header's top right opens a
+  small dropdown offering Settings and Help as peer destinations, closing on selecting an
+  item or tapping anywhere else on screen. Both now present as a slide-up modal (matching
+  Backups/Import Data's existing look), with Settings gaining its own "Done" button.
+
+### Fixed
+
+- **Mobile: Settings screen had no scroll container at all** — a plain `View`, not a
+  `ScrollView`, so on any device where its content (Appearance, Last synced, App version,
+  Server, Backups, Import Data, Sign Out) was taller than the visible area, the lower
+  items were genuinely unreachable, not just visually tight against the tab bar. This is
+  what the reported screenshot's clipped "Backups" button actually was. Fixed as part of
+  the same change that turned Settings into a modal (which needed a real `ScrollView`
+  anyway to match Backups/Import Data's own structure).
+- **Jobs screen (both clients): archived jobs now sort after active ones** instead of
+  interleaving alphabetically with them — reported by the user via a screenshot showing
+  two archived (struck-through) jobs at the very top of the list. Alphabetical order
+  within each group (active, then archived) is preserved either way.
+
 ## [1.15.0] - 2026-09-12
 
 ### Added

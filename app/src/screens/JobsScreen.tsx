@@ -39,11 +39,22 @@ export function JobsScreen() {
   const [rate, setRate] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
+  // The Jobs screen is the one place archived jobs are still reachable at all (every
+  // other screen filters them out entirely) — but even here, hidden by default so a long
+  // history of old jobs doesn't clutter the list; this toggle is the deliberate exception.
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = useCallback(() => {
     listJobs(true).then(setJobs);
   }, []);
   useDbRefresh(load);
+
+  // listJobs(true) already sorts alphabetically (SQL `ORDER BY name`) — this just moves
+  // archived jobs after active ones without disturbing that alphabetical order within
+  // either group (a stable sort on a single boolean key does exactly that).
+  const sortedJobs = useMemo(() => [...jobs].sort((a, b) => Number(a.archived) - Number(b.archived)), [jobs]);
+  const archivedCount = useMemo(() => jobs.filter((j) => j.archived).length, [jobs]);
+  const visibleJobs = useMemo(() => (showArchived ? sortedJobs : sortedJobs.filter((j) => !j.archived)), [sortedJobs, showArchived]);
 
   async function addJob() {
     if (!name.trim()) return;
@@ -63,33 +74,42 @@ export function JobsScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={jobs}
+        data={visibleJobs}
         keyExtractor={(j) => j.id}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          <View style={styles.form}>
-            <Text style={styles.formTitle}>Add a job</Text>
-            <TextInput style={styles.input} placeholder="Job name" value={name} onChangeText={setName} />
-            <TextInput
-              style={styles.input}
-              placeholder="Hourly rate (optional)"
-              keyboardType="decimal-pad"
-              value={rate}
-              onChangeText={setRate}
-            />
-            <View style={styles.swatches}>
-              {PALETTE.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.swatch, { backgroundColor: c }, c === color && styles.swatchSelected]}
-                  onPress={() => setColor(c)}
-                />
-              ))}
+          <>
+            <View style={styles.form}>
+              <Text style={styles.formTitle}>Add a job</Text>
+              <TextInput style={styles.input} placeholder="Job name" value={name} onChangeText={setName} />
+              <TextInput
+                style={styles.input}
+                placeholder="Hourly rate (optional)"
+                keyboardType="decimal-pad"
+                value={rate}
+                onChangeText={setRate}
+              />
+              <View style={styles.swatches}>
+                {PALETTE.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.swatch, { backgroundColor: c }, c === color && styles.swatchSelected]}
+                    onPress={() => setColor(c)}
+                  />
+                ))}
+              </View>
+              <TouchableOpacity style={styles.addButton} onPress={addJob}>
+                <Text style={styles.addButtonText}>Add Job</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.addButton} onPress={addJob}>
-              <Text style={styles.addButtonText}>Add Job</Text>
-            </TouchableOpacity>
-          </View>
+            {archivedCount > 0 && (
+              <TouchableOpacity onPress={() => setShowArchived(!showArchived)} style={styles.archivedToggle}>
+                <Text style={styles.archivedToggleText}>
+                  {showArchived ? "Hide Archived Jobs" : `Show Archived Jobs (${archivedCount})`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         }
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.jobRow} onPress={() => setEditingJob(item)}>
@@ -106,7 +126,11 @@ export function JobsScreen() {
             </TouchableOpacity>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No jobs yet. Add your first one above.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {jobs.length > 0 ? "No active jobs — tap \"Show Archived Jobs\" above to see archived ones." : "No jobs yet. Add your first one above."}
+          </Text>
+        }
       />
 
       {editingJob && <JobDetailModal job={editingJob} onClose={() => setEditingJob(null)} />}
@@ -126,6 +150,8 @@ function createStyles(colors: ThemeColors) {
     swatchSelected: { borderWidth: 3, borderColor: colors.text },
     addButton: { backgroundColor: colors.primary, borderRadius: 8, padding: 10, alignItems: "center" },
     addButtonText: { color: colors.onPrimary, fontWeight: "600", fontSize: 14 },
+    archivedToggle: { alignItems: "center", paddingVertical: 8, marginBottom: 6 },
+    archivedToggleText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
     jobRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 8 },
     dot: { width: 12, height: 12, borderRadius: 6 },
     jobName: { fontSize: 15, fontWeight: "500", color: colors.text },

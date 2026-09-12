@@ -55,7 +55,8 @@ export function ExportScreen() {
   const { pick, modal: dateModal } = useDateTimePicker();
 
   const load = useCallback(() => {
-    listJobs(true).then((rows) => {
+    // Archived jobs are hidden everywhere except the Jobs screen itself.
+    listJobs(false).then((rows) => {
       setJobs(rows);
       if (!didInitJobFilter.current && rows.length > 0) {
         setSelectedJobIds(new Set(rows.map((j) => j.id)));

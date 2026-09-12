@@ -59,13 +59,16 @@ export function ExportScreen() {
     return rangeFor(rangeKey);
   }, [rangeKey, customStart, customEnd]);
   const jobsById = useMemo(() => Object.fromEntries(store.jobs.map((j) => [j.id, j])), [store.jobs]);
+  // Archived jobs are hidden everywhere except the Jobs screen itself — not offered as a
+  // filter option here, same as History's own job checklist.
+  const activeJobs = useMemo(() => store.jobs.filter((j) => !j.archived), [store.jobs]);
 
   useEffect(() => {
-    if (!didInitJobFilter.current && store.jobs.length > 0) {
-      setSelectedJobIds(new Set(store.jobs.map((j) => j.id)));
+    if (!didInitJobFilter.current && activeJobs.length > 0) {
+      setSelectedJobIds(new Set(activeJobs.map((j) => j.id)));
       didInitJobFilter.current = true;
     }
-  }, [store.jobs]);
+  }, [activeJobs]);
 
   function toggleJob(id: string) {
     setSelectedJobIds((prev) => {
@@ -182,7 +185,7 @@ export function ExportScreen() {
       <div className="section-header-row">
         <h3>Job</h3>
         <div className="header-row-actions">
-          <button className="link" onClick={() => setSelectedJobIds(new Set(store.jobs.map((j) => j.id)))}>
+          <button className="link" onClick={() => setSelectedJobIds(new Set(activeJobs.map((j) => j.id)))}>
             Select All
           </button>
           <span className="link-separator">·</span>
@@ -192,14 +195,18 @@ export function ExportScreen() {
         </div>
       </div>
       <div className="job-select-list">
-        {store.jobs.map((job) => (
+        {activeJobs.map((job) => (
           <label key={job.id} className="job-select-row">
             <input type="checkbox" checked={selectedJobIds.has(job.id)} onChange={() => toggleJob(job.id)} />
             <span className="dot" style={{ backgroundColor: job.colorHex }} />
             <span className="job-select-name">{job.name}</span>
           </label>
         ))}
-        {store.jobs.length === 0 && <p className="hint">Add a job in the Jobs tab first.</p>}
+        {activeJobs.length === 0 && (
+          <p className="hint">
+            {store.jobs.length > 0 ? "No active jobs — archived jobs aren't shown here." : "Add a job in the Jobs tab first."}
+          </p>
+        )}
       </div>
 
       <div className="totals-row">
