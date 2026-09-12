@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.17.2] - 2026-09-12
+
+### Changed
+
+- **The "Update Server" button now hard-resets the host to `origin` before pulling and
+  deploying**, instead of refusing whenever the working tree is dirty (with a narrow
+  exception for a lone locally-modified `package-lock.json`). In practice that exception
+  wasn't reliably catching every case — reported by the user as the button still failing
+  with what should've been just lockfile drift. The host is supposed to be pure git-tracked
+  state, so `git fetch origin && git reset --hard origin/<branch> && git pull --ff-only`
+  now runs first, unconditionally discarding any local drift (lockfile or otherwise) rather
+  than trying to detect and special-case every "safe" kind of it. Deliberately scoped to
+  this production endpoint only — `scripts/update.mjs` (local dev) is unchanged and still
+  refuses to touch a dirty working tree, since a developer's machine can have real
+  uncommitted work in progress.
+
 ## [1.17.1] - 2026-09-12
 
 ### Added

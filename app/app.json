@@ -3,7 +3,7 @@
     "name": "Clocker",
     "slug": "clocker",
     "scheme": "clocker",
-    "version": "1.17.1",
+    "version": "1.17.2",
     "runtimeVersion": {
       "policy": "appVersion"
     },

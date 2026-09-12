@@ -211,6 +211,25 @@ web app (blocked backwards clock-out + cancel button removes the shift with no H
 trace; a real sub-minute shift is correctly hidden; a real 5-minute shift still shows) and
 `expo export --platform android` for the mobile bundle (no device/emulator available).
 
+**Amended again (2026-09-12, same day, later session):** the user reported the "Update
+Server" button was still failing on dirty-working-tree drift even after the earlier
+`discardSafeLockfileDrift` fix (§7/`STATUS.md` history) — that helper only special-cased a
+lone modified `package-lock.json`, and evidently wasn't reliably covering what's actually
+showing up on the host. Replaced the whole "detect and refuse" approach for this endpoint:
+`scripts/host-agent.mjs`'s `/update` handler no longer pre-checks the tree at all — its
+update command now runs `git fetch origin && git reset --hard
+"origin/$(git rev-parse --abbrev-ref HEAD)" && git pull --ff-only && npm install && npm run
+deploy -- --skip-app`, unconditionally discarding any local drift before pulling, since a
+production host is supposed to be pure git-tracked state with nothing hand-edited on it.
+Deliberately scoped to this production flow only — `scripts/update.mjs` (local dev) is
+untouched and still refuses on a dirty tree, since a developer's own machine can have real
+uncommitted work in progress. `docs/deployment.md` and `docs/development.md` updated to
+match; `1.17.2` (§3). Verified the git sequence for real against an isolated scratch clone
+(simulated a dirty `package-lock.json` *and* another dirty tracked file — both were
+correctly discarded, landing cleanly on `origin`'s latest commit) — the full command's
+`npm install`/`npm run deploy` tail was not exercised against the real production host (no
+SSH access this session).
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -237,7 +256,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.17.1` as of this session; the
+full stop. All five (four packages, one version) are at `1.17.2` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every

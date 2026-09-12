@@ -64,9 +64,11 @@ pull" rule: a locally modified `package-lock.json` on its own is discarded autom
 first (`npm install` a few lines later regenerates it regardless, and it drifts machine-
 to-machine even when nothing meaningful changed) — unless `package.json` is *also*
 modified, since that pairing usually means an intentional, uncommitted dependency change
-in progress rather than drift. Same rule, same helper
-(`discardSafeLockfileDrift` in `scripts/lib.mjs`), as the "Update Server" button's
-production flow — see `docs/deployment.md#triggering-an-update-from-the-app`.
+in progress rather than drift (`discardSafeLockfileDrift` in `scripts/lib.mjs`). This stays
+deliberately conservative because a developer's machine can have real uncommitted work in
+progress — contrast the "Update Server" button's production flow, which hard-resets to
+origin unconditionally instead, since a production host is never supposed to carry its own
+edits at all — see `docs/deployment.md#triggering-an-update-from-the-app`.
 
 Both scripts are plain Node (`scripts/lib.mjs` has the shared `run`/`step`/`warn`/`fail`
 helpers) — no extra dependency needed to run them, and they degrade gracefully rather than

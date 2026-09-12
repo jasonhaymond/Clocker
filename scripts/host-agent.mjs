@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import cron from "node-cron";
 import jwt from "jsonwebtoken";
-import { composeFileFor, discardSafeLockfileDrift, readEnvValue } from "./lib.mjs";
+import { composeFileFor, readEnvValue } from "./lib.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const envProdPath = join(rootDir, ".env.prod");
@@ -72,8 +72,18 @@ function appendLogTo(state, chunk) {
 }
 
 // ---------------------------------------------------------------------------
-// Update ("Update Server" button) — unchanged behavior/contract from before backups
-// existed; see docs/deployment.md#triggering-an-update-from-the-app.
+// Update ("Update Server" button) — see docs/deployment.md#triggering-an-update-from-the-app.
+//
+// Unlike scripts/update.mjs (the local dev script, which refuses to touch a dirty working
+// tree — a developer's machine can legitimately have uncommitted work in progress), this
+// production host is supposed to be pure git-tracked state: nothing should ever be edited
+// on it directly. In practice something still drifts anyway (a locally modified
+// package-lock.json, e.g. from an `npm install` run directly on the host — see STATUS.md),
+// and a plain `git pull --ff-only` refuses outright the moment anything is dirty. Rather
+// than trying to special-case every kind of "safe" drift, this always hard-resets to
+// origin first: whatever's on the host that isn't a committed change gets discarded,
+// unconditionally, before pulling and deploying. That's a deliberate one-way door for this
+// endpoint specifically — never do this on a developer's own machine.
 // ---------------------------------------------------------------------------
 function startUpdate() {
   updateState.running = true;
@@ -81,7 +91,8 @@ function startUpdate() {
   updateState.finishedAt = null;
   updateState.exitCode = null;
   updateState.log = [];
-  const command = "git pull --ff-only && npm install && npm run deploy -- --skip-app";
+  const command =
+    'git fetch origin && git reset --hard "origin/$(git rev-parse --abbrev-ref HEAD)" && git pull --ff-only && npm install && npm run deploy -- --skip-app';
   appendLogTo(updateState, `[update] Starting: ${command}`);
 
   // --skip-app: a UI button tap shouldn't silently kick off a cloud EAS build every time
@@ -480,14 +491,9 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === "POST" && url.pathname === "/update") {
       if (anyBusy()) return send(409, { error: "Another operation is already running" });
-      // A locally modified package-lock.json alone (e.g. from an `npm install` run
-      // directly on this host, outside the normal update flow) shouldn't block this
-      // button forever — see discardSafeLockfileDrift's own comment for the exact rule
-      // and why package.json also being dirty is the one case left alone.
-      const { remaining } = discardSafeLockfileDrift(rootDir);
-      if (remaining.length > 0) {
-        return send(409, { error: "Server's working tree has uncommitted changes — resolve manually before updating." });
-      }
+      // No dirty-tree precheck here on purpose: startUpdate's command hard-resets to
+      // origin as its first step, so any local drift (lockfile or otherwise) is always
+      // discarded rather than needing to be detected and refused ahead of time here.
       startUpdate();
       return send(202, { started: true });
     }
