@@ -35,7 +35,7 @@ import {
   type TimesheetExportFormat,
 } from "@clocker/shared";
 
-const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 const PERIOD_TYPES: { key: PeriodType; label: string }[] = [
   { key: "weekly", label: "Weekly" },

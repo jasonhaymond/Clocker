@@ -26,13 +26,13 @@
   --invert-bg: #111;
   --invert-text: #fff;
 
-  --primary: #2563eb;
+  --primary: #1d4ed8;
   --on-primary: #fff;
-  --header-bg: #2563eb;
+  --header-bg: #1d4ed8;
   --header-text: #fff;
 
-  --danger: #dc2626;
-  --danger-fill: #dc2626;
+  --danger: #b91c1c;
+  --danger-fill: #b91c1c;
   --danger-bg: #fef2f2;
   --danger-border: #fecaca;
   --danger-text: #991b1b;

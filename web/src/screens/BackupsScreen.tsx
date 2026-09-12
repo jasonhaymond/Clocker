@@ -1,3 +1,4 @@
+import { buildBackupRemoteUserScript } from "@clocker/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getBackupArchives,
@@ -118,6 +119,8 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showRemoteSetup, setShowRemoteSetup] = useState(false);
+  const [remoteSetupCopied, setRemoteSetupCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [archives, setArchives] = useState<BackupArchive[]>([]);
@@ -169,6 +172,18 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   function retryKeyGeneration() {
     setKeyPollAttempt(0);
     loadConfig();
+  }
+
+  async function copyRemoteSetupScript() {
+    const script = buildBackupRemoteUserScript({ repoUrl, sshPublicKey: config?.sshPublicKey });
+    try {
+      await navigator.clipboard.writeText(script);
+      setRemoteSetupCopied(true);
+      setTimeout(() => setRemoteSetupCopied(false), 2000);
+    } catch {
+      // Clipboard access denied/unavailable — the text is still right there to select
+      // and copy by hand, same fallback ExportScreen/TimesheetsScreen already rely on.
+    }
   }
 
   const loadArchives = useCallback(() => {
@@ -276,9 +291,10 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         <div className="row-title">How to set this up</div>
         <ol className="setup-steps">
           <li>
-            If backing up to a remote server over SSH, copy the key below into that
-            server's <code>~/.ssh/authorized_keys</code> (a local folder path needs no key
-            at all — skip to step 2).
+            If backing up to a remote server over SSH, that server needs a dedicated
+            account that recognizes the key below — see "Set up a dedicated backup user"
+            underneath the key for copy-pasteable commands to create one (a local folder
+            path needs no key at all — skip to step 2).
           </li>
           <li>Enter the repository location and a passphrase below, then Save Settings.</li>
           <li>Set a schedule so backups happen on their own, or just use Back Up Now whenever you want one.</li>
@@ -317,6 +333,24 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <pre className="update-log">Generating…</pre>
+        )}
+
+        <button className="link" onClick={() => setShowRemoteSetup(!showRemoteSetup)}>
+          {showRemoteSetup ? "Hide remote server setup instructions" : "Set up a dedicated backup user on the remote server"}
+        </button>
+        {showRemoteSetup && (
+          <>
+            <p className="hint">
+              Recommended over granting this key access to your own login: a dedicated
+              account restricted to only running <code>borg serve</code> against one path
+              means the key is useless for anything else, even if it were ever leaked. Run
+              these on the remote backup server itself (not this app's own server):
+            </p>
+            <pre className="update-log">{buildBackupRemoteUserScript({ repoUrl, sshPublicKey: config?.sshPublicKey })}</pre>
+            <button className="link" onClick={copyRemoteSetupScript}>
+              {remoteSetupCopied ? "Copied!" : "Copy"}
+            </button>
+          </>
         )}
       </section>
 

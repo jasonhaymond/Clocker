@@ -112,6 +112,32 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
 type Tab = "clock" | "jobs" | "history" | "timesheets" | "export";
 type Overlay = "settings" | "help" | null;
 
+// Persisted across reloads so refreshing the browser doesn't dump you back on Clock —
+// same localStorage pattern theme.tsx already uses for its own setting.
+const TAB_STORAGE_KEY = "clocker.tab";
+const OVERLAY_STORAGE_KEY = "clocker.overlay";
+const TAB_KEYS: Tab[] = ["clock", "jobs", "history", "timesheets", "export"];
+
+function readStoredTab(): Tab {
+  try {
+    const stored = localStorage.getItem(TAB_STORAGE_KEY);
+    if (stored && (TAB_KEYS as string[]).includes(stored)) return stored as Tab;
+  } catch {
+    // localStorage unavailable (private mode, etc.) — fall back to the default tab.
+  }
+  return "clock";
+}
+
+function readStoredOverlay(): Overlay {
+  try {
+    const stored = localStorage.getItem(OVERLAY_STORAGE_KEY);
+    if (stored === "settings" || stored === "help") return stored;
+  } catch {
+    // localStorage unavailable — fall back to no overlay.
+  }
+  return null;
+}
+
 // Same icon set (Ionicons) as app/src/navigation/RootNavigator.tsx's bottom tab bar, via
 // react-icons/io5 — this bar is deliberately styled to mimic that one as closely as a web
 // page reasonably can, right down to which icon goes with which tab.
@@ -192,8 +218,25 @@ function HeaderMenu({ overlay, onSelect }: { overlay: Overlay; onSelect: (o: Ove
 }
 
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>("clock");
-  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [tab, setTab] = useState<Tab>(readStoredTab);
+  const [overlay, setOverlay] = useState<Overlay>(readStoredOverlay);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+    } catch {
+      // ignore — worst case, the tab just isn't remembered across reloads.
+    }
+  }, [tab]);
+
+  useEffect(() => {
+    try {
+      if (overlay) localStorage.setItem(OVERLAY_STORAGE_KEY, overlay);
+      else localStorage.removeItem(OVERLAY_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, [overlay]);
 
   function selectTab(t: Tab) {
     setOverlay(null);

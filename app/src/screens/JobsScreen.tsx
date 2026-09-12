@@ -6,7 +6,7 @@ import type { Job } from "@clocker/shared";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import { JobDetailModal } from "./JobDetailModal";
 
-const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 function JobRatePreview({ jobId }: { jobId: string }) {
   const { colors } = useTheme();

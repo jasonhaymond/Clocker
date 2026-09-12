@@ -3,7 +3,7 @@ import type { Job } from "@clocker/shared";
 import { JobEditor } from "../components/JobEditor";
 import { useStore } from "../store";
 
-const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 function activeRateLabel(store: ReturnType<typeof useStore>, jobId: string): string | null {
   const tier = store.rateTiers.find((t) => t.jobId === jobId && t.isDefault) ?? store.rateTiers.find((t) => t.jobId === jobId);

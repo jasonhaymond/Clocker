@@ -1,3 +1,4 @@
+import { buildBackupRemoteUserScript } from "@clocker/shared";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
@@ -121,6 +122,7 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showRemoteSetup, setShowRemoteSetup] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [archives, setArchives] = useState<BackupArchive[]>([]);
@@ -297,9 +299,10 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         <Text style={styles.sectionLabel}>How to set this up</Text>
         <View style={styles.setupSteps}>
           <Text style={styles.setupStep}>
-            1. If backing up to a remote server over SSH, copy the key below into that
-            server's ~/.ssh/authorized_keys (a local folder path needs no key at all —
-            skip to step 2).
+            1. If backing up to a remote server over SSH, that server needs a dedicated
+            account that recognizes the key below — see "Set up a dedicated backup user"
+            underneath the key for copy-pasteable commands to create one (a local folder
+            path needs no key at all — skip to step 2).
           </Text>
           <Text style={styles.setupStep}>2. Enter the repository location and a passphrase below, then Save Settings.</Text>
           <Text style={styles.setupStep}>3. Set a schedule so backups happen on their own, or just use Back Up Now whenever you want one.</Text>
@@ -309,7 +312,9 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
         <Text style={styles.sectionLabel}>Backup destination (SSH)</Text>
         <Text style={styles.hint}>For a remote repository, grant this key access on the backup server — see docs/deployment.md#the-host-agent.</Text>
         {config?.sshPublicKey ? (
-          <Text style={styles.logText}>{config.sshPublicKey}</Text>
+          <Text style={styles.logText} selectable>
+            {config.sshPublicKey}
+          </Text>
         ) : config?.sshPublicKeyError ? (
           <>
             <Text style={styles.error}>Couldn't generate a backup key: {config.sshPublicKeyError}</Text>
@@ -336,6 +341,26 @@ export function BackupsScreen({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <Text style={styles.logText}>Generating…</Text>
+        )}
+
+        <TouchableOpacity onPress={() => setShowRemoteSetup(!showRemoteSetup)}>
+          <Text style={styles.link}>
+            {showRemoteSetup ? "Hide remote server setup instructions" : "Set up a dedicated backup user on the remote server"}
+          </Text>
+        </TouchableOpacity>
+        {showRemoteSetup && (
+          <>
+            <Text style={styles.hint}>
+              Recommended over granting this key access to your own login: a dedicated
+              account restricted to only running "borg serve" against one path means the
+              key is useless for anything else, even if it were ever leaked. Run these on
+              the remote backup server itself (not this app's own server). Tap and hold to
+              copy.
+            </Text>
+            <Text style={styles.logText} selectable>
+              {buildBackupRemoteUserScript({ repoUrl, sshPublicKey: config?.sshPublicKey })}
+            </Text>
+          </>
         )}
 
         <Text style={styles.sectionLabel}>Repository</Text>

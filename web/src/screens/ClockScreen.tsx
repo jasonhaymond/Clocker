@@ -129,7 +129,7 @@ export function ClockScreen() {
         const pay = payFor(shift, job, worked);
         return (
           <div key={shift.id} className="clock-card">
-            <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#2563eb" }}>
+            <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#1d4ed8" }}>
               {job?.name ?? "Job"}
             </span>
             <div className="clock-timer">{formatDuration(worked)}</div>

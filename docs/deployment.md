@@ -445,17 +445,20 @@ storing these settings in its own database the way a less-sandboxed app might.
   — per the global backup standard — doesn't protect against this host itself failing.
 - **A remote SSH target** (`user@host:path`), which does. The host agent generates a
   dedicated Ed25519 keypair on first use (`.backup-ssh/`, gitignored, isolated from any
-  ambient SSH identity on this host) — copy its public key (shown at the top of Settings →
-  Backups) into the **backup server's** `authorized_keys`, restricted to exactly this:
-  ```
-  command="borg serve --restrict-to-repository /srv/clocker-backup/repositories/clocker",restrict ssh-ed25519 AAAA... clocker-backup
-  ```
-  Create that repository directory on the backup server (`mkdir -p
-  /srv/clocker-backup/repositories/clocker`) before the first backup runs — Borg
-  initializes the repo itself (`borg init --encryption repokey-blake2`) the first time it's
-  used, but the directory and the restricted `authorized_keys` entry are yours to set up
-  (this is exactly the kind of system-level, another-host config this project won't
-  automate — see the global standard's automation risk-tiering).
+  ambient SSH identity on this host) — that key needs a **dedicated, restricted account**
+  on the backup server rather than access to your own login, so it's useless for anything
+  else even if it were ever leaked. Settings → Backups has a "Set up a dedicated backup
+  user on the remote server" toggle right under the generated key that prints the exact
+  copy-pasteable commands (creates a system user with a `nologin` shell, the repository
+  directory, and a restricted `authorized_keys` entry scoped to just `borg serve` against
+  that one repository) — use that instead of retyping the commands here, so there's one
+  source of truth (`shared/src/backupRemoteSetup.ts`) instead of two that can drift apart.
+  Default convention it follows: user `clocker-backup`, repository
+  `/srv/clocker-backup/repositories/clocker`. Borg initializes the repository itself
+  (`borg init --encryption repokey-blake2`) the first time it's used — the directory and
+  the restricted `authorized_keys` entry are yours to set up (this is exactly the kind of
+  system-level, another-host config this project won't automate — see the global
+  standard's automation risk-tiering).
 
 **The passphrase is genuinely unrecoverable if lost** — repokey-blake2 encryption derives
 the key from it, and it's stored write-only (Settings never redisplays it, only whether
