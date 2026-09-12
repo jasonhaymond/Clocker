@@ -624,14 +624,18 @@ Verified present in the repo (code + docs, not just described in memory):
   URL as remote when it's `ssh://...` or matches `user@host:path` exactly — `user@host`
   alone (no colon) is silently treated as a plain LOCAL path instead, resolved relative
   to wherever `borg` happens to be invoked from (a per-run temp staging directory here,
-  hence the `/tmp/...` prefix). Fixed with a new `validateRepoUrl` check in
-  `scripts/host-agent.mjs`: rejects a "Repo URL" that contains "@" but doesn't match the
-  required `user@host:path`/`ssh://` shape, both at save time (`PATCH /backup/config`,
-  400 with a specific message) and defensively inside `runBackupNow`/`restoreBackup` (in
-  case a bad value was already saved before this check existed). Verified functionally
-  against seven representative inputs (empty, local path, valid `user@host:path`, bare
-  `user@host`, trailing colon with no path, `ssh://` form, and whitespace padding) — all
-  matched the expected accept/reject outcome.
+  hence the `/tmp/...` prefix). Briefly (`1.12.0`) added a `validateRepoUrl` check
+  rejecting this shape at save/run time, **then removed it again in `1.13.0` per explicit
+  instruction**: the user's Haydrop app uses the exact same kind of feature against the
+  same Borg server and never validates this field either — it just passes whatever's
+  typed straight to `borg`, and that's the preferred behavior here too (see Haydrop's own
+  `api/src/services/backup.ts`/`docs/deployment-guide.md`, which confirms Haydrop's setup
+  guide actually still uses a full explicit path AND a real shell, `/bin/bash` — the same
+  real-shell fix landed here independently above; only the validation itself was
+  reverted). Settings → Backups now accepts any "Repo URL" (trimmed of whitespace only)
+  with no format checking, same as before `1.12.0` — Borg's own requirement for
+  `user@host:path`/`ssh://...` to be recognized as remote hasn't changed, this app just
+  no longer tries to catch a mismatch upfront.
 
 - **"Update Server" (and `npm run update`) now tolerate a locally modified
   `package-lock.json` on their own, not just when it's the *only* dirty file** —

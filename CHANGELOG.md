@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.13.0] - 2026-09-12
+
+### Changed
+
+- **Removed the "Repo URL" format validation added in `1.12.0`, per explicit
+  instruction** — the user's Haydrop app (same Borg server, same kind of feature) never
+  validates this field either; it just passes whatever's typed straight to `borg`, and
+  that's the behavior wanted here too. Settings → Backups no longer rejects a URL that
+  looks like an attempted remote target but is missing `:path` — it accepts anything
+  (trimmed of surrounding whitespace) and lets Borg itself be the judge, same as before
+  `1.12.0`. This doesn't change what Borg itself accepts: a bare `user@host` with no
+  colon is still silently treated as a local path by Borg's own CLI (see `1.12.0`'s
+  entry below for the exact confusing failure that causes) — this app just no longer
+  tries to catch that upfront.
+
 ## [1.12.0] - 2026-09-12
 
 ### Fixed
