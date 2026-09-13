@@ -176,7 +176,7 @@ function createStyles(colors: ThemeColors) {
     hint: { color: colors.textMuted2, fontSize: 12, marginTop: 4, marginBottom: 4, lineHeight: 17 },
     error: { color: colors.danger, fontSize: 12, marginTop: 4, marginBottom: 4 },
     link: { color: colors.primary, fontWeight: "600", fontSize: 13, marginTop: 8 },
-    button: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: "center", marginTop: 10 },
+    button: { backgroundColor: colors.primaryFill, borderRadius: 10, padding: 12, alignItems: "center", marginTop: 10 },
     buttonText: { color: colors.onPrimary, fontSize: 14, fontWeight: "600" },
     logText: { fontFamily: "monospace", fontSize: 10, color: colors.invertText, backgroundColor: colors.invertBg, padding: 8, borderRadius: 6, marginTop: 4 },
   });

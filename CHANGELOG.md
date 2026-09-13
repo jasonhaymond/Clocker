@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.21.0] - 2026-09-12
+
+### Changed
+
+- **The brand blue is now a muted, desaturated navy (`#3f568d`) instead of the old vivid
+  `#1d4ed8`**, on both clients and in the logo — chosen with real WCAG contrast numbers
+  (7.17:1 against white), not by eye. Every place the old blue was hardcoded (job color
+  palettes, the CSV-import default color, the logo/favicon) now uses the new shade.
+
+### Fixed
+
+- **The brand blue is no longer constant across light and dark mode — it couldn't be, and
+  fixing that closes a real accessibility bug.** A color dark enough to read well on white
+  is, by definition, too dark to read as text on a near-black background: the old constant
+  blue measured only ~2.5:1 contrast against dark-mode backgrounds (links, the active tab
+  label, "left this week", the new "Add note" button, etc.), badly failing WCAG AA's
+  4.5:1. `primary` now has its own dark-mode value (`#6b84bd`, 5.00:1 against the dark
+  background) — the same light/dark split `danger`/`success`/`warning` already had; only
+  `primary` was the exception.
+- **Solid-fill buttons (Clock In, Start Break, Add Job, Save, etc.) now stay legible in
+  dark mode regardless of that split**, via a second, deliberately constant "fill" token
+  per color (`primaryFill`/`dangerFill`/`successFill`/`warningFill` — always the light
+  theme's own shade, paired with fixed white button text) — the same fix web's
+  `--danger-fill` already had for the Clock Out button; `success`/`warning` fills (Clock
+  In, Start Break) had the identical bug and are now fixed the same way, and mobile never
+  had any of these fill tokens at all until now. The header stays its own constant brand
+  color (now the muted blue) independent of theme, unchanged in spirit from before.
+
+## [1.20.0] - 2026-09-12
+
+### Added
+
+- **A real app logo, replacing the generic default Expo/unbranded placeholder assets** —
+  a clock-face mark (circle, rim ticks, hands at the classic "10 and 2" pose, three small
+  dots below the hands in the app's own danger/warning/success colors) in the app's
+  constant brand blue (`#1d4ed8`, same in light and dark mode). Applied everywhere the app
+  is branded: the mobile app icon and Android adaptive icon (foreground/background/
+  monochrome layers), the mobile splash icon, a new web favicon (`web/public/favicon.svg`),
+  and the "Clocker" wordmark on both clients' login/auth screen and main header — the
+  header uses an inverted variant (white disc, blue hands) since the original blue-on-blue
+  mark was illegible against the header's own brand-blue background.
+
+## [1.19.0] - 2026-09-12
+
+### Added
+
+- **A notes button on the Clock screen's open-shift card (both clients)** — add or edit a
+  shift's note at any point while still clocked in, not just via the optional post-clock-
+  out prompt (`promptForNotesOnClockOut`) or by editing a closed shift later in History.
+  Shows "Add note" until one exists, then shows the note itself (truncated); tapping either
+  opens the same notes modal, pre-filled when editing. The modal's dismiss button is now
+  labeled "Cancel" instead of "Skip" on both clients, since it's opened from two different
+  contexts now, not just the post-clock-out prompt.
+
 ## [1.18.0] - 2026-09-12
 
 ### Added

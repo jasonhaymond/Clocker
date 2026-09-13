@@ -2,7 +2,7 @@ import { groupRowsByJob, type Break, type Job, type ParsedImportRow, type RateTi
 import { pushChanges } from "../api";
 
 // Same palette JobsScreen/JobEditor already cycle through for a new job's default color.
-const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#3f568d", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 function newId(): string {
   return crypto.randomUUID();

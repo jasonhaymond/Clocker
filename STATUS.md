@@ -289,6 +289,86 @@ code paths (staging `app-version.json`, the live `git`/`npm`/`docker compose` se
 were not exercised end-to-end — no `borg` install, no host-agent reachable from this dev
 environment's browser (CORS), consistent with this feature's standing testing gap.
 
+**Amended again (2026-09-12, same day, later session):** added a notes button to the
+Clock screen's open-shift card (both clients) — a note can now be added or edited at any
+point while still clocked in, not just via the existing optional post-clock-out prompt
+(`promptForNotesOnClockOut`) or by editing an already-closed shift in History. Reused
+`ShiftNotesModal` as-is (it already took a shift/notes and persisted via
+`updateShiftTimes`/`updateShiftNotes`) — just gave the Clock screen a second, manual way
+to open it alongside the existing automatic one, renaming the shared state
+(`notesPrompt`→`notesEditor` on mobile, `notesPromptShift`→`notesEditorShift` on web) to
+reflect that. Also relabeled the modal's dismiss button "Cancel" (was "Skip") on both
+clients, since "Skip" only read naturally for the one-time post-clock-out prompt it was
+originally written for. `1.19.0` (§3). Verified with clean `tsc --noEmit` on both clients,
+`expo export --platform android`, and a real Playwright run against the web app: clocked
+in, added a note while still on the clock (card updated live from "Add note" to the note
+text with no clock-out needed), reopened the editor and confirmed the existing note came
+back pre-filled.
+
+**Amended again (2026-09-12, same day, later session):** designed and applied a real app
+logo — the app's `app/assets/icon.png`/`android-icon-*.png` were still the literal default
+Expo bootstrap placeholder (a generic blue "A" chevron with construction guidelines), and
+web had no favicon at all. Hand-authored an SVG clock mark (circle, four rim ticks tied
+together by a faint ring, hands at the classic "10 and 2" pose, a center dot) in the app's
+`primary` brand color (`#1d4ed8` — deliberately constant across light/dark theme, per
+`ThemeContext.tsx`/`index.css`), rendered to PNGs at each required size via a headless
+Playwright page (no image-generation tool available, no ImageMagick/librsvg dependency
+needed either). Replaced: `app/assets/icon.png`, the three Android adaptive-icon layers
+(foreground scaled to the ~66% safe zone; background solid `#E6F4FE`, the tint already
+configured in `app.json`; monochrome as a single opaque white silhouette for Android 13+
+themed icons), `splash-icon.png` (regenerated for consistency even though no
+`expo-splash-screen` config currently renders it), and added a new `web/public/favicon.svg`
+linked from `index.html` (web had none before). Also applied the mark in-app, next to the
+"Clocker" wordmark, everywhere that text appeared alone: both clients' login/auth screen
+and main header (`app/src/screens/LoginScreen.tsx`, `app/src/navigation/RootNavigator.tsx`
+via a new `HeaderTitle` component, `web/src/App.tsx` ×2). Caught and fixed a real contrast
+bug during this session's own verification: the header uses the same brand blue as its
+background, so the original blue-circle/white-hands mark was nearly invisible there —
+added a second, inverted variant (`logo-mark-inverted.png` — white disc, blue hands) used
+only in the two header spots; the original mark stays on the light/card-colored auth
+screens where it already had good contrast. Per a same-session follow-up request, added
+three small dots below the hands in the app's own `danger`/`warning`/`success` colors
+(`#b91c1c`/`#d97706`/`#16a34a` — the light-theme/base shades, not the lighter dark-theme
+variants, since a logo is a fixed brand asset rather than something that should re-theme
+itself) — regenerated every PNG variant plus the hand-authored favicon.svg to match; the
+monochrome Android layer keeps the dots as shapes (for silhouette parity) but drawn white,
+since Android discards source color there entirely and re-tints with its own single color
+regardless. `1.20.0` (minor — a real new asset/feature, not a fix) (§3). Verified with
+clean `tsc --noEmit` on both clients, `expo export --platform android` (confirmed both new
+PNGs bundle), and real Playwright screenshots of the web auth screen and signed-in header
+both before and after the dots were added (caught and fixed the header contrast bug this
+way) — not checked on an actual mobile device/emulator (none available this session).
+
+**Amended again (2026-09-12, same day, later session):** the user asked to mute the vivid
+brand blue and, in the same breath, to fix button/text contrast for both themes — this
+turned out to be one real fix, not two separate asks. Computed actual WCAG contrast
+ratios (a small Node script, real relative-luminance math, not eyeballed) rather than
+picking a color by feel: the old constant `#1d4ed8` measured 6.70:1 against white (fine)
+but only ~2.5:1 against dark-mode backgrounds (badly failing AA's 4.5:1) — the *exact* same
+gap `danger`/`success`/`warning` already had a light/dark split to cover; `primary` was
+the one color still constant across themes, for no good reason. New palette: `primary`
+becomes a muted H222/S38 navy — `#3f568d` in light mode (7.17:1 vs white), `#6b84bd` in
+dark mode (5.00:1 vs the dark background) — while a NEW, deliberately constant `Fill` token
+per color (`primaryFill`/`dangerFill`/`successFill`/`warningFill`, always the light theme's
+shade) now backs every solid button/chip/switch that pairs with fixed white text, so those
+stay legible in dark mode regardless of what the accent token becomes. This is the same
+pattern web's `--danger-fill` already used for the Clock Out button alone — `success`/
+`warning` had the identical unfixed bug (Clock In/Start Break buttons in dark mode
+measured ~1.7:1, nearly invisible white text), and mobile had none of these fill tokens at
+all before this. Mechanically switched every `backgroundColor: colors.X`/`background:
+var(--X)` call site pairing with white/`onPrimary` text to its `XFill` counterpart on both
+clients (~20 mobile call sites across 12 files, ~9 CSS rules on web) while leaving text/
+border-only accent usages on the theme-reactive token, since those needed the light/dark
+split, not a constant. Regenerated the logo/favicon/all icon PNGs with the new blue, and
+updated every hardcoded `#1d4ed8` left over from before this session's logo work (job color
+palettes ×4, the CSV-import default, `docs/import-format.md`). `1.21.0` (§3). Verified with
+clean `tsc --noEmit` on both clients, `expo export --platform android`, and real Playwright
+screenshots in BOTH light and dark mode (`colorScheme` emulation) of the auth screen, a
+clocked-in Clock card (all three button colors), and the Jobs screen — confirmed the
+"Add note" link/active tab label/Archive link, previously would have been near-invisible
+navy-on-near-black, are now clearly legible in dark mode, while buttons still read cleanly
+with white text in both themes.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -315,7 +395,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.18.0` as of this session; the
+full stop. All five (four packages, one version) are at `1.21.0` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every

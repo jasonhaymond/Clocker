@@ -6,7 +6,7 @@ import type { Job } from "@clocker/shared";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import { JobDetailModal } from "./JobDetailModal";
 
-const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#3f568d", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 function JobRatePreview({ jobId }: { jobId: string }) {
   const { colors } = useTheme();
@@ -148,7 +148,7 @@ function createStyles(colors: ThemeColors) {
     swatches: { flexDirection: "row", gap: 8, marginBottom: 8 },
     swatch: { width: 24, height: 24, borderRadius: 12 },
     swatchSelected: { borderWidth: 3, borderColor: colors.text },
-    addButton: { backgroundColor: colors.primary, borderRadius: 8, padding: 10, alignItems: "center" },
+    addButton: { backgroundColor: colors.primaryFill, borderRadius: 8, padding: 10, alignItems: "center" },
     addButtonText: { color: colors.onPrimary, fontWeight: "600", fontSize: 14 },
     archivedToggle: { alignItems: "center", paddingVertical: 8, marginBottom: 6 },
     archivedToggleText: { color: colors.primary, fontWeight: "600", fontSize: 13 },

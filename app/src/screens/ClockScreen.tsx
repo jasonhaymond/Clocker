@@ -57,7 +57,9 @@ export function ClockScreen() {
   const [tiers, setTiers] = useState<RateTier[]>([]);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const [notesPrompt, setNotesPrompt] = useState<{ shiftId: string; notes: string | null } | null>(null);
+  // Also opened manually (via the notes icon on an open shift's card), not just the
+  // automatic post-clock-out prompt — same modal, same shape, either trigger.
+  const [notesEditor, setNotesEditor] = useState<{ shiftId: string; notes: string | null } | null>(null);
   const [weekDataByJobId, setWeekDataByJobId] = useState<Record<string, { shifts: Shift[]; breaksByShift: Record<string, Break[]> }>>({});
   // Every job's rate tiers/versions, loaded once — needed to show live pay for an open
   // shift (below) the same way History/Timesheets/Export compute it for closed ones.
@@ -182,7 +184,7 @@ export function ClockScreen() {
     await clockOut(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
     const job = jobs.find((j) => j.id === shift.jobId);
-    if (job?.promptForNotesOnClockOut) setNotesPrompt({ shiftId: shift.id, notes: shift.notes });
+    if (job?.promptForNotesOnClockOut) setNotesEditor({ shiftId: shift.id, notes: shift.notes });
   }
 
   function confirmCancelClockIn(shift: Shift, job: Job | null) {
@@ -282,6 +284,15 @@ export function ClockScreen() {
             {pay?.hasRate && <Text style={styles.earnings}>{formatCents(pay.cents)} so far</Text>}
             <Text style={styles.since}>Since {formatClock(shift.clockIn)}</Text>
             {openBreak && <Text style={styles.onBreak}>On break since {formatClock(openBreak.start)}</Text>}
+            <TouchableOpacity
+              style={styles.notesButton}
+              onPress={() => setNotesEditor({ shiftId: shift.id, notes: shift.notes })}
+            >
+              <Ionicons name="create-outline" size={14} color={colors.primary} />
+              <Text style={styles.notesButtonText} numberOfLines={1}>
+                {shift.notes ? shift.notes : "Add note"}
+              </Text>
+            </TouchableOpacity>
             {progress && (
               <Text style={styles.weeklyProgress}>
                 {progress.remainingMinutes > 0
@@ -391,11 +402,11 @@ export function ClockScreen() {
       </View>
 
       {modal}
-      {notesPrompt && (
+      {notesEditor && (
         <ShiftNotesModal
-          shiftId={notesPrompt.shiftId}
-          initialNotes={notesPrompt.notes}
-          onClose={() => setNotesPrompt(null)}
+          shiftId={notesEditor.shiftId}
+          initialNotes={notesEditor.notes}
+          onClose={() => setNotesEditor(null)}
         />
       )}
     </ScrollView>
@@ -414,6 +425,8 @@ function createStyles(colors: ThemeColors) {
     earnings: { fontSize: 15, fontWeight: "600", color: colors.success, marginBottom: 4 },
     since: { color: colors.textMuted2, marginBottom: 10, fontSize: 13 },
     onBreak: { color: colors.warning, fontWeight: "600", marginBottom: 8, fontSize: 13 },
+    notesButton: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8, maxWidth: "100%" },
+    notesButtonText: { color: colors.primary, fontSize: 12, fontWeight: "600", flexShrink: 1 },
     weeklyProgress: { color: colors.primary, fontSize: 12, marginBottom: 8, textAlign: "center" },
     newShiftSection: { alignItems: "center" },
     jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
@@ -424,10 +437,10 @@ function createStyles(colors: ThemeColors) {
     tierOptionSelected: { backgroundColor: colors.invertBg, borderColor: colors.invertBg },
     bigButton: { borderRadius: 12, padding: 13, alignItems: "center" },
     bigButtonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-    clockInButton: { backgroundColor: colors.success },
-    clockOutButton: { backgroundColor: colors.danger },
-    breakButton: { backgroundColor: colors.warning },
-    resumeButton: { backgroundColor: colors.primary },
+    clockInButton: { backgroundColor: colors.successFill },
+    clockOutButton: { backgroundColor: colors.dangerFill },
+    breakButton: { backgroundColor: colors.warningFill },
+    resumeButton: { backgroundColor: colors.primaryFill },
     splitRow: { flexDirection: "row", gap: 8, width: "100%", marginTop: 8 },
     flexButton: { flex: 1 },
     atButton: { borderRadius: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.textMuted2, backgroundColor: colors.card },

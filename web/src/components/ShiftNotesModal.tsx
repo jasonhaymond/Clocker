@@ -2,6 +2,9 @@ import { useState } from "react";
 import type { Shift } from "@clocker/shared";
 import { useStore } from "../store";
 
+// Used by the Clock screen two ways: automatically, right after clocking out (per the
+// job's promptForNotesOnClockOut setting), and manually via the notes button on a still-
+// open shift, to add or edit a note before clocking out at all.
 export function ShiftNotesModal({ shift, onClose }: { shift: Shift; onClose: () => void }) {
   const { updateShiftNotes } = useStore();
   const [notes, setNotes] = useState(shift.notes ?? "");
@@ -29,7 +32,7 @@ export function ShiftNotesModal({ shift, onClose }: { shift: Shift; onClose: () 
           autoFocus
         />
         <div className="modal-actions">
-          <button onClick={onClose}>Skip</button>
+          <button onClick={onClose}>Cancel</button>
           <button className="primary" onClick={save} disabled={saving}>
             Save
           </button>

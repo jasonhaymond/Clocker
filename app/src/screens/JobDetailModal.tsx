@@ -36,7 +36,7 @@ import {
   type TimesheetExportFormat,
 } from "@clocker/shared";
 
-const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#3f568d", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 const PERIOD_TYPES: { key: PeriodType; label: string }[] = [
   { key: "weekly", label: "Weekly" },
@@ -607,13 +607,13 @@ function createStyles(colors: ThemeColors) {
     chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     chip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.card },
     dayChip: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: colors.card },
-    chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipSelected: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
     chipText: { color: colors.textSecondary, fontSize: 13 },
     chipTextSelected: { color: colors.onPrimary, fontWeight: "600" },
     managerRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 6 },
     checkbox: { padding: 4 },
     checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
-    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkboxBoxChecked: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
     checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
     managerName: { fontSize: 14, fontWeight: "500", color: colors.text },
     archivedText: { color: colors.textMuted2, textDecorationLine: "line-through" },

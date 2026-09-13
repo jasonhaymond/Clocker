@@ -271,7 +271,7 @@ function createStyles(colors: ThemeColors) {
       left: 12,
       right: 12,
       bottom: 12,
-      backgroundColor: colors.primary,
+      backgroundColor: colors.primaryFill,
       borderRadius: 12,
       padding: 14,
       alignItems: "center",

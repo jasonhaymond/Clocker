@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { AppState, ActivityIndicator, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AppState, ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import { ClockScreen } from "../screens/ClockScreen";
@@ -51,6 +51,18 @@ function HeaderMenuButton({ onPress }: { onPress: () => void }) {
     <TouchableOpacity onPress={onPress} style={{ paddingHorizontal: 12 }} accessibilityLabel="Menu">
       <Ionicons name="menu" size={26} color={colors.headerText} />
     </TouchableOpacity>
+  );
+}
+
+// The brand mark + wordmark, matching web's own header (see web/src/App.tsx's
+// .brand-title). headerTintColor already covers a plain string headerTitle, but a custom
+// component needs its own explicit color.
+function HeaderTitle({ colors }: { colors: ThemeColors }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <Image source={require("../../assets/logo-mark-inverted.png")} style={{ width: 24, height: 24 }} />
+      <Text style={{ fontSize: 17, fontWeight: "600", color: colors.headerText }}>Clocker</Text>
+    </View>
   );
 }
 
@@ -151,7 +163,7 @@ function AppTabs({ colors }: { colors: ThemeColors }) {
           // Always the app name/brand, not the current screen — matches web (see
           // web/src/App.tsx). Which tab you're on is shown by the active tab icon below
           // instead. Branded header color, constant across light/dark (see ThemeContext).
-          headerTitle: "Clocker",
+          headerTitle: () => <HeaderTitle colors={colors} />,
           headerStyle: { backgroundColor: colors.headerBg },
           headerTintColor: colors.headerText,
           headerTitleStyle: { color: colors.headerText },

@@ -19,16 +19,27 @@ export interface ThemeColors {
   textMuted3: string;
   border: string;
   borderStrong: string;
+  // Accent role: text/icon/border tints painted on the theme's OWN background — these
+  // differ between light/dark so they keep enough contrast against each theme's
+  // background (a color dark enough to read on white is too dark to read on near-black).
   primary: string;
-  onPrimary: string;
   danger: string;
+  success: string;
+  warning: string;
+  // Fill role: a SOLID button/chip/switch background with fixed white text on top
+  // (onPrimary) — deliberately constant across both themes, always the light theme's own
+  // shade, so that white text stays reliably readable regardless of which theme is active
+  // (the accent tokens above can't do this job — see the comment above LIGHT.primary).
+  primaryFill: string;
+  dangerFill: string;
+  successFill: string;
+  warningFill: string;
+  onPrimary: string;
   dangerBg: string;
   dangerBorder: string;
   dangerText: string;
-  success: string;
   successBg: string;
   successText: string;
-  warning: string;
   overlay: string;
   headerBg: string;
   headerText: string;
@@ -39,9 +50,15 @@ export interface ThemeColors {
 }
 
 // Deliberately mirrors web/src/index.css's token names/values (see that file's comment
-// block) so the two clients read as the same app — brand/semantic colors (primary,
-// danger, success, warning) stay close to constant across themes; only the neutral
-// surface/text/border tokens actually swap.
+// block) so the two clients read as the same app. `primary` is a muted, desaturated blue
+// (H222/S38 in HSL) rather than the old vivid #1d4ed8 — chosen with real WCAG contrast
+// numbers, not by eye: #3f568d gives 7.17:1 against white (comfortably AA, close to AAA)
+// and is used as-is for light mode; dark mode needs a lighter shade (#6b84bd, 5.00:1
+// against the dark background/4.59:1 against the dark card) since a color dark enough to
+// read well on white is, by definition, too dark to read as text on a near-black
+// background — the exact bug this replaces (the old constant blue measured only ~2.5:1
+// against dark backgrounds, badly failing AA). `danger`/`success`/`warning` already had
+// this light/dark split before this change; only `primary` was the exception.
 const LIGHT: ThemeColors = {
   background: "#f7f8fa",
   surface: "#f7f8fa",
@@ -54,7 +71,11 @@ const LIGHT: ThemeColors = {
   textMuted3: "#666",
   border: "#eee",
   borderStrong: "#ddd",
-  primary: "#1d4ed8",
+  primary: "#3f568d",
+  primaryFill: "#3f568d",
+  dangerFill: "#b91c1c",
+  successFill: "#16a34a",
+  warningFill: "#d97706",
   onPrimary: "#fff",
   danger: "#b91c1c",
   dangerBg: "#fef2f2",
@@ -65,7 +86,7 @@ const LIGHT: ThemeColors = {
   successText: "#166534",
   warning: "#d97706",
   overlay: "rgba(0,0,0,0.4)",
-  headerBg: "#1d4ed8",
+  headerBg: "#3f568d",
   headerText: "#fff",
   invertBg: "#111",
   invertText: "#fff",
@@ -85,7 +106,15 @@ const DARK: ThemeColors = {
   textMuted3: "#a0a8b5",
   border: "#2b2e36",
   borderStrong: "#3a3e47",
-  primary: "#1d4ed8",
+  primary: "#6b84bd",
+  // Fill tokens stay pinned to the light theme's own shade in dark mode too (same
+  // reasoning as LIGHT.primaryFill's comment) — a solid button/chip background always
+  // pairs with fixed white text, so it needs to stay dark enough for white to read on it
+  // regardless of which theme is active.
+  primaryFill: "#3f568d",
+  dangerFill: "#b91c1c",
+  successFill: "#16a34a",
+  warningFill: "#d97706",
   onPrimary: "#fff",
   danger: "#f87171",
   dangerBg: "rgba(248,113,113,0.14)",
@@ -98,7 +127,7 @@ const DARK: ThemeColors = {
   overlay: "rgba(0,0,0,0.6)",
   // Header stays the same brand blue as light mode on purpose (see web's equivalent
   // comment) — a constant identity element independent of the content theme.
-  headerBg: "#1d4ed8",
+  headerBg: "#3f568d",
   headerText: "#fff",
   invertBg: "#f2f2f2",
   invertText: "#111",

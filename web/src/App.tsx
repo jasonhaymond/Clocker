@@ -63,7 +63,10 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="auth-card">
-      <h1>Clocker</h1>
+      <h1 className="brand-title">
+        <img src="/logo-mark.png" alt="" className="brand-logo" />
+        Clocker
+      </h1>
       <form onSubmit={submit}>
         <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input
@@ -251,7 +254,10 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             --header-text in index.css) — a constant identity element that doesn't change
             with the light/dark content theme. */}
         <header className="app-header">
-          <h1>Clocker</h1>
+          <h1 className="brand-title">
+            <img src="/logo-mark-inverted.png" alt="" className="brand-logo" />
+            Clocker
+          </h1>
           <HeaderMenu overlay={overlay} onSelect={setOverlay} />
         </header>
         <ErrorBanner />

@@ -3,9 +3,9 @@ import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "reac
 import { updateShiftTimes } from "../db/database";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
-// Shared between History (editing an existing note) and the Clock screen (optionally
-// prompting for one right after clocking out, per the job's promptForNotesOnClockOut
-// setting).
+// Used by the Clock screen two ways: automatically, right after clocking out (per the
+// job's promptForNotesOnClockOut setting), and manually via the notes button on a still-
+// open shift, to add or edit a note before clocking out at all.
 export function ShiftNotesModal({
   shiftId,
   initialNotes,
@@ -39,7 +39,7 @@ export function ShiftNotesModal({
           />
           <View style={styles.actions}>
             <TouchableOpacity onPress={onClose} style={styles.button}>
-              <Text style={styles.buttonText}>Skip</Text>
+              <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={save} style={[styles.button, styles.primaryButton]}>
               <Text style={[styles.buttonText, styles.primaryText]}>Save</Text>
@@ -59,7 +59,7 @@ function createStyles(colors: ThemeColors) {
     input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 12, minHeight: 100, textAlignVertical: "top", color: colors.text },
     actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
     button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-    primaryButton: { backgroundColor: colors.primary },
+    primaryButton: { backgroundColor: colors.primaryFill },
     buttonText: { fontWeight: "600", color: colors.textSecondary },
     primaryText: { color: colors.onPrimary },
   });

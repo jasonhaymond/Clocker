@@ -188,7 +188,7 @@ function createStyles(colors: ThemeColors) {
     notesInput: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 10, minHeight: 90, textAlignVertical: "top", color: colors.text },
     actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
     actionButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-    actionButtonPrimary: { backgroundColor: colors.primary },
+    actionButtonPrimary: { backgroundColor: colors.primaryFill },
     actionButtonText: { fontWeight: "600", color: colors.textSecondary },
     actionButtonPrimaryText: { color: colors.onPrimary },
   });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { getCaptcha } from "../sync/api";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
@@ -47,6 +47,7 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Image source={require("../../assets/logo-mark.png")} style={styles.logo} />
       <Text style={styles.title}>Clocker</Text>
       <Text style={styles.subtitle}>Track hours across every job. Works offline, syncs when you're back online.</Text>
 
@@ -102,6 +103,7 @@ export function LoginScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: colors.card },
+    logo: { width: 72, height: 72, alignSelf: "center", marginBottom: 12 },
     title: { fontSize: 32, fontWeight: "700", textAlign: "center", marginBottom: 8, color: colors.text },
     subtitle: { textAlign: "center", color: colors.textMuted3, marginBottom: 32 },
     // color/backgroundColor set explicitly (not just relying on defaults) because Android's
@@ -123,10 +125,10 @@ function createStyles(colors: ThemeColors) {
     captchaInput: { flex: 0, width: 90, marginBottom: 8 },
     rememberRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
     checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center" },
-    checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+    checkboxBoxChecked: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
     checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
     rememberText: { fontSize: 14, color: colors.textSecondary },
-    button: { backgroundColor: colors.primary, borderRadius: 10, padding: 16, alignItems: "center", marginTop: 8 },
+    button: { backgroundColor: colors.primaryFill, borderRadius: 10, padding: 16, alignItems: "center", marginTop: 8 },
     buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: "600" },
     switchText: { textAlign: "center", color: colors.primary, marginTop: 16 },
     error: { color: colors.danger, textAlign: "center", marginBottom: 8 },

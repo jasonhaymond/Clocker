@@ -2,7 +2,7 @@ import { groupRowsByJob, type Job, type ParsedImportRow } from "@clocker/shared"
 import { clockIn, clockOut, createJob, endBreak, listShiftsInRange, startBreak, updateShiftTimes } from "../db/database";
 
 // Same palette JobsScreen/JobDetailModal already cycle through for a new job's default color.
-const PALETTE = ["#1d4ed8", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
+const PALETTE = ["#3f568d", "#b91c1c", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
 
 export interface ImportSummary {
   jobsCreated: number;

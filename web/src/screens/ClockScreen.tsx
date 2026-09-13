@@ -1,5 +1,6 @@
 import { calculateShiftPay, calculateWeeklyProgress, formatCents, formatClock, formatDuration, workedMillis, type Break, type Job, type Shift } from "@clocker/shared";
 import { useEffect, useState } from "react";
+import { IoCreateOutline } from "react-icons/io5";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { useDateTimePrompt } from "../lib/useDateTimePrompt";
 import { useStore } from "../store";
@@ -10,7 +11,10 @@ export function ClockScreen() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedTierId, setSelectedTierId] = useState<string | null>(null);
   const [, setTick] = useState(0);
-  const [notesPromptShift, setNotesPromptShift] = useState<Shift | null>(null);
+  // Opened either automatically (right after clocking out, per the job's
+  // promptForNotesOnClockOut setting) or manually via the notes button on a still-open
+  // shift, to add/edit a note before clocking out at all — same modal, either trigger.
+  const [notesEditorShift, setNotesEditorShift] = useState<Shift | null>(null);
 
   const openShifts = store.shifts.filter((s) => !s.clockOut);
   const openJobIds = new Set(openShifts.map((s) => s.jobId));
@@ -87,7 +91,7 @@ export function ClockScreen() {
     }
     await store.clockOut(shift, customTime?.toISOString());
     const job = store.jobs.find((j) => j.id === shift.jobId);
-    if (job?.promptForNotesOnClockOut) setNotesPromptShift(shift);
+    if (job?.promptForNotesOnClockOut) setNotesEditorShift(shift);
   }
 
   function confirmCancelClockIn(shift: Shift, job: Job | null) {
@@ -145,13 +149,17 @@ export function ClockScreen() {
             <button className="clock-cancel-btn" onClick={() => confirmCancelClockIn(shift, job)} aria-label="Cancel clock-in" title="Cancel clock-in">
               ✕
             </button>
-            <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#1d4ed8" }}>
+            <span className="job-badge" style={{ backgroundColor: job?.colorHex ?? "#3f568d" }}>
               {job?.name ?? "Job"}
             </span>
             <div className="clock-timer">{formatDuration(worked)}</div>
             {pay?.hasRate && <div className="clock-earnings">{formatCents(pay.cents)} so far</div>}
             <div className="clock-since">Since {formatClock(shift.clockIn)}</div>
             {openBreak && <div className="clock-on-break">On break since {formatClock(openBreak.start)}</div>}
+            <button className="clock-notes-btn" onClick={() => setNotesEditorShift(shift)}>
+              <IoCreateOutline />
+              <span>{shift.notes ? shift.notes : "Add note"}</span>
+            </button>
             {progress && (
               <div className="clock-weekly-progress">
                 {progress.remainingMinutes > 0
@@ -251,7 +259,7 @@ export function ClockScreen() {
       </div>
 
       {modal}
-      {notesPromptShift && <ShiftNotesModal shift={notesPromptShift} onClose={() => setNotesPromptShift(null)} />}
+      {notesEditorShift && <ShiftNotesModal shift={notesEditorShift} onClose={() => setNotesEditorShift(null)} />}
     </div>
   );
 }

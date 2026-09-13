@@ -58,7 +58,7 @@ function createStyles(colors: ThemeColors) {
     actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 12 },
     button: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
     buttonText: { fontWeight: "600", color: colors.textSecondary },
-    confirmButton: { backgroundColor: colors.primary },
+    confirmButton: { backgroundColor: colors.primaryFill },
     confirmText: { color: colors.onPrimary },
   });
 }

@@ -38,7 +38,7 @@ present and silently skipped when it isn't.
 A CSV row whose `Job` value doesn't exactly match an existing job creates one, with:
 
 - **Color**: chosen automatically, cycling through the same default palette the Jobs tab
-  itself offers (`#1d4ed8`, `#b91c1c`, `#16a34a`, `#d97706`, `#7c3aed`, `#0891b2`) — not
+  itself offers (`#3f568d`, `#b91c1c`, `#16a34a`, `#d97706`, `#7c3aed`, `#0891b2`) — not
   configurable from the import screen; rename or recolor the job afterward like any other.
 - **Rate**: the most common `Hourly Rate` seen across that job's rows in the file (ties
   broken by whichever value was seen first), as a single "Standard" rate tier effective
