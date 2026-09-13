@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.22.0] - 2026-09-12
+
+### Fixed
+
+- **"Update Server" never actually finished the deploy, even though it looked like it
+  started fine.** `npm run deploy` restarts the pm2-managed host agent process as one of
+  its own steps — but when triggered from the in-app button, that deploy runs AS a child
+  process of that very host agent, so restarting it this early killed the whole process
+  tree running the update before the real work (`docker compose up --build`, health
+  checks) ever ran. The git checkout advanced to the latest commit, but the containers
+  were never actually rebuilt, and the button got stuck showing "Updating..." forever with
+  a log that went cold right after `npm install`. The host agent restart now happens as
+  the very last thing `scripts/deploy.mjs` does, after the real work and the final summary
+  — so a triggered update now actually completes.
+
+### Added
+
+- **The update log now survives a host agent restart, and a "Show previous log" option
+  keeps the prior run's log reachable for one more run after it's no longer current.** The
+  log/outcome (`.update-log.txt`/`.update-meta.json`, gitignored) are persisted to disk
+  instead of living only in the host agent's memory, specifically so the process restart
+  above doesn't erase the very log a user was watching; starting a new run rotates the
+  outgoing log to `.update-log.previous.txt` rather than just discarding it.
+
 ## [1.21.0] - 2026-09-12
 
 ### Changed

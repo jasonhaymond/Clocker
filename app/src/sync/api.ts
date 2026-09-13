@@ -109,6 +109,9 @@ export interface UpdateStatus {
   finishedAt: string | null;
   exitCode: number | null;
   log: string;
+  // The run before this one, if any — kept on disk across both a new run starting and a
+  // host-agent restart, so a run's log doesn't just vanish the moment either happens.
+  previousLog: string | null;
 }
 
 // Hits the host-side host agent (scripts/host-agent.mjs), routed through

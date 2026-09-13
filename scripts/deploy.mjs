@@ -171,7 +171,9 @@ section("Configuring the host agent");
 // Independent of PROXY_MODE — the host agent is a host process either way (never a Docker
 // container, see scripts/host-agent.mjs for why), so it needs a real host port
 // regardless of whether the bundled Caddy or an external one is reaching it. Same
-// "scanned once, then reused forever" rule as SERVER_PORT/WEB_PORT above.
+// "scanned once, then reused forever" rule as SERVER_PORT/WEB_PORT above. Only the port
+// config happens here — actually (re)starting the host agent process is deliberately
+// deferred to the very end of this script; see the comment there for why.
 let hostAgentPort = readEnvValue(envProdPath, "HOST_AGENT_PORT");
 if (hostAgentPort) {
   step(`Using configured host agent port ${hostAgentPort} (not re-scanned on redeploy)`);
@@ -182,23 +184,6 @@ if (hostAgentPort) {
 upsertEnvLine(envProdPath, "HOST_AGENT_PORT", hostAgentPort);
 if (!readEnvValue(envProdPath, "HOST_AGENT_BIND")) {
   upsertEnvLine(envProdPath, "HOST_AGENT_BIND", "0.0.0.0");
-}
-
-if (!commandExists("pm2 --version")) {
-  warn("pm2 isn't installed — the in-app \"Update Server\"/\"Back Up Now\" buttons won't work until the host agent is running.");
-  warn("Install pm2 (`npm install -g pm2`) then run:");
-  warn(`  pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}" && pm2 save`);
-  warn("Or run it under systemd instead — see docs/deployment.md#the-host-agent for a ready-to-paste unit file.");
-} else {
-  const alreadyManaged = captureOutput("pm2 jlist", { cwd: rootDir })?.includes('"name":"clocker-host-agent"');
-  if (alreadyManaged) {
-    step("Restarting the already-running clocker-host-agent pm2 process...");
-    run("pm2 restart clocker-host-agent", { cwd: rootDir, optional: true });
-  } else {
-    step("Starting the clocker-host-agent pm2 process for the first time...");
-    run(`pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}"`, { cwd: rootDir, optional: true });
-  }
-  run("pm2 save", { cwd: rootDir, optional: true });
 }
 
 const composeFlags = `-f ${composeFileFor(proxyMode)} --env-file .env.prod`;
@@ -458,4 +443,27 @@ Useful commands:
 Re-run \`npm run deploy\` any time to rebuild and restart with the latest code — it reuses
 the domain/password/secret/ports already in .env.prod rather than generating new ones.
 `);
+}
+
+// Deliberately the very last thing this script does, with nothing after it — restarting
+// the host agent this way is a real self-restart when this script is itself running AS a
+// child process of that same host agent (exactly what happens when the in-app "Update
+// Server" button triggers this whole deploy). Restarting any earlier used to kill the
+// process tree running this very deploy partway through — cutting off the log the user
+// was watching (right around here, before any of the actual docker rebuild/verify output
+// ever appeared) and leaving the button stuck showing "Updating..." forever, since nothing
+// was left alive to report a final status. Placing it last means that failure mode, if it
+// still happens, only ever truncates this already-printed summary — never the real work.
+if (!commandExists("pm2 --version")) {
+  warn("pm2 isn't installed — the in-app \"Update Server\"/\"Back Up Now\" buttons won't work until the host agent is running.");
+  warn("Install pm2 (`npm install -g pm2`) then run:");
+  warn(`  pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}" && pm2 save`);
+  warn("Or run it under systemd instead — see docs/deployment.md#the-host-agent for a ready-to-paste unit file.");
+} else if (updaterManaged) {
+  step("Restarting the already-running clocker-host-agent pm2 process...");
+  run("pm2 restart clocker-host-agent", { cwd: rootDir, optional: true });
+} else {
+  step("Starting the clocker-host-agent pm2 process for the first time...");
+  run(`pm2 start scripts/host-agent.mjs --name clocker-host-agent --cwd "${rootDir}"`, { cwd: rootDir, optional: true });
+  run("pm2 save", { cwd: rootDir, optional: true });
 }

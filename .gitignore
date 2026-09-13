@@ -14,6 +14,9 @@ backups/
 .backup-config.json
 .backup-runs.json
 .backup-ssh/
+.update-log.txt
+.update-log.previous.txt
+.update-meta.json
 server/.env
 server/dist/
 server/generated/

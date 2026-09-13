@@ -235,12 +235,19 @@ Same auth. Poll this after a `202` from `POST /update` until `running` is `false
   "startedAt": "2026-09-11T18:00:00.000Z",
   "finishedAt": "2026-09-11T18:01:42.000Z",
   "exitCode": 0,
-  "log": "[updater] Starting: ...\n...\n[updater] Finished with exit code 0"
+  "log": "[updater] Starting: ...\n...\n[updater] Finished with exit code 0",
+  "previousLog": "[updater] Starting: ...\n...\n[updater] Finished with exit code 1"
 }
 ```
 
-`log` is a capped tail (last 500 lines) of the triggered command's combined
-stdout/stderr, reset at the start of each run.
+`log` is a capped tail (last 500 lines) of the triggered command's combined stdout/stderr,
+reset at the start of each run — but persisted to disk (`.update-log.txt`/
+`.update-meta.json`, gitignored) rather than kept only in memory, so `running`/`log`/
+`exitCode` survive a host agent restart, including the one this very endpoint's update
+triggers as its own last step (see `deployment.md#triggering-an-update-from-the-app`).
+`previousLog` is the run before this one (`.update-log.previous.txt`, rotated in whenever a
+new run starts) — `null` until a second run has ever happened — so a completed or
+interrupted run's log stays reachable for one more run after it stops being "current".
 
 All endpoints below require the same `Authorization: Bearer <token>`. Full rationale and
 setup: [`deployment.md#backups-borgbackup`](./deployment.md#backups-borgbackup).

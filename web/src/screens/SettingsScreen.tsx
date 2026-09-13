@@ -20,6 +20,7 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showPreviousLog, setShowPreviousLog] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -122,6 +123,14 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
               {showLog ? "Hide log" : "Show log"}
             </button>
             {showLog && <pre className="update-log">{serverUpdate.log}</pre>}
+          </>
+        )}
+        {serverUpdate?.previousLog && (
+          <>
+            <button className="link" onClick={() => setShowPreviousLog(!showPreviousLog)}>
+              {showPreviousLog ? "Hide previous log" : "Show previous log"}
+            </button>
+            {showPreviousLog && <pre className="update-log">{serverUpdate.previousLog}</pre>}
           </>
         )}
       </section>

@@ -369,6 +369,37 @@ clocked-in Clock card (all three button colors), and the Jobs screen — confirm
 navy-on-near-black, are now clearly legible in dark mode, while buttons still read cleanly
 with white text in both themes.
 
+**Amended again (2026-09-12, same day, later session):** the user reported (with two
+screenshots) that "Update Server" was stuck showing "Updating..." forever, log frozen right
+after `npm install`, on a real production host — and that this reproduced on every retry.
+Root cause: `scripts/deploy.mjs`'s "Configuring the host agent" section restarts the
+pm2-managed `clocker-host-agent` process — but when the deploy is triggered from the
+in-app button, `deploy.mjs` is running AS a child of that very host agent, so restarting it
+this early (well before the actual `docker compose up --build`/verify steps) killed the
+whole process tree running the update partway through. The git checkout advanced fine (the
+1.21.0 hard-reset fix from earlier this session worked exactly as intended — confirmed
+directly from the user's own log screenshot, "HEAD is now at c145a7f"), but the containers
+were **never actually rebuilt** — a real, functionally significant bug, not just a UI
+freeze: production never received any of this session's earlier work despite the button
+appearing to run. Fixed by moving the pm2 restart to the literal last lines of
+`deploy.mjs`, after the real work and the "Done" summary — the docker rebuild/health-check
+work now always completes before any self-restart can interrupt anything. Separately, the
+user asked for the log to stop disappearing (a "show previous log" option) — implemented
+together since they share a mechanism: `scripts/host-agent.mjs`'s update log/meta
+(`.update-log.txt`/`.update-meta.json`, gitignored) are now persisted to disk instead of
+living only in the host agent's own memory, so a restart (this one or any other) doesn't
+erase the log a user was watching; starting a new run rotates the outgoing log to
+`.update-log.previous.txt` first, and both clients' Settings now offer a "Show previous
+log" toggle alongside "Show log" reading it. `1.22.0` (§3). Verified: the deploy reordering
+via careful reading of the exact process-tree relationship (host agent → shell chain →
+`deploy.mjs`) rather than a live pm2 restart (not available in this dev environment); the
+persistence/rotation logic via an isolated Node script exercising the exact duplicated
+logic against real temp files (fresh-start load, run-persists, restart-recovers-from-disk,
+new-run-rotates-to-previous — all four passed); clean `tsc --noEmit` on both clients;
+`expo export --platform android`. Not exercised against the real production host or a real
+pm2 restart (no SSH access this session) — the user will need to trigger a real "Update
+Server" once this ships to confirm it completes end-to-end in practice.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -395,7 +426,7 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.21.0` as of this session; the
+full stop. All five (four packages, one version) are at `1.22.0` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every

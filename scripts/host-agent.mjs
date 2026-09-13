@@ -32,6 +32,9 @@ const backupConfigPath = join(rootDir, ".backup-config.json");
 const backupRunsPath = join(rootDir, ".backup-runs.json");
 const backupSshDir = join(rootDir, ".backup-ssh");
 const backupSshKeyPath = join(backupSshDir, "id_ed25519");
+const updateLogPath = join(rootDir, ".update-log.txt");
+const updateLogPreviousPath = join(rootDir, ".update-log.previous.txt");
+const updateMetaPath = join(rootDir, ".update-meta.json");
 
 const jwtSecret = readEnvValue(envProdPath, "JWT_SECRET");
 if (!jwtSecret) {
@@ -58,8 +61,49 @@ function composeFlags() {
 // refusing outright rather than "probably fine."
 // ---------------------------------------------------------------------------
 const MAX_LOG_LINES = 500;
-const updateState = { running: false, startedAt: null, finishedAt: null, exitCode: null, log: [] };
 const backupState = { running: false, kind: null, archiveName: null, startedAt: null, finishedAt: null, exitCode: null, log: [] };
+
+// The update log/meta are persisted to disk (unlike backupState above, which has always
+// been purely in-memory) specifically because triggering an update from the app makes
+// this process restart itself partway through (see startUpdate's own comment) — an
+// in-memory-only updateState would go blank the moment that restart lands, even though
+// the actual `npm run deploy` work the user was watching had already finished by then.
+// Loading whatever's on disk at startup means a freshly-restarted process still shows the
+// log/outcome of the run that just triggered its own restart, instead of an empty slate.
+function loadUpdateMeta() {
+  try {
+    return JSON.parse(readFileSync(updateMetaPath, "utf8"));
+  } catch {
+    return { startedAt: null, finishedAt: null, exitCode: null };
+  }
+}
+function loadUpdateLog() {
+  try {
+    return readFileSync(updateLogPath, "utf8").split("\n").filter(Boolean).slice(-MAX_LOG_LINES);
+  } catch {
+    return [];
+  }
+}
+// A freshly-started process has no way to tell whether a previous instance's child
+// process is still actually running (no in-memory reference survives the restart, and
+// there's no PID file to check) — so `running` always starts false here. In practice this
+// is safe now that the host-agent self-restart in scripts/deploy.mjs happens only as the
+// very last step, after the real deploy work is done; a restart landing mid-deploy would
+// still (correctly, if pessimistically) show "not running" rather than get stuck showing
+// "running" forever with no way to clear it.
+const updateState = { running: false, ...loadUpdateMeta(), log: loadUpdateLog() };
+
+function persistUpdateState() {
+  try {
+    writeFileSync(updateLogPath, updateState.log.join("\n") + (updateState.log.length ? "\n" : ""));
+    writeFileSync(
+      updateMetaPath,
+      JSON.stringify({ startedAt: updateState.startedAt, finishedAt: updateState.finishedAt, exitCode: updateState.exitCode }),
+    );
+  } catch (err) {
+    console.error("Failed to persist update log/meta:", err.message);
+  }
+}
 
 function anyBusy() {
   return updateState.running || backupState.running;
@@ -69,6 +113,7 @@ function appendLogTo(state, chunk) {
   const lines = chunk.toString().split("\n").filter(Boolean);
   state.log.push(...lines);
   if (state.log.length > MAX_LOG_LINES) state.log.splice(0, state.log.length - MAX_LOG_LINES);
+  if (state === updateState) persistUpdateState();
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +131,16 @@ function appendLogTo(state, chunk) {
 // endpoint specifically — never do this on a developer's own machine.
 // ---------------------------------------------------------------------------
 function startUpdate() {
+  // Rotate the outgoing run's log to "previous" before wiping it, so a completed (or
+  // interrupted) run's log stays reachable via /update/status's previousLog even after
+  // the next run starts overwriting the current one — see the client's "Show previous
+  // log" option.
+  try {
+    if (existsSync(updateLogPath)) writeFileSync(updateLogPreviousPath, readFileSync(updateLogPath));
+  } catch (err) {
+    console.error("Failed to rotate previous update log:", err.message);
+  }
+
   updateState.running = true;
   updateState.startedAt = new Date().toISOString();
   updateState.finishedAt = null;
@@ -546,12 +601,19 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/update/status") {
+      let previousLog = null;
+      try {
+        previousLog = readFileSync(updateLogPreviousPath, "utf8");
+      } catch {
+        // No previous run yet (or its log was never rotated) — leave it null.
+      }
       return send(200, {
         running: updateState.running,
         startedAt: updateState.startedAt,
         finishedAt: updateState.finishedAt,
         exitCode: updateState.exitCode,
         log: updateState.log.join("\n"),
+        previousLog,
       });
     }
 

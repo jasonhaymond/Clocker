@@ -54,6 +54,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggeringServerUpdate, setTriggeringServerUpdate] = useState(false);
   const [showServerLog, setShowServerLog] = useState(false);
+  const [showPreviousServerLog, setShowPreviousServerLog] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -221,6 +222,14 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
                 <Text style={styles.logToggle}>{showServerLog ? "Hide log" : "Show log"}</Text>
               </TouchableOpacity>
               {showServerLog && <Text style={styles.logText}>{serverUpdate.log}</Text>}
+            </>
+          ) : null}
+          {serverUpdate?.previousLog ? (
+            <>
+              <TouchableOpacity onPress={() => setShowPreviousServerLog(!showPreviousServerLog)}>
+                <Text style={styles.logToggle}>{showPreviousServerLog ? "Hide previous log" : "Show previous log"}</Text>
+              </TouchableOpacity>
+              {showPreviousServerLog && <Text style={styles.logText}>{serverUpdate.previousLog}</Text>}
             </>
           ) : null}
         </View>

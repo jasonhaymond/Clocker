@@ -425,6 +425,25 @@ endpoint; never do the equivalent on a developer's own machine, which is exactly
 as running `npm run deploy` by hand); no queue (a second tap while one is running, or while
 a backup/restore is running, is rejected with an "already running" error, not queued).
 
+**The self-restart problem**: `npm run deploy` restarts the pm2-managed `clocker-host-agent`
+process as one of its own steps (so it picks up any code changes to itself) — but when
+this whole chain is triggered by the "Update Server" button, `deploy.mjs` is running AS a
+child process of that very host agent. Restarting it too early used to kill the process
+tree running the deploy partway through, before the actual `docker compose up --build`
+step ever ran — cutting off the log the button was streaming back (right after `npm
+install`, with nothing from `deploy.mjs` itself ever appearing) and leaving the button
+stuck showing "Updating..." forever, since nothing survived to report a final status. Worse,
+the real deploy work never happened either — the git checkout advanced, but the containers
+were never rebuilt. `deploy.mjs` now does this restart as the very last thing it does, after
+the real work (build, verify, mobile app) and the "Done" summary — so an update triggered
+this way now actually completes, and if the trailing restart truncates anything, it's only
+that already-printed summary, never the deploy itself. The update log is also persisted to
+disk (`.update-log.txt`/`.update-meta.json`, gitignored) rather than kept only in the host
+agent's own memory, specifically so a freshly-restarted process still reports the outcome
+of the run that triggered its own restart, instead of going blank. Settings also offers a
+"Show previous log" toggle (from `.update-log.previous.txt`, rotated in on each new run) so
+a completed or interrupted run's log doesn't just disappear the moment the next one starts.
+
 ### Backups (BorgBackup)
 
 Settings → Backups on both clients configures and triggers encrypted, deduplicated
