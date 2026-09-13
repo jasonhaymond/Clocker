@@ -1,5 +1,29 @@
 # Development Guide
 
+This guide is for setting up a working copy of Clocker on your own computer so you can
+write code against it. If you're looking for how to *use* the app, see the [User
+Guide](./user-guide.md) instead; if you're looking for how to put Clocker on a real server
+for others to use, see [Deployment](./deployment.md).
+
+**New to this kind of project?** A few terms used throughout, in plain language:
+
+- **Terminal** (also called a command line or shell) — a text-based way of controlling
+  your computer by typing commands, instead of clicking things. Every code block below
+  (the boxes with a monospace font) is something you type into one, one line at a time.
+- **Repository** ("repo") — the folder containing all of Clocker's code, plus its history
+  of changes over time, managed by a tool called Git.
+- **`npm`** — the tool that installs the pieces of other people's code (called
+  "packages" or "dependencies") that Clocker is built on, and runs the project's own
+  predefined commands (`npm run setup`, `npm run dev:server`, and so on — each one is
+  shorthand for a longer command, defined in a `package.json` file).
+- **Monorepo** — one repository containing several related projects side by side (here:
+  the phone app, the website, the server, and code shared between them) instead of one
+  repository each.
+
+If any of the commands below fail with an error you don't recognize, check the two "Known
+issue" sections further down first — several recurring ones already have a documented
+cause and fix.
+
 ## Prerequisites
 
 - [ ] Node.js 20+ installed (the repo was built/tested on 24.x) — `node --version`

@@ -75,6 +75,12 @@ export interface Shift {
   clockIn: string;
   clockOut: string | null;
   notes: string | null;
+  // A manual override, independent of the job's automatic weekly-threshold overtime (see
+  // calculateShiftPay): marks this specific shift as overtime regardless of whether the
+  // threshold's been crossed, at the job's overtimeMultiplier if one's configured — and
+  // excludes it entirely from calculateWeeklyProgress's worked-hours total, since overtime
+  // worked isn't what a weekly hours *target* is meant to track.
+  isOvertime: boolean;
   updatedAt: string;
   deletedAt: string | null;
 }

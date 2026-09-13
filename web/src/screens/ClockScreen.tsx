@@ -164,7 +164,9 @@ export function ClockScreen() {
               <div className="clock-weekly-progress">
                 {progress.remainingMinutes > 0
                   ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
-                  : "Weekly target reached"}
+                  : progress.overMinutes > 0
+                    ? `Weekly target reached — ${formatDuration(progress.overMinutes * 60_000)} over`
+                    : "Weekly target reached"}
                 {progress.expectedClockOut && progress.remainingMinutes > 0
                   ? ` — expected out ${formatClock(progress.expectedClockOut.toISOString())}`
                   : ""}
@@ -242,7 +244,9 @@ export function ClockScreen() {
                 <div className="clock-weekly-progress">
                   {progress.remainingMinutes > 0
                     ? `${formatDuration(progress.remainingMinutes * 60_000)} left this week`
-                    : "Weekly target reached"}
+                    : progress.overMinutes > 0
+                      ? `Weekly target reached — ${formatDuration(progress.overMinutes * 60_000)} over`
+                      : "Weekly target reached"}
                 </div>
               );
             })()}

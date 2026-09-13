@@ -7,6 +7,11 @@ export interface WeeklyProgress {
   targetMinutes: number;
   workedMinutes: number;
   remainingMinutes: number;
+  // How far past the target worked time already is, once it's been reached — 0 while
+  // still under target (remainingMinutes is the meaningful one then). The two are
+  // deliberately mutually exclusive rather than one of them going negative, so a caller
+  // can render "X left" vs "X over" without doing its own sign-checking arithmetic.
+  overMinutes: number;
   // Only set when this job currently has an open shift — projecting a clock-out time
   // without one to project from wouldn't mean anything.
   expectedClockOut: Date | null;
@@ -42,17 +47,24 @@ export function calculateWeeklyProgress(params: {
   for (const shift of shifts) {
     const clockInMs = new Date(shift.clockIn).getTime();
     if (clockInMs < weekStart.getTime() || clockInMs >= weekEnd.getTime()) continue;
+    // Overtime worked isn't what a weekly hours *target* is meant to track — excluded
+    // from the total entirely, and never the shift expectedClockOut projects from either
+    // (projecting "when you'd hit your target" from a shift that doesn't count toward it
+    // wouldn't mean anything).
+    if (shift.isOvertime) continue;
     workedMs += roundedWorkedMillis(shift, breaksByShift[shift.id] ?? [], job);
     if (!shift.clockOut) openShift = shift;
   }
 
   const targetMs = job.expectedWeeklyHours * 3_600_000;
   const remainingMs = Math.max(0, targetMs - workedMs);
+  const overMs = Math.max(0, workedMs - targetMs);
 
   return {
     targetMinutes: targetMs / 60_000,
     workedMinutes: workedMs / 60_000,
     remainingMinutes: remainingMs / 60_000,
+    overMinutes: overMs / 60_000,
     expectedClockOut: openShift
       ? new Date(Math.max(now.getTime(), new Date(openShift.clockIn).getTime()) + remainingMs)
       : null,

@@ -1,5 +1,9 @@
 # Data Model
 
+This is technical reference material for anyone writing code against Clocker's database —
+skip it if you're just using or deploying the app (see the [documentation
+index](./README.md) for the guide that's actually for you).
+
 There are two copies of the schema: PostgreSQL (server, via Prisma — the durable source of
 truth across devices) and SQLite (client, hand-written SQL — the copy the UI actually reads
 and writes). They're kept in sync by the protocol in
@@ -42,7 +46,12 @@ User 1──* Job 1──* RateTier 1──* RateVersion
   `app/src/db/database.ts`'s `clockIn()` (via `getOpenShiftForJob`), not at the database
   level. `clockIn`/`clockOut` default to "now" but accept an explicit timestamp (the
   Clock screen's "At..." buttons), for backdating a forgotten clock-in/out. `notes` is a
-  free-text comment, editable from the History screen.
+  free-text comment, editable from the History screen. `isOvertime` is a manual per-shift
+  override, editable from the shift editor (History) — independent of the job's automatic
+  weekly-threshold overtime (see [Rate history](#rate-history-tiers-and-overtime)): every
+  hour of a flagged shift is paid as overtime regardless of the threshold, and the shift is
+  excluded entirely from `calculateWeeklyProgress`'s weekly hours target
+  (`shared/src/expectedHours.ts`), since overtime worked isn't what that target tracks.
 - **Break** — one pause within a shift. `end` is `null` while the break is open. Break time
   is subtracted from a shift's worked-hours total (`app/src/lib/time.ts`'s `workedMillis`).
 - **Manager** — a saved recipient (name + email) for the Timesheets tab's "Submit
@@ -168,6 +177,7 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `clockIn` | `DateTime` | |
 | | `clockOut` | `DateTime?` | `null` while open |
 | | `notes` | `String?` | free text, editable from the History screen |
+| | `isOvertime` | `Boolean` | default `false`; manual override — see the Shift bullet above |
 | | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
 | **Break** | `id` | `String` (uuid) | primary key, **client-generated** |
 | | `shiftId` | `String` | FK → Shift, cascade delete |

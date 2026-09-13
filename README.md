@@ -1,62 +1,64 @@
 # Clocker
 
-A personal timeclock app for tracking hours across multiple jobs — clock in/out, breaks,
-history, and CSV export. Built as an offline-first React Native (Expo) mobile app, plus a
-web client, both backed by a small Fastify + PostgreSQL server. **Both clients carry the
-full feature set** (see `CLAUDE.md`) — they differ in storage architecture, not in what
-you can do on each.
+Clocker is a timeclock app for tracking hours across multiple jobs: clock in and out,
+track breaks, review your history, and send timesheets or export a CSV — all backed by a
+small server so your hours stay in sync between your phone and a web browser.
 
-## How it works
+**Just want to use Clocker?** You're in the right repository, but the wrong document — see
+the **[User Guide](./docs/user-guide.md)** instead, written for everyday use with no
+technical background assumed. Everything below this point is for people setting up,
+hosting, or developing Clocker itself.
 
-- **Mobile app** (`app/`): Expo + React Native + TypeScript. All data lives first in a
-  local SQLite database (`app/src/db`), so the app works fully offline. Every local write
-  is also recorded in a `pending_changes` outbox table.
-- **Web client** (`web/`): Vite + React + TypeScript. No local database — a thin client
-  that calls the server directly on every action. Deliberately *not* offline-first; see
-  [Architecture](./docs/architecture.md#two-frontend-clients-one-api) for why the two
-  clients differ this much even while covering the same features. Where a browser
-  genuinely can't do what a native app can (a share sheet, a mail composer), it adapts —
-  a file download and a clipboard copy — rather than dropping the feature.
-- **Shared** (`shared/`): framework-free TypeScript (types + pay/rounding/period/export
-  calculations) imported by both clients, so they agree on every number.
-- **Server** (`server/`): Fastify + Prisma + PostgreSQL. Exposes email/password auth and
-  two sync endpoints (`/sync/push`, `/sync/pull`) that both clients call — the mobile app
-  opportunistically (on launch, every 5 minutes, on app foreground, and after local
-  edits), the web client immediately on every mutation.
-- **Sync** (`app/src/sync/sync.ts`, mobile only): push whatever's in the outbox, then pull
-  anything newer than the last-seen server timestamp and merge it into the local mirror.
-  Conflicts resolve last-write-wins by `updatedAt`.
+## What's in this repository
 
-For the full picture — why it's built this way, the exact data model on both sides, the
-complete sync protocol, and the full HTTP API — see **[`docs/`](./docs/README.md)**:
+Clocker is built as two apps that share one server, so your data is the same no matter
+which one you use:
+
+- **A mobile app** (`app/`) — built with Expo/React Native. It keeps a full copy of your
+  data on the phone itself, so it keeps working with no internet connection at all, and
+  catches up with the server automatically once you're back online.
+- **A web app** (`web/`) — built with Vite/React. It's a simpler, browser-based client
+  that talks to the server directly on every action rather than keeping its own local
+  copy — the trade-off for not needing anything installed.
+- **A server** (`server/`) — a small Fastify API backed by PostgreSQL, handling sign-in
+  and keeping both clients' data in sync with each other.
+- **Shared code** (`shared/`) — the calculations both apps need to agree on (pay, rounding,
+  overtime, and so on) live in one place so neither app can ever compute a different
+  number than the other.
+
+For the full picture of *why* it's built this way — and a plain-language explanation of
+how the pieces actually fit together — see **[Architecture](./docs/architecture.md)**. For
+everything else, see the **[documentation index](./docs/README.md)**, which points you to
+the right guide depending on what you're trying to do:
 
 | | |
 |---|---|
-| [Architecture](./docs/architecture.md) | Design principles and the reasoning behind them, including why there are two separate frontend clients |
-| [Data Model](./docs/data-model.md) | Every table/field, Postgres and SQLite |
-| [Sync Protocol](./docs/sync-protocol.md) | The outbox, conflict resolution, ownership checks |
-| [API Reference](./docs/api-reference.md) | Every endpoint, with a curl smoke test |
-| [Development Guide](./docs/development.md) | Setup/update scripts, env vars, known issues |
-| [Deployment](./docs/deployment.md) | Server setup (Caddy + Docker Compose, or your own reverse proxy), deploying the web client, building/installing the Expo app, troubleshooting |
+| [User Guide](./docs/user-guide.md) | Using the app day to day — no technical background needed |
+| [Deployment](./docs/deployment.md) | Running your own Clocker server, step by step, explained for non-experts too |
+| [Development Guide](./docs/development.md) | Setting up a local copy to write code against |
+| [Architecture](./docs/architecture.md) | How the app is put together, and why |
+| [Data Model](./docs/data-model.md) | Every piece of data Clocker stores, and where |
+| [Sync Protocol](./docs/sync-protocol.md) | Exactly how the phone and server agree on what's changed |
+| [API Reference](./docs/api-reference.md) | Every request the app can make to the server |
 
 ## Project layout
 
 ```
-app/       Expo mobile app (screens, local DB, sync client, auth)
-web/       Vite web client (thin, no local DB) — see docs/architecture.md
-shared/    Framework-free TypeScript shared by both clients (types + calculations)
-server/    Fastify API + Prisma schema/migrations, Dockerfile
-scripts/   setup.mjs / update.mjs (dev) and deploy.mjs (production) — see docs/
-docs/      Detailed documentation (see table above)
-docker-compose.yml        Local Postgres for development
-docker-compose.prod.yml   Postgres + server + Caddy (+ optional web) for production (see docs/deployment.md)
-Caddyfile                 Reverse proxy config for the production stack
+app/       Expo mobile app (screens, local database, sync, sign-in)
+web/       Vite web app (browser-only, no local database) — see docs/architecture.md
+shared/    Code shared by both apps (types + calculations), so they always agree
+server/    The API and its database schema/migrations, plus its Dockerfile
+scripts/   Automation for local setup/updates and for production deployment — see docs/
+docs/      All detailed documentation (see the table above)
+docker-compose.yml        A local database for development
+docker-compose.prod.yml   Database + server + reverse proxy, for a real deployment (see docs/deployment.md)
+Caddyfile                 Reverse proxy configuration for a real deployment
 ```
 
-## Getting started
+## Setting up a local copy (for development)
 
-Full detail, troubleshooting, and every env var: [Development Guide](./docs/development.md).
-This section is the fast path.
+Full detail, troubleshooting, and every setting: **[Development Guide](./docs/development.md)**.
+This section is the fast path for someone already comfortable with a terminal and Node.js.
 
 ### Step 1: Prerequisites
 
@@ -178,28 +180,35 @@ dependencies, and applies any new migrations.
 - Rate changes are versioned: editing a job's rate today never changes what a past shift
   is calculated to have paid
 - Optional per-job weekly overtime (a threshold + multiplier), applied automatically when
-  calculating pay
+  calculating pay — plus a manual per-shift override (see below) for a specific shift that
+  should count as overtime regardless of the weekly total
 - Clock in / clock out, with a live-updating elapsed timer; a rate-tier picker appears
   automatically only for jobs that actually have more than one tier
 - Clock into multiple jobs at once — each open shift gets its own card with its own timer,
   break controls, and clock-out; a job can't be double-clocked into itself, but a
   different job can run concurrently
 - "Clock In At..." / "Clock Out At..." — set an explicit date/time instead of "now", for
-  a forgotten clock-in/out
+  a forgotten clock-in/out; a ✕ button on an open shift cancels a mistaken clock-in
+  entirely, recording no shift at all
 - Breaks (start/end), excluded from worked-hours totals — "Start Break At..." / "End Break
   At..." accept an explicit time the same way clock in/out do
-- Per-shift notes/comments, added or edited from the History screen; optionally prompted
-  for automatically right after clocking out (per-job setting)
-- Optional per-job weekly hours target — shows remaining hours this week, and (while
-  clocked in) an expected clock-out time, right on the Clock screen
+- Per-shift notes/comments — addable at any point while still clocked in, not just
+  afterward — and editable from the History screen; optionally prompted for automatically
+  right after clocking out (per-job setting)
+- Optional per-job weekly hours target — shows remaining hours this week, an expected
+  clock-out time while clocked in, and (once the target's reached) exactly how far over it
+  you are, right on the Clock screen
+- **Manual per-shift overtime**: mark a specific shift as overtime from its entry in
+  History — pays it entirely at the job's overtime rate regardless of the weekly
+  threshold, and excludes it from the weekly hours target above
 - Android: a persistent notification while clocked into any job, showing the job(s),
   start time, and current elapsed hours — needs a custom dev/production build, not Expo
   Go (see `docs/development.md`)
 - History grouped by day, with per-day and per-shift totals and computed pay; multi-select
   (long-press or tap a row while a selection is active) to delete several shifts at once
 - Tap any shift (still clocked in or already closed) to open its full editor: correct the
-  clock-in/out date and time, add/edit/delete breaks, and edit its note — no more
-  delete-and-recreate to fix a mistake
+  clock-in/out date and time, add/edit/delete breaks, edit its note, and mark it overtime
+  — no more delete-and-recreate to fix a mistake
 - CSV export by date range (this week / last week / this month / last 90 days / a custom
   start-end range) and job, shared via the OS share sheet (iOS/Android)
 - Export as a clean, formatted HTML email draft (recipients, subject, and
@@ -224,6 +233,10 @@ dependencies, and applies any new migrations.
   with a Settings screen banner/button to check for and apply them
 - An in-app Help screen (Settings → Help, both clients) covering how to use every part of
   the app, plus a step-by-step setup guide at the top of Settings → Backups
+- **Self-hosting tools, for whoever runs the server**: an in-app "Update Server" button
+  that pulls and redeploys the latest code with no need to SSH in, and encrypted,
+  deduplicated backups (BorgBackup) with four restore modes (data only, app config only,
+  app version only, or all three together) — see [Deployment](./docs/deployment.md).
 
 ## Notes for future work
 
@@ -233,8 +246,9 @@ dependencies, and applies any new migrations.
   docs — richest on iOS Mail and most desktop clients); web downloads a CSV and copies
   formatted text to the clipboard, then opens a `mailto:` link, since browsers have
   neither a share sheet nor a mail composer to call into.
-- Overtime is calculated only over the shifts in whatever date range you export — pass a
-  full calendar week (e.g. "This Week") for an exactly correct weekly overtime total.
+- Automatic weekly overtime is calculated only over the shifts in whatever date range you
+  export — pass a full calendar week (e.g. "This Week") for an exactly correct weekly
+  overtime total.
 - A "remember me" JWT (checked by default) never expires and there's no refresh/revocation
   flow beyond rotating `JWT_SECRET` (logs out every device) — fine for a personal app,
   worth revisiting if this ever gets multi-user.

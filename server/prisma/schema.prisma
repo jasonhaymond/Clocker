@@ -151,6 +151,10 @@ model Shift {
   clockIn    DateTime
   clockOut   DateTime?
   notes      String?
+  // A manual override, independent of the job's automatic weekly-threshold overtime (see
+  // shared/src/pay.ts): marks this specific shift as overtime regardless of the
+  // threshold, and excludes it from calculateWeeklyProgress's weekly hours target.
+  isOvertime Boolean    @default(false)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   deletedAt  DateTime?

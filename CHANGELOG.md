@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.23.0] - 2026-09-12
+
+### Added
+
+- **The Clock screen now shows how far over your weekly hours target you are**, once
+  you've reached it ("Weekly target reached — 2h 15m over"), instead of just "Weekly
+  target reached" with no detail.
+- **A manual per-shift overtime override**, editable from a shift's entry in History —
+  independent of a job's existing automatic weekly-threshold overtime. Checking it pays
+  that shift entirely at the job's overtime rate (regardless of the weekly threshold, and
+  without eating into other shifts' regular-hours budget for it) and excludes it from the
+  weekly hours target, since overtime worked isn't what that target is meant to measure.
+- **A full documentation overhaul**: a brand-new [User Guide](../docs/user-guide.md)
+  covering every feature for non-technical, everyday use; a rewritten documentation index
+  that points readers to the right guide for what they're trying to do; a plain-English
+  "how it all fits together" overview added to the top of the architecture doc; and a
+  substantial glossary/primer added to the deployment guide (terminal, SSH, Docker,
+  reverse proxies, DNS, environment variables, and more) so it's followable without prior
+  server-administration experience. The root `README.md` now leads with what Clocker is
+  and points non-developers straight to the User Guide instead of a developer quick-start.
+
 ## [1.22.0] - 2026-09-12
 
 ### Fixed

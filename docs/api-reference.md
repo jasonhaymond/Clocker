@@ -1,5 +1,9 @@
 # API Reference
 
+This is technical reference material for anyone writing code against Clocker's server —
+skip it if you're just using or deploying the app (see the [documentation
+index](./README.md) for the guide that's actually for you).
+
 Base URL is whatever `EXPO_PUBLIC_API_URL` points at on the client (default
 `http://localhost:3001`, though the actual port on your machine depends on what
 `npm run setup` picked — see [Automatic port selection](./development.md#automatic-port-selection)).
@@ -114,8 +118,9 @@ are client-generated UUIDs (see [`data-model.md`](./data-model.md)).
   ],
   "shifts": [
     { "id": "<uuid>", "jobId": "<uuid>", "rateTierId": null, "clockIn": "2026-09-07T13:00:00.000Z",
-      "clockOut": "2026-09-07T17:30:00.000Z", "notes": null }
-      // rateTierId/clockOut/notes optional — rateTierId omitted or null means "the job's default tier"
+      "clockOut": "2026-09-07T17:30:00.000Z", "notes": null, "isOvertime": false }
+      // rateTierId/clockOut/notes/isOvertime optional — rateTierId omitted or null means
+      // "the job's default tier"; isOvertime omitted defaults to false
   ],
   "breaks": [
     { "id": "<uuid>", "shiftId": "<uuid>", "start": "2026-09-07T15:00:00.000Z",
@@ -190,7 +195,7 @@ every row the user owns). When present it must be an ISO-8601 datetime string.
   "rateVersions": [ { "id": "...", "tierId": "...", "hourlyRateCents": 1800, "effectiveFrom": "...",
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
   "shifts":       [ { "id": "...", "userId": "...", "jobId": "...", "rateTierId": null, "clockIn": "...",
-                      "clockOut": null, "notes": null,
+                      "clockOut": null, "notes": null, "isOvertime": false,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],
   "breaks":       [ { "id": "...", "shiftId": "...", "start": "...", "end": null,
                       "createdAt": "...", "updatedAt": "...", "deletedAt": null } ],

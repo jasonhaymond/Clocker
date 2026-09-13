@@ -400,6 +400,46 @@ new-run-rotates-to-previous — all four passed); clean `tsc --noEmit` on both c
 pm2 restart (no SSH access this session) — the user will need to trigger a real "Update
 Server" once this ships to confirm it completes end-to-end in practice.
 
+**Amended again (2026-09-12, same day, later session):** the user asked for two related
+weekly-hours features, then a full documentation overhaul, all in the same session, kept
+staged (not committed) at their explicit request until they said to commit everything
+together. Feature work: `calculateWeeklyProgress` (`shared/src/expectedHours.ts`) gained
+`overMinutes`, shown on the Clock screen once a weekly target is reached ("Weekly target
+reached — 2h 15m over"); `Shift` gained a manual `isOvertime` override (a new checkbox in
+the shift editor, History) — independent of the job's existing automatic weekly-threshold
+overtime — that pays the whole shift at the overtime rate and excludes it from the weekly
+target. This touched every layer: `shared/` (types, `pay.ts`, `expectedHours.ts`), a new
+SQLite migration (mobile, version 7) and a new Postgres migration (`shift_is_overtime`,
+generated via `prisma migrate dev` against the local dev database and applied), sync
+push/pull on both ends, and the shift editor UI on both clients. Verified with a
+standalone pay-math script (three scenarios: override pays 100% overtime, doesn't consume
+other shifts' regular-hours threshold budget, falls back to 1× with no multiplier
+configured — all passed), a real Playwright run confirming a shift correctly drops out of
+the weekly total the instant it's checked, and clean typechecks + `expo export` across all
+four workspaces.
+
+Documentation work: added `docs/user-guide.md` (new — a complete, jargon-free walkthrough
+of every feature, for everyday use), rewrote `docs/README.md` as a "which guide do I need"
+index for three audiences (use it / host it / develop it), added a plain-English "how it
+all fits together" section to the top of `docs/architecture.md`, added a substantial
+glossary/primer to the top of `docs/deployment.md` (terminal, SSH, Docker, reverse proxy,
+DNS, environment variables, ports, firewalls — explained once so the rest of that guide
+doesn't have to keep stopping to explain jargon), added a short newcomer primer to
+`docs/development.md`, added "skip this if you're not writing code" framing to the top of
+the four reference docs (`data-model.md`, `sync-protocol.md`, `api-reference.md`,
+`import-format.md`), and rewrote the root `README.md` to lead with what Clocker actually
+is and point non-developers straight to the User Guide instead of a developer quick-start.
+Also fixed a real, unrelated accuracy gap caught during this review:
+`docs/api-reference.md`'s `/sync/push`/`/sync/pull` JSON examples were missing the
+`isOvertime` field added earlier in this same session. `1.23.0` (minor — real new
+capability, not just a fix) (§3). The existing deep technical content in every doc was
+preserved, not replaced — this was a review-and-add pass (glossaries, overviews, a new
+guide, better navigation), not a rewrite of already-accurate material. Not independently
+proofread by a second pass beyond the author's own read-through; worth a skim by the user
+before treating it as fully polished, especially the new user-guide.md's UI-label
+accuracy, which was spot-checked against the actual component source but not against a
+running app.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 

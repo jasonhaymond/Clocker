@@ -1,5 +1,84 @@
 # Deployment
 
+This guide walks through putting Clocker on a real server — a computer, always turned on
+and reachable over the internet, that you and anyone else you invite can use Clocker
+through, at a real web address, without your own computer needing to be involved at all.
+
+It's written to be followable without prior server-administration experience, but it does
+assume you're comfortable typing commands into a terminal (a text-based way of controlling
+a computer — see [Before you begin](#before-you-begin) below if that phrase is unfamiliar)
+and that you have — or are willing to get — a small always-on computer to put Clocker on
+(a cheap virtual private server from any cloud provider works fine; a spare computer or a
+Raspberry Pi at home works too, as long as it's reachable from the internet).
+
+If you get stuck, the [Troubleshooting](#troubleshooting) table partway through this guide
+covers the most common problems and their fixes.
+
+## Before you begin
+
+A few terms this guide uses throughout, explained once here in plain language, so the rest
+of the guide can just use them without re-explaining each time.
+
+- **Terminal** (also called a command line, console, or shell) — a text-based way of
+  controlling a computer by typing commands and reading text output, instead of clicking
+  things. Every gray code box below is something you type into one, one line at a time,
+  pressing Enter after each line.
+- **SSH** — the standard way of opening a terminal on a *different* computer over the
+  internet — specifically, the server you're deploying Clocker to. If your server is a
+  rented cloud machine, whoever you rented it from will have told you how to connect
+  (usually a command like `ssh you@your-server-ip`, or a "Connect" button in their
+  dashboard that opens a terminal for you).
+- **"The server"** — this phrase is used two different ways in this project, worth
+  telling apart:
+  - **The server** (this guide, most of the time): the physical or virtual computer you're
+    deploying Clocker to — a machine, not a piece of Clocker's own code.
+  - **`server/`** (a folder in Clocker's own code): the part of Clocker that actually
+    *runs* on that machine — its API. Both meanings show up in this guide; context makes
+    clear which one, but it's worth knowing they're not the same thing.
+- **Docker** — a tool that packages a piece of software together with everything it needs
+  to run (the exact version of its dependencies, its configuration, and so on) into a
+  self-contained unit called a **container**, so it behaves identically regardless of what
+  else is installed on the machine running it. Clocker's server, database, and web app
+  each run in their own container. **Docker Compose** is the tool that starts and manages
+  several containers together as one unit, from a single configuration file — that's
+  what `docker compose up` (used throughout this guide) does.
+- **Reverse proxy** — a program that sits in front of your other services and routes
+  incoming web requests to the right one, and (usually) also handles HTTPS encryption for
+  all of them in one place rather than each service handling it separately. Clocker uses
+  **Caddy** for this, chosen specifically because it can get and renew a real SSL/TLS
+  certificate for your domain completely automatically, with no manual steps or renewal
+  reminders.
+- **Domain name / DNS** — your domain name (e.g. `clocker.example.com`) is the human-
+  readable web address people will actually type or tap to reach Clocker. DNS is the
+  system that translates that name into your server's actual numeric internet address (its
+  IP address) — you configure this once, wherever you registered/manage the domain, by
+  pointing an "A record" (and optionally an "AAAA record") at your server's IP address.
+  Without this step done first, your server has nothing to prove the domain belongs to it,
+  and HTTPS can't be set up.
+- **HTTPS / SSL / TLS certificate** — the padlock-icon encryption that keeps traffic
+  between a visitor and your server private. Getting one traditionally required a manual,
+  recurring process; Caddy (see above) automates it completely, for free, via a service
+  called Let's Encrypt — the one requirement on your end is that your domain's DNS
+  already points at your server (see above) before Caddy tries.
+- **Environment variable** — a named setting (like a password or a domain name) supplied
+  to a running program from *outside* its own code, rather than hard-coded into it — the
+  standard way to keep things like passwords out of code that gets shared/version-
+  controlled. In this project they live in a file named `.env.prod` (a plain text file,
+  one `NAME=value` setting per line) which you'll create from a template during setup.
+- **Port** — a number a program listens on to receive network connections, alongside a
+  machine's address (much like an apartment number alongside a street address). You'll see
+  ports like `80`/`443` (the standard ones for regular and secure web traffic) and a few
+  others Clocker picks for its own internal use.
+- **Firewall** — a layer that blocks network traffic by default and only allows through
+  what you've explicitly permitted (by port, and sometimes by which other computer is
+  allowed to connect). Cloud servers often have **two** firewalls to think about: one
+  inside the server's own operating system (commonly a tool called `ufw`), and a separate
+  one provided by whoever you're renting the server from (often called a "security
+  group") — both need to allow a port through, not just one.
+
+None of this needs to be memorized before starting — refer back here whenever a term comes
+up that doesn't make sense yet.
+
 ## Dev stack vs. production stack — don't run one thinking it's the other
 
 Clocker has **two completely separate ways to run the server**, and mixing them up is the

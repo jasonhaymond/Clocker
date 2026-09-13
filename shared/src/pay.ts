@@ -43,6 +43,14 @@ function resolveRateCents(tier: RateTier | null, versions: RateVersion[], atIso:
 // and any hours past the threshold (even split within a single shift) become overtime,
 // at that shift's own resolved rate. Weeks are only as complete as the shifts you pass
 // in — for an accurate weekly overtime total, pass a full calendar week's shifts.
+//
+// A shift with `isOvertime` set is a separate, manual override of all this: every hour of
+// it is overtime regardless of the threshold, and it's excluded entirely from the
+// cumulative regular-hours count those OTHER shifts consume — it was never "regular" time
+// competing for that budget in the first place. If the job has no overtimeMultiplier
+// configured, the override still marks the hours as overtime (so they're still excluded
+// from calculateWeeklyProgress elsewhere) but pays them at the plain rate (×1) since
+// there's no configured multiplier to apply.
 export function calculateShiftPay(params: {
   job: Job;
   tiers: RateTier[];
@@ -66,7 +74,10 @@ export function calculateShiftPay(params: {
     let regularHours = workedHours;
     let overtimeHours = 0;
 
-    if (overtimeEnabled) {
+    if (shift.isOvertime) {
+      regularHours = 0;
+      overtimeHours = workedHours;
+    } else if (overtimeEnabled) {
       const weekKey = startOfWeek(new Date(shift.clockIn)).toISOString();
       const before = cumulativeHoursByWeek.get(weekKey) ?? 0;
       const threshold = job.overtimeWeeklyThresholdHours as number;
@@ -76,10 +87,9 @@ export function calculateShiftPay(params: {
       cumulativeHoursByWeek.set(weekKey, before + workedHours);
     }
 
+    const multiplier = job.overtimeMultiplier ?? 1;
     const totalCents =
-      rateCents == null
-        ? 0
-        : Math.round(regularHours * rateCents + overtimeHours * rateCents * (job.overtimeMultiplier as number));
+      rateCents == null ? 0 : Math.round(regularHours * rateCents + overtimeHours * rateCents * multiplier);
 
     results.push({
       shiftId: shift.id,

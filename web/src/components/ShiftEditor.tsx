@@ -11,6 +11,7 @@ import { useStore } from "../store";
 export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => void }) {
   const store = useStore();
   const [notes, setNotes] = useState(shift.notes ?? "");
+  const [isOvertime, setIsOvertime] = useState(shift.isOvertime);
   const { prompt, modal } = useDateTimePrompt();
 
   const breaks = store.breaks.filter((b) => b.shiftId === shift.id);
@@ -38,6 +39,15 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
       return;
     }
     await store.updateShiftTimes(shift, { clockOut: date.toISOString() });
+  }
+
+  // Commits immediately, same as clock-in/out/break edits above — not lumped into the
+  // notes draft state, since a checkbox doesn't benefit from a Cancel-to-discard the way a
+  // half-typed note does.
+  async function toggleOvertime() {
+    const next = !isOvertime;
+    setIsOvertime(next);
+    await store.updateShiftTimes(shift, { isOvertime: next });
   }
 
   async function addBreak() {
@@ -94,6 +104,12 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
               {shift.clockOut ? formatClock(shift.clockOut) : "Still clocked in — set..."}
             </button>
           </div>
+
+          <label className="checkbox-row">
+            <input type="checkbox" checked={isOvertime} onChange={toggleOvertime} />
+            Overtime
+          </label>
+          <p className="hint">Pays this shift entirely at the overtime rate and excludes it from the weekly hours target.</p>
 
           <h4>Breaks</h4>
           {breaks.length === 0 && <p className="hint">No breaks recorded.</p>}

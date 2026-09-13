@@ -109,6 +109,7 @@ function rowToShift(row: any): Shift {
     clockIn: row.clock_in,
     clockOut: row.clock_out,
     notes: row.notes,
+    isOvertime: !!row.is_overtime,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -452,7 +453,7 @@ export async function clockIn(jobId: string, rateTierId: string | null = null, c
   ]);
   await markPending("shift", id, "upsert");
   dbEvents.emit();
-  return { id, jobId, rateTierId, clockIn: clockInAt, clockOut: null, notes: null, updatedAt, deletedAt: null };
+  return { id, jobId, rateTierId, clockIn: clockInAt, clockOut: null, notes: null, isOvertime: false, updatedAt, deletedAt: null };
 }
 
 // `clockOutTime` defaults to now but can be set explicitly ("Clock Out At...").
@@ -470,16 +471,17 @@ export async function clockOut(shiftId: string, clockOutTime?: string): Promise<
 
 export async function updateShiftTimes(
   shiftId: string,
-  patch: { clockIn?: string; clockOut?: string | null; notes?: string | null },
+  patch: { clockIn?: string; clockOut?: string | null; notes?: string | null; isOvertime?: boolean },
 ): Promise<void> {
   const db = await getDb();
   const current = await db.getFirstAsync("SELECT * FROM shifts WHERE id = ?", [shiftId]);
   if (!current) return;
   const merged = { ...rowToShift(current), ...patch };
-  await db.runAsync("UPDATE shifts SET clock_in = ?, clock_out = ?, notes = ?, updated_at = ? WHERE id = ?", [
+  await db.runAsync("UPDATE shifts SET clock_in = ?, clock_out = ?, notes = ?, is_overtime = ?, updated_at = ? WHERE id = ?", [
     merged.clockIn,
     merged.clockOut,
     merged.notes,
+    merged.isOvertime ? 1 : 0,
     nowIso(),
     shiftId,
   ]);
@@ -781,9 +783,19 @@ export async function upsertLocalRateVersion(version: RateVersion): Promise<void
 export async function upsertLocalShift(shift: Shift): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    "INSERT INTO shifts (id, job_id, rate_tier_id, clock_in, clock_out, notes, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
-      "ON CONFLICT(id) DO UPDATE SET job_id = excluded.job_id, rate_tier_id = excluded.rate_tier_id, clock_in = excluded.clock_in, clock_out = excluded.clock_out, notes = excluded.notes, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
-    [shift.id, shift.jobId, shift.rateTierId, shift.clockIn, shift.clockOut, shift.notes, shift.updatedAt, shift.deletedAt],
+    "INSERT INTO shifts (id, job_id, rate_tier_id, clock_in, clock_out, notes, is_overtime, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET job_id = excluded.job_id, rate_tier_id = excluded.rate_tier_id, clock_in = excluded.clock_in, clock_out = excluded.clock_out, notes = excluded.notes, is_overtime = excluded.is_overtime, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+    [
+      shift.id,
+      shift.jobId,
+      shift.rateTierId,
+      shift.clockIn,
+      shift.clockOut,
+      shift.notes,
+      shift.isOvertime ? 1 : 0,
+      shift.updatedAt,
+      shift.deletedAt,
+    ],
   );
 }
 

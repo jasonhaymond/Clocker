@@ -95,7 +95,7 @@ interface StoreActions {
   clockIn(jobId: string, rateTierId: string | null, clockInTime?: string): Promise<Shift>;
   clockOut(shift: Shift, clockOutTime?: string): Promise<void>;
   updateShiftNotes(shift: Shift, notes: string | null): Promise<void>;
-  updateShiftTimes(shift: Shift, patch: { clockIn?: string; clockOut?: string | null }): Promise<void>;
+  updateShiftTimes(shift: Shift, patch: { clockIn?: string; clockOut?: string | null; isOvertime?: boolean }): Promise<void>;
   deleteShift(shift: Shift): Promise<void>;
   deleteShifts(shifts: Shift[]): Promise<void>;
   startBreak(shiftId: string, startTime?: string): Promise<Break>;
@@ -299,6 +299,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           clockIn: clockInTime ?? now,
           clockOut: null,
           notes: null,
+          isOvertime: false,
           updatedAt: now,
           deletedAt: null,
         };

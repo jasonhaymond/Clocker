@@ -1,5 +1,9 @@
 # Import format: Hours Tracker CSV
 
+Looking for how to actually *use* the Import Data screen? See the [User
+Guide](./user-guide.md) instead. This is technical reference material — the exact
+spreadsheet columns Clocker's importer understands — for anyone writing code against it.
+
 Settings → Import Data (both clients) imports a CSV export from the [Hours
 Tracker](https://www.hourstrackerapp.com/) app as Clocker jobs, shifts, and breaks. This
 doc is the exact column reference the parser

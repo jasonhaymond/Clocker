@@ -77,6 +77,7 @@ function shiftFromRow(row: any): Shift {
     clockIn: row.clock_in,
     clockOut: row.clock_out,
     notes: row.notes,
+    isOvertime: !!row.is_overtime,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };

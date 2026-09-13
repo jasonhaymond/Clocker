@@ -1,27 +1,42 @@
 # Clocker Documentation
 
-- **[Architecture](./architecture.md)** — monorepo layout, why there are two separate
-  frontend clients (mobile local-first vs. web thin-client) sharing one API instead of one
-  universal codebase, the local-first design principle, and why the app is built the way
-  it is (client-generated UUIDs, the outbox pattern, last-write-wins, a custom server
-  instead of a BaaS).
-- **[Data Model](./data-model.md)** — every table/field on both the Postgres (server) and
-  SQLite (client) sides, and how they map to each other.
-- **[Sync Protocol](./sync-protocol.md)** — exactly how push/pull works: the outbox,
-  conflict resolution, ownership checks, and what the protocol deliberately doesn't do.
-- **[API Reference](./api-reference.md)** — every HTTP endpoint, request/response shapes,
-  status codes, and a copy-pasteable curl smoke test.
-- **[Import Format](./import-format.md)** — the exact CSV column reference for importing
-  an Hours Tracker export (Settings → Import Data on both clients): what each column maps
-  to, how new jobs get their color/rate, and duplicate-safety rules.
-- **[Development Guide](./development.md)** — setup/update scripts, environment
-  variables, day-to-day commands, and known issues (with workarounds already applied) you
-  might otherwise lose time to.
-- **[Deployment](./deployment.md)** — a complete, step-by-step walkthrough for a real
-  production deployment (Caddy + Docker Compose, with automatic HTTPS, or behind your own
-  existing reverse proxy), how it differs from the local dev stack, troubleshooting,
-  required env vars, deploying the web client alongside the API, and building/installing
-  the Expo app itself (EAS Build, internal distribution, OTA updates).
+Start here to find the right guide — pick whichever describes you.
 
-Start with the root [`README.md`](../README.md) for the quick-start; come here for the
-"why" and the "exactly how" behind it.
+## "I just want to use Clocker"
+
+**[User Guide](./user-guide.md)** — everything about actually using the app: clocking in
+and out, jobs, timesheets, exporting hours, and settings. No technical background needed.
+
+## "I want to run my own Clocker server"
+
+**[Deployment](./deployment.md)** — a complete, step-by-step walkthrough for putting
+Clocker on a real server with your own domain name, written to be followable even if
+you've never done this kind of thing before (it explains the unfamiliar terms as it goes —
+Docker, reverse proxies, SSH, and so on). Covers both the easy path (Clocker manages
+everything, including HTTPS, for you) and running behind a reverse proxy you already have,
+plus backups, updates, and troubleshooting.
+
+## "I want to write code for Clocker"
+
+- **[Development Guide](./development.md)** — get a working copy running on your own
+  computer: setup, day-to-day commands, environment variables, and known quirks with
+  ready-made fixes so you don't lose time to them.
+- **[Architecture](./architecture.md)** — how the app is actually put together and why:
+  the pieces, how they talk to each other, and the reasoning behind the less obvious
+  decisions (why there are two separate apps instead of one, why it works offline, why
+  pay rates are never just a single number, and so on). Start here if you want the "why"
+  before diving into code.
+- **[Data Model](./data-model.md)** — every piece of information Clocker stores, on both
+  the phone app's and the server's database, and how they line up with each other.
+- **[Sync Protocol](./sync-protocol.md)** — exactly how a phone and the server agree on
+  what's changed, including what happens when the same thing is edited on two devices
+  before either has a chance to sync.
+- **[API Reference](./api-reference.md)** — every request the app can make to the server,
+  with real examples and a copy-pasteable test sequence.
+- **[Import Format](./import-format.md)** — the exact spreadsheet layout Clocker expects
+  when importing from the Hours Tracker app.
+
+## Still not sure?
+
+The root [`README.md`](../README.md) is the front door — a short overview of what Clocker
+is and a quick-start for developers. Come back here for anything more detailed.

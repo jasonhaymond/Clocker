@@ -97,6 +97,7 @@ export async function runImport(rows: ParsedImportRow[], existingJobs: Job[], ex
       clockIn: row.clockIn,
       clockOut: row.clockOut,
       notes: row.notes,
+      isOvertime: false,
       updatedAt: now,
       deletedAt: null,
     });

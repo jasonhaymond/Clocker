@@ -63,6 +63,7 @@ const shiftInput = z.object({
   clockIn: z.string().datetime(),
   clockOut: z.string().datetime().nullable().optional(),
   notes: z.string().nullable().optional(),
+  isOvertime: z.boolean().optional(),
 });
 
 const breakInput = z.object({
@@ -140,7 +141,7 @@ async function upsertOwnedRateVersion(userId: string, data: z.infer<typeof rateV
 }
 
 async function upsertOwnedShift(userId: string, data: z.infer<typeof shiftInput>) {
-  const { id, jobId, rateTierId, clockIn, clockOut, notes } = data;
+  const { id, jobId, rateTierId, clockIn, clockOut, notes, isOvertime } = data;
   const job = await prisma.job.findFirst({ where: { id: jobId, userId } });
   if (!job) return; // silently drop shifts referencing a job we don't own
   if (rateTierId) {
@@ -153,6 +154,7 @@ async function upsertOwnedShift(userId: string, data: z.infer<typeof shiftInput>
     clockIn: new Date(clockIn),
     clockOut: clockOut ? new Date(clockOut) : null,
     notes: notes ?? null,
+    isOvertime: isOvertime ?? false,
   };
   const updated = await prisma.shift.updateMany({ where: { id, userId }, data: fields });
   if (updated.count === 0) {

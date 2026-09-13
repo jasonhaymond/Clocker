@@ -25,6 +25,7 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [notes, setNotes] = useState(shift.notes ?? "");
+  const [isOvertime, setIsOvertime] = useState(shift.isOvertime);
   const [breaks, setBreaks] = useState<Break[]>([]);
   const { pick, modal } = useDateTimePicker();
 
@@ -56,6 +57,15 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
       return;
     }
     await updateShiftTimes(shift.id, { clockOut: date.toISOString() });
+  }
+
+  // Commits immediately, same as clock-in/out/break edits above — not lumped into the
+  // notes draft state, since a checkbox doesn't benefit from a Cancel-to-discard the way a
+  // half-typed note does.
+  async function toggleOvertime() {
+    const next = !isOvertime;
+    setIsOvertime(next);
+    await updateShiftTimes(shift.id, { isOvertime: next });
   }
 
   async function addBreak() {
@@ -113,6 +123,18 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
             <Text style={styles.timeValue}>{shift.clockOut ? formatClock(shift.clockOut) : "Still clocked in — set..."}</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.checkboxRow} onPress={toggleOvertime}>
+          <View style={[styles.checkboxBox, isOvertime && styles.checkboxBoxChecked]}>
+            {isOvertime && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.checkboxLabel}>Overtime</Text>
+            <Text style={styles.hint}>
+              Pays this shift entirely at the overtime rate and excludes it from the weekly hours target.
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         <Text style={styles.sectionLabel}>Breaks</Text>
         {breaks.length === 0 && <Text style={styles.hint}>No breaks recorded.</Text>}
@@ -180,6 +202,11 @@ function createStyles(colors: ThemeColors) {
     timeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
     timeLabel: { color: colors.textMuted3, fontSize: 14 },
     timeValue: { color: colors.primary, fontWeight: "600", fontSize: 14 },
+    checkboxRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+    checkboxBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.textMuted2, alignItems: "center", justifyContent: "center", marginTop: 1 },
+    checkboxBoxChecked: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+    checkmark: { color: colors.onPrimary, fontSize: 13, fontWeight: "700" },
+    checkboxLabel: { fontSize: 14, fontWeight: "600", color: colors.text, marginBottom: 2 },
     breakRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
     deleteAction: { paddingHorizontal: 5, paddingVertical: 3 },
     deleteActionText: { color: colors.danger, fontSize: 12, fontWeight: "600" },

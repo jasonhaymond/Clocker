@@ -1,5 +1,9 @@
 # Sync Protocol
 
+This is technical reference material for anyone writing code against Clocker's sync
+layer — skip it if you're just using or deploying the app (see the [documentation
+index](./README.md) for the guide that's actually for you).
+
 How a device's local SQLite database and the server's PostgreSQL database converge. This
 is the part of the app most worth understanding before changing anything in
 `app/src/db`, `app/src/sync`, or `server/src/routes/sync.ts` — a subtle bug here means

@@ -1,5 +1,62 @@
 # Architecture
 
+This document explains how Clocker is put together — what the pieces are, how they talk
+to each other, and why several of the less obvious decisions were made that way. If you're
+new to the codebase, read [Plain-English overview](#plain-english-overview) first; it has
+no assumed background beyond "I know what an app and a website are." Everything after that
+gets progressively more technical, aimed at someone about to write code.
+
+## Plain-English overview
+
+Clocker is really four separate pieces of software that work together:
+
+1. **The phone app** — what you install on your phone. It keeps its own private copy of
+   all your data right there on the device (in a small embedded database, similar in
+   spirit to a spreadsheet file that only your phone can see), so it works completely
+   normally even with no internet connection. When it does have a connection, it quietly
+   sends any changes to the server in the background and pulls down anything that changed
+   elsewhere — you never have to think about this happening.
+2. **The website** — what you'd open in a browser. Unlike the phone app, it doesn't keep
+   its own copy of anything; every button you click talks straight to the server and shows
+   you whatever it says back. That's a deliberate trade-off (see [Two frontend
+   clients, one API](#two-frontend-clients-one-api) below for the full reasoning): a
+   browser tab can't promise to keep working after you close it the way a phone can, so
+   there's less to gain from giving it the phone app's offline machinery, and more to lose
+   in complexity.
+3. **The server** — a program that runs continuously somewhere (your own computer during
+   development, a rented server once deployed) and does two jobs: it checks who you are
+   when you sign in, and it's the single shared place both the phone app and the website
+   send changes to and receive changes from. Neither the phone app nor the website ever
+   talks to the other directly — everything passes through the server.
+4. **The database** — where the server actually keeps everything permanently: every job,
+   every shift, every rate you've ever set. Think of it as the server's own filing
+   cabinet; the server is the only thing that ever opens it directly.
+
+Put together, a simple mental model: **the phone app is a notebook you can write in even
+with the lights off, the website is a window you look through that only shows what's
+currently on the other side, and the server plus its database are the one shared "true"
+copy of your data that both of them eventually agree with.**
+
+Two consequences worth knowing up front, since they explain a lot of what you'll read
+elsewhere in this document and the rest of the docs:
+
+- Because the phone app keeps its own copy, **two devices can occasionally disagree
+  briefly** — if you clock in on your phone in a spot with no signal, then open the
+  website before your phone has had a chance to reconnect, the website won't show that
+  new shift yet. It will, the moment the phone syncs. See [Sync
+  Protocol](./sync-protocol.md) for exactly how that catching-up works, including what
+  happens in the rare case the *same* thing gets changed on two devices before either
+  syncs.
+- Because pay calculations (regular hours, overtime, rounding) need to come out
+  **identical** no matter which app you're looking at, that math lives in one shared place
+  (`shared/`, described below) that both the phone app and the website use directly,
+  rather than each one having its own copy that could quietly drift apart over time.
+
+The rest of this document goes into the technical detail behind all of this — the exact
+folders involved, the specific design trade-offs, and the reasoning for each one.
+
+## The pieces, technically
+
 Clocker is a monorepo with four workspaces:
 
 ```
