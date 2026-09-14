@@ -17,11 +17,16 @@ import {
   setRateTierArchived,
   updateJobDetails,
   updateJobExpectedHours,
+  updateJobAutoClockInOut,
+  updateJobLocation,
+  updateJobLocationAwareness,
   updateJobOvertime,
   updateJobPromptForNotes,
   updateJobRounding,
   updateJobTimesheetSettings,
 } from "../db/database";
+import { LocationPickerModal } from "../components/LocationPickerModal";
+import { DEFAULT_LOCATION_RADIUS_METERS, LOCATION_RADIUS_OPTIONS_METERS, getCurrentLocation, requestLocationPermissions } from "../lib/locationTracking";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import {
@@ -236,6 +241,16 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
   const [expectedHoursEnabled, setExpectedHoursEnabled] = useState(job.expectedWeeklyHours != null);
   const [expectedHours, setExpectedHours] = useState(job.expectedWeeklyHours != null ? String(job.expectedWeeklyHours) : "40");
   const [expectedWeekStartDay, setExpectedWeekStartDay] = useState(job.expectedHoursWeekStartDay);
+  const [locationCoords, setLocationCoords] = useState<{ latitude: number; longitude: number } | null>(
+    job.locationLatitude != null && job.locationLongitude != null
+      ? { latitude: job.locationLatitude, longitude: job.locationLongitude }
+      : null,
+  );
+  const [locationRadius, setLocationRadius] = useState(job.locationRadiusMeters ?? DEFAULT_LOCATION_RADIUS_METERS);
+  const [locationAwareness, setLocationAwareness] = useState(job.locationAwarenessEnabled);
+  const [autoClockInOut, setAutoClockInOut] = useState(job.autoClockInOutEnabled);
+  const [locatingBusy, setLocatingBusy] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [timesheet, setTimesheet] = useState({
     periodType: job.timesheetPeriodType,
     weekStartDay: job.timesheetWeekStartDay,
@@ -271,6 +286,83 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
     const value = parseFloat(hours);
     if (!Number.isFinite(value) || value <= 0) return;
     await updateJobExpectedHours(job.id, { expectedWeeklyHours: value, expectedHoursWeekStartDay: weekStartDay });
+  }
+
+  async function saveLocation(coords: { latitude: number; longitude: number } | null, radius: number) {
+    setLocationCoords(coords);
+    if (!coords) {
+      // Clearing a location also forces both switches off below — updateJobLocation
+      // enforces this at the DB layer too, but reflecting it in local state immediately
+      // avoids a flash of an enabled-but-now-meaningless switch.
+      setLocationAwareness(false);
+      setAutoClockInOut(false);
+    }
+    await updateJobLocation(job.id, coords ? { latitude: coords.latitude, longitude: coords.longitude, radiusMeters: radius } : null);
+  }
+
+  async function useCurrentLocationForJob() {
+    setLocatingBusy(true);
+    try {
+      const coords = await getCurrentLocation();
+      if (!coords) {
+        Alert.alert(
+          "Location unavailable",
+          "Couldn't get your current location — check that Clocker has location access in your phone's Settings.",
+        );
+        return;
+      }
+      await saveLocation(coords, locationRadius);
+    } catch (e: any) {
+      Alert.alert("Couldn't set location", e?.message ?? "Unknown error");
+    } finally {
+      setLocatingBusy(false);
+    }
+  }
+
+  function confirmClearLocation() {
+    Alert.alert("Clear this job's location?", "This also turns off location awareness and auto clock in/out for this job.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Clear", style: "destructive", onPress: () => saveLocation(null, locationRadius) },
+    ]);
+  }
+
+  async function saveLocationRadius(radius: number) {
+    setLocationRadius(radius);
+    if (locationCoords) await updateJobLocation(job.id, { ...locationCoords, radiusMeters: radius });
+  }
+
+  async function toggleLocationAwareness(value: boolean) {
+    if (value) {
+      const result = await requestLocationPermissions();
+      if (result === "denied") {
+        Alert.alert("Location access needed", "Turn on location access for Clocker in your phone's Settings to use location awareness.");
+        return;
+      }
+      if (result === "foreground-only") {
+        Alert.alert(
+          "Background access recommended",
+          'Without "Always Allow" location access, Clocker can only detect arrival/departure while the app is open. You can grant this in your phone\'s Settings.',
+        );
+      }
+    }
+    setLocationAwareness(value);
+    if (!value) setAutoClockInOut(false);
+    try {
+      await updateJobLocationAwareness(job.id, value);
+    } catch (e: any) {
+      setLocationAwareness(!value);
+      Alert.alert("Couldn't update", e?.message ?? "Unknown error");
+    }
+  }
+
+  async function toggleAutoClockInOut(value: boolean) {
+    setAutoClockInOut(value);
+    try {
+      await updateJobAutoClockInOut(job.id, value);
+    } catch (e: any) {
+      setAutoClockInOut(!value);
+      Alert.alert("Couldn't update", e?.message ?? "Unknown error");
+    }
   }
 
   async function saveTimesheet(next: typeof timesheet) {
@@ -489,6 +581,69 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
           Shows remaining hours this week (and, while clocked in, an expected clock-out time) on the Clock tab. Uses
           this job's own rounding rules, and doesn't have to match its timesheet period.
         </Text>
+
+        <Text style={styles.sectionLabel}>Location</Text>
+        {locationCoords ? (
+          <>
+            <Text style={styles.tierRate}>
+              {locationCoords.latitude.toFixed(5)}, {locationCoords.longitude.toFixed(5)} · {locationRadius}m radius
+            </Text>
+            <View style={styles.overtimeRow}>
+              <TouchableOpacity style={[styles.secondaryButton, { flex: 1 }]} onPress={() => setMapPickerOpen(true)}>
+                <Text style={styles.secondaryButtonText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.secondaryButton, { flex: 1 }]} onPress={confirmClearLocation}>
+                <Text style={styles.secondaryButtonText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.hint}>Radius</Text>
+            <View style={styles.chipRow}>
+              {LOCATION_RADIUS_OPTIONS_METERS.map((r) => (
+                <TouchableOpacity key={r} style={[styles.chip, locationRadius === r && styles.chipSelected]} onPress={() => saveLocationRadius(r)}>
+                  <Text style={[styles.chipText, locationRadius === r && styles.chipTextSelected]}>{r}m</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.tierRate}>📍 Not set</Text>
+            <View style={styles.overtimeRow}>
+              <TouchableOpacity style={[styles.secondaryButton, { flex: 1 }]} onPress={useCurrentLocationForJob} disabled={locatingBusy}>
+                <Text style={styles.secondaryButtonText}>{locatingBusy ? "Locating…" : "Use My Current Location"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.secondaryButton, { flex: 1 }]} onPress={() => setMapPickerOpen(true)}>
+                <Text style={styles.secondaryButtonText}>Choose on Map</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        <View style={styles.overtimeHeader}>
+          <Text style={styles.sectionLabel}>Location awareness</Text>
+          <Switch value={locationAwareness} onValueChange={toggleLocationAwareness} disabled={!locationCoords} />
+        </View>
+        <Text style={styles.hint}>Prompts you to clock in/out when you arrive at or leave this job's location.</Text>
+
+        <View style={styles.overtimeHeader}>
+          <Text style={styles.sectionLabel}>Auto clock in/out</Text>
+          <Switch value={autoClockInOut} onValueChange={toggleAutoClockInOut} disabled={!locationAwareness} />
+        </View>
+        <Text style={styles.hint}>
+          Skips the prompt above and clocks you in/out automatically. Requires location awareness, and — for this
+          to work while the app is closed — "Always Allow" location access.
+        </Text>
+
+        {mapPickerOpen && (
+          <LocationPickerModal
+            initialCoords={locationCoords}
+            onCancel={() => setMapPickerOpen(false)}
+            onConfirm={(coords) => {
+              setMapPickerOpen(false);
+              saveLocation(coords, locationRadius);
+            }}
+          />
+        )}
 
         <Text style={styles.sectionLabel}>Timesheet period</Text>
         <View style={styles.chipRow}>

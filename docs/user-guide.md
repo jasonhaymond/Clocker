@@ -17,6 +17,7 @@ an email).
 - [Finding your way around](#finding-your-way-around)
 - [Setting up a job](#setting-up-a-job)
 - [Clocking in and out](#clocking-in-and-out)
+- [Clocking in and out automatically by location](#clocking-in-and-out-automatically-by-location)
 - [Taking breaks](#taking-breaks)
 - [Adding a note to a shift](#adding-a-note-to-a-shift)
 - [Weekly hours targets](#weekly-hours-targets)
@@ -184,6 +185,36 @@ never happened. This is different from clocking out immediately, which *does* cr
 different schedules) is fine — clock into each one separately, and each gets its own card
 on the Clock screen with its own timer, breaks, and clock-out. You can't clock into the
 *same* job twice at once, though — clock out first if you need to correct something.
+
+## Clocking in and out automatically by location
+
+Available on the phone app only (a website can't run anything once you close the tab, so
+there's nothing for it to do here). If you'd rather not tap Clock In/Clock Out by hand
+every time, a job can be set up to notice when you arrive at or leave its location instead.
+
+Open a job (**Jobs** tab → tap the job → **Location**), and:
+
+1. **Set the job's location**, either by standing there and tapping **Use My Current
+   Location**, or by tapping **Choose on Map** and dropping a pin anywhere. Pick how wide
+   an area should count (100m/250m/500m/1000m) — wider is more forgiving of GPS drift,
+   narrower avoids false triggers from a job site close to somewhere else you spend time.
+2. Turn on **Location awareness**. This *prompts* you — arrive or leave, and Clocker asks
+   "Clock in?"/"Clock out?" the next time you open the app (with a notification too, so
+   you notice even before you open it). Nothing happens until you answer.
+3. Optionally, turn on **Auto clock in/out** too (only available once Awareness is on).
+   This skips the question and just does it, then shows a quick notification confirming
+   what happened.
+
+The first time you turn on Location awareness, your phone will ask for location
+permission — say yes, and for the "Always Allow"/background option if you want this to
+still work while the app is closed (with only "while using the app," it'll only notice
+arrivals/departures while Clocker is actually open). Your phone's Settings app can always
+revoke this later if you change your mind.
+
+**A privacy note**: the only thing stored is the one location (and radius) you set for a
+job — Clocker doesn't track or record everywhere you go, only whether you're inside or
+outside that one area, and that check happens on your phone. That job location syncs
+along with the rest of your job data, the same as its pay rate or color would.
 
 ## Taking breaks
 

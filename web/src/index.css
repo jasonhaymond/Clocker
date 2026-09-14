@@ -659,6 +659,10 @@ hr {
 .row-title {
   font-weight: 600;
   font-size: 14px;
+  /* A name with no natural break points (one long unbroken word) would otherwise overflow
+     its row instead of wrapping — .row-main's min-width: 0 lets the row shrink, but that
+     alone doesn't force a break inside a single word. */
+  overflow-wrap: anywhere;
 }
 .row-title.archived,
 .archived {
@@ -1031,6 +1035,22 @@ button.primary {
 }
 .job-option.selected {
   color: #fff;
+}
+/* Clock screen's job picker: a scrolling list rather than wrapping chips (still used just
+   above for the rate picker, which rarely has more than a couple of options) — job lists
+   can run long, and an unbounded wrap grid just kept growing and pushed the clock-in
+   button further down the page. Reuses the generic .row pattern (see JobsScreen) with its
+   own horizontal padding, since .row alone assumes a parent that already provides that. */
+.clock-job-list {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  max-height: 260px;
+  max-width: 420px;
+  overflow-y: auto;
+  margin: 0 auto 14px;
+}
+.clock-job-list .row {
+  padding: 10px 12px;
 }
 .tier-option.selected {
   background: var(--invert-bg);

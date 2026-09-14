@@ -74,6 +74,15 @@ model Job {
   // see shared/src/expectedHours.ts.
   expectedWeeklyHours         Float?
   expectedHoursWeekStartDay   Int        @default(1) // 0=Sun..6=Sat
+  // Location-based clock in/out (mobile only — see app/src/lib/locationTracking.ts). No
+  // location until latitude/longitude are set; locationAwarenessEnabled prompts to clock
+  // in/out on arrival/departure, autoClockInOutEnabled does it silently and requires
+  // locationAwarenessEnabled to also be true.
+  locationAwarenessEnabled    Boolean    @default(false)
+  autoClockInOutEnabled       Boolean    @default(false)
+  locationLatitude            Float?
+  locationLongitude           Float?
+  locationRadiusMeters        Float?
   createdAt                   DateTime   @default(now())
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?

@@ -2,9 +2,9 @@
 
 This document explains how Clocker is put together — what the pieces are, how they talk
 to each other, and why several of the less obvious decisions were made that way. If you're
-new to the codebase, read [Plain-English overview](#plain-english-overview) first; it has
-no assumed background beyond "I know what an app and a website are." Everything after that
-gets progressively more technical, aimed at someone about to write code.
+new to the codebase, read [Plain-English overview](#plain-english-overview) first for the
+mental model before diving into specifics. Everything after that gets progressively more
+technical, aimed at someone about to write code.
 
 ## Plain-English overview
 

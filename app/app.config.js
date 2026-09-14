@@ -1,0 +1,67 @@
+// Converted from app.json to app.config.js so this file can read process.env —
+// specifically ANDROID_GOOGLE_MAPS_API_KEY, needed by react-native-maps on Android (the
+// job-location map picker; iOS uses Apple Maps by default, no key needed there). Expo
+// loads app/.env automatically for both `npx expo start` and EAS builds (see
+// app/.env.example) — no extra config needed to get the key into process.env here.
+const LOCATION_USAGE_DESCRIPTION =
+  "Clocker uses your location to detect when you arrive at or leave a job site you've set up for location awareness, so it can prompt you to clock in/out or — if you've turned that on — do it automatically, even when the app isn't open.";
+
+module.exports = {
+  expo: {
+    name: "Clocker",
+    slug: "clocker",
+    scheme: "clocker",
+    version: "1.24.0",
+    runtimeVersion: {
+      policy: "appVersion",
+    },
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    ios: {
+      supportsTablet: true,
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription: LOCATION_USAGE_DESCRIPTION,
+        NSLocationAlwaysAndWhenInUseUsageDescription: LOCATION_USAGE_DESCRIPTION,
+      },
+    },
+    android: {
+      adaptiveIcon: {
+        backgroundColor: "#E6F4FE",
+        foregroundImage: "./assets/android-icon-foreground.png",
+        backgroundImage: "./assets/android-icon-background.png",
+        monochromeImage: "./assets/android-icon-monochrome.png",
+      },
+      predictiveBackGestureEnabled: false,
+      permissions: ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION"],
+      config: {
+        googleMaps: {
+          apiKey: process.env.ANDROID_GOOGLE_MAPS_API_KEY,
+        },
+      },
+    },
+    plugins: [
+      "expo-mail-composer",
+      "@react-native-community/datetimepicker",
+      [
+        "react-native-notify-kit",
+        {
+          android: {
+            foregroundService: {
+              types: ["dataSync"],
+            },
+          },
+        },
+      ],
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: LOCATION_USAGE_DESCRIPTION,
+          locationWhenInUsePermission: LOCATION_USAGE_DESCRIPTION,
+          isIosBackgroundLocationEnabled: true,
+          isAndroidBackgroundLocationEnabled: true,
+        },
+      ],
+    ],
+  },
+};

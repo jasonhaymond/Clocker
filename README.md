@@ -34,7 +34,7 @@ the right guide depending on what you're trying to do:
 | | |
 |---|---|
 | [User Guide](./docs/user-guide.md) | Using the app day to day — no technical background needed |
-| [Deployment](./docs/deployment.md) | Running your own Clocker server, step by step, explained for non-experts too |
+| [Deployment](./docs/deployment.md) | Running your own Clocker server, step by step — no prior deployment experience assumed |
 | [Development Guide](./docs/development.md) | Setting up a local copy to write code against |
 | [Architecture](./docs/architecture.md) | How the app is put together, and why |
 | [Data Model](./docs/data-model.md) | Every piece of data Clocker stores, and where |
@@ -153,7 +153,8 @@ To enable it (needs a free Expo account):
    eas login
    ```
 2. ```bash
-   eas update:configure   # links this app to an EAS project and fills in app.json
+   eas update:configure   # links this app to an EAS project — see docs/deployment.md
+                          # for why app/app.config.js needs the resulting id added by hand
    ```
 3. Whenever you want to ship a JS-only change (no native code changes) without a new app
    build:

@@ -440,6 +440,64 @@ before treating it as fully polished, especially the new user-guide.md's UI-labe
 accuracy, which was spot-checked against the actual component source but not against a
 running app.
 
+**Amended again (2026-09-14, later session):** a run of smaller, independently-requested
+fixes/features, batched into one commit per the usual convention. In order:
+
+- Toned down `docs/development.md`/`docs/deployment.md`'s glossaries — they'd drifted
+  into explaining things a beginner *developer* already knows (terminal, npm, ports,
+  HTTPS); trimmed to the genuinely deployment-specific terms (SSH-to-a-server, Docker/
+  Compose, Caddy, DNS, the dual-firewall gotcha) and updated the framing sentences in
+  `architecture.md`/both READMEs to match.
+- Clock screen's job picker now sorts by most-recently-used and auto-selects it, with a
+  ref-tracked "did we pick this or did the user" check so a manual pick isn't clobbered
+  the next time the effect re-runs (mobile: a new `getLastActivityByJob()` SQL query; web:
+  computed from the in-memory store, since it already holds every shift).
+- Fixed the Android "clocked in" notification taking several seconds to a minute to
+  appear (`registerForegroundService`/`createChannel` moved from lazy, on first clock-in,
+  to eager at `app/index.ts`'s module load — Notifee's own documented recommendation), and
+  added a per-job color dot via `android.color`.
+- **Location-based clock in/out, per job, mobile only** — the largest piece. Two
+  independent per-job switches (`locationAwarenessEnabled` prompts, `autoClockInOutEnabled`
+  skips the prompt and requires awareness on first), a location set via "Use My Current
+  Location" or a `react-native-maps` picker, and real background geofencing
+  (`expo-location`/`expo-task-manager`, both new deps) rather than polling. Went through
+  full plan-mode review with the user first (two independent toggles, both location-setup
+  paths, full background geofencing over a foreground-only v1 — all explicit choices, not
+  assumptions). `app/app.json` → `app/app.config.js` as part of this (needed to read
+  `ANDROID_GOOGLE_MAPS_API_KEY` from the environment for the Android map picker; iOS uses
+  Apple Maps for free) — **this is a real, documented behavior change**: EAS CLI can no
+  longer auto-write `extra.eas.projectId`/`updates.url` into a JS config the way it does
+  for plain `app.json`; it prints the values instead, added by hand once (see
+  `docs/deployment.md`/`docs/development.md`, both updated to say so). Genuinely can't be
+  tested from here — no device, and per this file's own earlier note, EAS has never been
+  logged into from a Claude session either, so there isn't yet a way to produce a build to
+  test it on. Verified what's actually verifiable: full four-workspace typecheck, the new
+  SQLite migration applied for real against `node:sqlite` (not `expo-sqlite`, which — like
+  `expo-location`/`expo-task-manager` — can't be imported outside the Expo runtime; the
+  cascade rules in the three new `updateJobLocation*` functions were checked by careful
+  reading only, not executed), and `app.config.js` evaluated for real via `expo config`
+  plus a direct `require` to confirm the Maps key actually flows through.
+- Fixed the job picker growing without bound with a lot of jobs (was the old wrapping-chip
+  layout; now a scrollable, capped-height list on both clients, additionally capped in
+  *width* on web at the user's follow-up request so it doesn't stretch the full app-shell
+  width) — verified for real via Playwright (15+ jobs, scroll-then-click-last-row, light/
+  dark, mobile/desktop widths).
+- While screenshotting the above at the user's request to check long job names: found a
+  real bug (a name with no spaces overflowed past the row instead of wrapping) and fixed
+  it at the shared `.row-title` CSS rule, not just for the new picker — same latent issue
+  would've hit the Jobs tab and anywhere else that class is used.
+- Fixed the same notification's elapsed-time text going stale if the app sat backgrounded
+  for a while — the actual root cause was that the refresh depended on the app's JS thread
+  being active, which Android doesn't guarantee even for a foreground service. Switched
+  the single-open-shift case (the common one) to Android's native chronometer
+  (`showChronometer`/`timestamp`), which the OS itself ticks live with zero ongoing app
+  involvement; the rare simultaneous-multi-job case keeps the old refreshed-text approach,
+  since only one chronometer slot exists per notification.
+
+`1.24.0` (minor — real new capability, not just fixes) (§3). Every item above was a
+separate user request handled in sequence within the same session, batched into one
+commit at the end rather than one per request, per the usual convention here.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -466,9 +524,11 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.22.0` as of this session; the
+full stop. All five (four packages, one version) are at `1.24.0` as of this session; the
 number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
-`app.json`, already existed; web: `__APP_VERSION__`, baked in from `web/package.json` via
+`app/app.config.js` — was `app.json` until 2026-09-14, converted to read
+`ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
+in from `web/package.json` via
 a `define` in `vite.config.ts`). A version bump + CHANGELOG entry lands with every
 shipping commit, and **this applies to `scripts/`/deploy-tooling/docs-only changes too,
 not just source changes in one of the four packages** — there's no separate "scripts"

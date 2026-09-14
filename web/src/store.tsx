@@ -182,6 +182,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           promptForNotesOnClockOut: false,
           expectedWeeklyHours: null,
           expectedHoursWeekStartDay: 1,
+          // Location-based clock in/out is a mobile-only feature (see
+          // app/src/lib/locationTracking.ts) — web has no UI for it, but every Job object
+          // still needs these fields so a job created here doesn't desync from what
+          // mobile expects once it syncs down.
+          locationAwarenessEnabled: false,
+          autoClockInOutEnabled: false,
+          locationLatitude: null,
+          locationLongitude: null,
+          locationRadiusMeters: null,
           updatedAt: now,
           deletedAt: null,
         };

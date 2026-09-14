@@ -44,6 +44,11 @@ function jobFromRow(row: any): Job {
     promptForNotesOnClockOut: !!row.prompt_for_notes_on_clock_out,
     expectedWeeklyHours: row.expected_weekly_hours,
     expectedHoursWeekStartDay: row.expected_hours_week_start_day,
+    locationAwarenessEnabled: !!row.location_awareness_enabled,
+    autoClockInOutEnabled: !!row.auto_clock_in_out_enabled,
+    locationLatitude: row.location_latitude,
+    locationLongitude: row.location_longitude,
+    locationRadiusMeters: row.location_radius_meters,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };

@@ -69,6 +69,11 @@ function rowToJob(row: any): Job {
     promptForNotesOnClockOut: !!row.prompt_for_notes_on_clock_out,
     expectedWeeklyHours: row.expected_weekly_hours,
     expectedHoursWeekStartDay: row.expected_hours_week_start_day,
+    locationAwarenessEnabled: !!row.location_awareness_enabled,
+    autoClockInOutEnabled: !!row.auto_clock_in_out_enabled,
+    locationLatitude: row.location_latitude,
+    locationLongitude: row.location_longitude,
+    locationRadiusMeters: row.location_radius_meters,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -296,6 +301,68 @@ export async function updateJobExpectedHours(
   dbEvents.emit();
 }
 
+// Sets or clears this job's geofence. Clearing (`location: null`) also forces both
+// location-based switches off below — they can't stay "aware" of a location that no
+// longer exists, and leaving them on would make syncGeofences() re-derive a region for a
+// job that no longer has coordinates.
+export async function updateJobLocation(
+  id: string,
+  location: { latitude: number; longitude: number; radiusMeters: number } | null,
+): Promise<void> {
+  const db = await getDb();
+  if (location) {
+    await db.runAsync("UPDATE jobs SET location_latitude = ?, location_longitude = ?, location_radius_meters = ?, updated_at = ? WHERE id = ?", [
+      location.latitude,
+      location.longitude,
+      location.radiusMeters,
+      nowIso(),
+      id,
+    ]);
+  } else {
+    await db.runAsync(
+      "UPDATE jobs SET location_latitude = NULL, location_longitude = NULL, location_radius_meters = NULL, location_awareness_enabled = 0, auto_clock_in_out_enabled = 0, updated_at = ? WHERE id = ?",
+      [nowIso(), id],
+    );
+  }
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
+// Refuses to turn awareness on for a job with no location set — the UI already disables
+// that switch in that state, but this is enforced here too so the invariant can't be
+// violated by any other caller. Turning it off also forces auto clock in/out off, since
+// auto is a stronger version of the same geofence, not an independent setting.
+export async function updateJobLocationAwareness(id: string, enabled: boolean): Promise<void> {
+  const db = await getDb();
+  const job = await getJob(id);
+  if (!job) return;
+  if (enabled && job.locationLatitude == null) {
+    throw new Error("Set a location for this job before enabling location awareness.");
+  }
+  await db.runAsync("UPDATE jobs SET location_awareness_enabled = ?, auto_clock_in_out_enabled = ?, updated_at = ? WHERE id = ?", [
+    enabled ? 1 : 0,
+    enabled ? (job.autoClockInOutEnabled ? 1 : 0) : 0,
+    nowIso(),
+    id,
+  ]);
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
+// Refuses to turn auto clock in/out on unless location awareness is already on for this
+// job — same reasoning as updateJobLocationAwareness above.
+export async function updateJobAutoClockInOut(id: string, enabled: boolean): Promise<void> {
+  const db = await getDb();
+  const job = await getJob(id);
+  if (!job) return;
+  if (enabled && !job.locationAwarenessEnabled) {
+    throw new Error("Turn on location awareness for this job before enabling auto clock in/out.");
+  }
+  await db.runAsync("UPDATE jobs SET auto_clock_in_out_enabled = ?, updated_at = ? WHERE id = ?", [enabled ? 1 : 0, nowIso(), id]);
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
 export async function setJobArchived(id: string, archived: boolean): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE jobs SET archived = ?, updated_at = ? WHERE id = ?", [archived ? 1 : 0, nowIso(), id]);
@@ -417,6 +484,17 @@ export async function listRateVersionsForTiers(tierIds: string[]): Promise<RateV
 // Every shift still open app-wide — clocking into multiple jobs at once is allowed (see
 // getOpenShiftForJob below for the one constraint that remains: a job can't have two
 // open shifts of its own at the same time).
+// Most recent clock-in per job, across every shift (open or closed) — used to sort the
+// Clock screen's job picker by recency and auto-select whichever job was used last. A job
+// with no shifts yet has no entry.
+export async function getLastActivityByJob(): Promise<Record<string, string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync("SELECT job_id, MAX(clock_in) as last FROM shifts WHERE deleted_at IS NULL GROUP BY job_id");
+  const result: Record<string, string> = {};
+  for (const row of rows as { job_id: string; last: string }[]) result[row.job_id] = row.last;
+  return result;
+}
+
 export async function getOpenShifts(): Promise<Shift[]> {
   const db = await getDb();
   const rows = await db.getAllAsync("SELECT * FROM shifts WHERE clock_out IS NULL AND deleted_at IS NULL ORDER BY clock_in ASC");
@@ -721,8 +799,9 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       "timesheet_period_type, timesheet_week_start_day, timesheet_biweekly_anchor, timesheet_monthly_start_day, " +
       "timesheet_format, timesheet_include_earnings, timesheet_include_notes, timesheet_include_times, " +
       "rounding_enabled, rounding_mode, rounding_increment_minutes, prompt_for_notes_on_clock_out, " +
-      "expected_weekly_hours, expected_hours_week_start_day, updated_at, deleted_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "expected_weekly_hours, expected_hours_week_start_day, location_awareness_enabled, auto_clock_in_out_enabled, " +
+      "location_latitude, location_longitude, location_radius_meters, updated_at, deleted_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(id) DO UPDATE SET name = excluded.name, color_hex = excluded.color_hex, archived = excluded.archived, " +
       "overtime_multiplier = excluded.overtime_multiplier, overtime_weekly_threshold_hours = excluded.overtime_weekly_threshold_hours, " +
       "timesheet_period_type = excluded.timesheet_period_type, timesheet_week_start_day = excluded.timesheet_week_start_day, " +
@@ -734,6 +813,11 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       "prompt_for_notes_on_clock_out = excluded.prompt_for_notes_on_clock_out, " +
       "expected_weekly_hours = excluded.expected_weekly_hours, " +
       "expected_hours_week_start_day = excluded.expected_hours_week_start_day, " +
+      "location_awareness_enabled = excluded.location_awareness_enabled, " +
+      "auto_clock_in_out_enabled = excluded.auto_clock_in_out_enabled, " +
+      "location_latitude = excluded.location_latitude, " +
+      "location_longitude = excluded.location_longitude, " +
+      "location_radius_meters = excluded.location_radius_meters, " +
       "updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [
       job.id,
@@ -756,6 +840,11 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       job.promptForNotesOnClockOut ? 1 : 0,
       job.expectedWeeklyHours,
       job.expectedHoursWeekStartDay,
+      job.locationAwarenessEnabled ? 1 : 0,
+      job.autoClockInOutEnabled ? 1 : 0,
+      job.locationLatitude,
+      job.locationLongitude,
+      job.locationRadiusMeters,
       job.updatedAt,
       job.deletedAt,
     ],

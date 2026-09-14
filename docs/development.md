@@ -5,20 +5,11 @@ write code against it. If you're looking for how to *use* the app, see the [User
 Guide](./user-guide.md) instead; if you're looking for how to put Clocker on a real server
 for others to use, see [Deployment](./deployment.md).
 
-**New to this kind of project?** A few terms used throughout, in plain language:
-
-- **Terminal** (also called a command line or shell) — a text-based way of controlling
-  your computer by typing commands, instead of clicking things. Every code block below
-  (the boxes with a monospace font) is something you type into one, one line at a time.
-- **Repository** ("repo") — the folder containing all of Clocker's code, plus its history
-  of changes over time, managed by a tool called Git.
-- **`npm`** — the tool that installs the pieces of other people's code (called
-  "packages" or "dependencies") that Clocker is built on, and runs the project's own
-  predefined commands (`npm run setup`, `npm run dev:server`, and so on — each one is
-  shorthand for a longer command, defined in a `package.json` file).
-- **Monorepo** — one repository containing several related projects side by side (here:
-  the phone app, the website, the server, and code shared between them) instead of one
-  repository each.
+**New to this codebase?** Clocker is a monorepo: one repository holding four related
+projects side by side — `app/` (the phone app), `web/` (the website), `server/` (the API),
+and `shared/` (calculation code the other two both depend on, so pay/overtime math can't
+drift between clients) — instead of one repository each. `npm run setup`/`dev:server`/etc.
+below are just `package.json` scripts, run from the repo root unless a step says otherwise.
 
 If any of the commands below fail with an error you don't recognize, check the two "Known
 issue" sections further down first — several recurring ones already have a documented
@@ -30,10 +21,12 @@ cause and fix.
 - [ ] Docker Desktop installed and running — `docker --version` (optional; skip if you'll
       point `DATABASE_URL` at your own Postgres instance instead)
 - [ ] Expo Go installed on a phone, and/or Xcode/Android Studio for a simulator, to
-      actually run the app — **except for the persistent "clocked in" Android notification**
-      (`react-native-notify-kit`, a native module): that one feature needs a custom
-      dev/production build (`eas build --profile development` or `preview`/`production`),
-      not Expo Go. Everything else in the app still works fine in Expo Go.
+      actually run the app — **except for two features that need a custom dev/production
+      build** (`eas build --profile development` or `preview`/`production`), not Expo Go:
+      the persistent "clocked in" Android notification (`react-native-notify-kit`) and
+      location-based clock in/out (`expo-location`/`expo-task-manager`/`react-native-maps`
+      — background geofencing and native map rendering are both native-module features).
+      Everything else in the app still works fine in Expo Go.
 
 ## First run
 
@@ -168,6 +161,7 @@ npm run start`) works too and overrides the `.env` file for that one run.
 | Variable | Purpose |
 |---|---|
 | `EXPO_PUBLIC_API_URL` | Base URL the app calls for auth/sync. Defaults to `http://localhost:3001` (`app/src/sync/api.ts`) if `app/.env` doesn't exist and none is set inline — override with whatever port `server/.env`'s `PORT` actually is for local dev, or a deployed server's URL (see [`deployment.md`](./deployment.md)). Android emulator: `http://10.0.2.2:<port>`. Physical device: your machine's LAN IP. |
+| `ANDROID_GOOGLE_MAPS_API_KEY` | A Google Maps API key, needed only for the job-location map picker's Android build (`react-native-maps` — iOS uses Apple Maps for free, no key needed). Deliberately **not** `EXPO_PUBLIC_`-prefixed: it's read by `app/app.config.js` at build/config time (baked into the native Android manifest), not inlined into the JS bundle. Get one from the [Google Cloud Console](https://console.cloud.google.com/google/maps-apis) (enable the "Maps SDK for Android", restrict the key to your app's package name + SHA-1 fingerprint). Without it, the map picker won't render on Android — "Use My Current Location" still works fine either way. |
 
 `web/.env` (copy from `web/.env.example`) — Vite's equivalent: any `VITE_`-prefixed
 variable gets inlined into the browser bundle, loaded automatically by `npm run dev:web`
@@ -402,8 +396,13 @@ a one-time step tied to your own Expo account, so it isn't automated by `npm run
    eas login
    ```
 2. ```bash
-   eas update:configure   # writes extra.eas.projectId + updates.url into app.json
+   eas update:configure   # links this project to an EAS Update channel
    ```
+   Normally this writes `extra.eas.projectId` + `updates.url` straight into `app.json`.
+   This project's config is `app/app.config.js` instead (JavaScript, so it can read
+   `ANDROID_GOOGLE_MAPS_API_KEY` from the environment — see the env var table above), which
+   EAS CLI can't safely auto-write into — it prints the values for you to add yourself
+   under `extra.eas`/`updates` in the exported object, still just the one time.
 
 Until this has been run, the Settings screen's update section always reads "Updates
 aren't available in this build" — this is expected in Expo Go and any local dev build, not

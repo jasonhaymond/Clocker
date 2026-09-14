@@ -39,6 +39,11 @@ const jobInput = z.object({
   promptForNotesOnClockOut: z.boolean().optional(),
   expectedWeeklyHours: z.number().positive().nullable().optional(),
   expectedHoursWeekStartDay: z.number().int().min(0).max(6).optional(),
+  locationAwarenessEnabled: z.boolean().optional(),
+  autoClockInOutEnabled: z.boolean().optional(),
+  locationLatitude: z.number().min(-90).max(90).nullable().optional(),
+  locationLongitude: z.number().min(-180).max(180).nullable().optional(),
+  locationRadiusMeters: z.number().positive().nullable().optional(),
 });
 
 const rateTierInput = z.object({

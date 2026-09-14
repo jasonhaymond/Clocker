@@ -10,11 +10,12 @@ and out, jobs, timesheets, exporting hours, and settings. No technical backgroun
 ## "I want to run my own Clocker server"
 
 **[Deployment](./deployment.md)** — a complete, step-by-step walkthrough for putting
-Clocker on a real server with your own domain name, written to be followable even if
-you've never done this kind of thing before (it explains the unfamiliar terms as it goes —
-Docker, reverse proxies, SSH, and so on). Covers both the easy path (Clocker manages
-everything, including HTTPS, for you) and running behind a reverse proxy you already have,
-plus backups, updates, and troubleshooting.
+Clocker on a real server with your own domain name. Written for a beginner-to-intermediate
+developer — comfortable in a terminal, but not assumed to have deployed anything before —
+and briefly explains the deployment-specific terms it leans on (Docker, reverse proxies,
+SSH, and so on). Covers both the easy path (Clocker manages everything, including HTTPS,
+for you) and running behind a reverse proxy you already have, plus backups, updates, and
+troubleshooting.
 
 ## "I want to write code for Clocker"
 

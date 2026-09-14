@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [1.24.0] - 2026-09-14
+
+### Added
+
+- **Location-based clock in/out, per job (mobile only).** Set a job's location (stand
+  there and tap "Use My Current Location," or drop a pin on a map), then turn on
+  **Location awareness** to get prompted to clock in/out when you arrive or leave, or
+  **Auto clock in/out** to skip the prompt and have it happen automatically — both work
+  even with the app closed, via the phone's background geofencing rather than continuous
+  polling. Requires a custom dev/production build (not Expo Go) and, like the persistent
+  notification feature before it, hasn't been tested on a real device from this session —
+  see `docs/development.md`.
+- **The Clock screen's job picker now sorts by most recently used** and auto-selects
+  whichever job that is, while still respecting a manual pick you make yourself.
+
+### Changed
+
+- **The Clock screen's job picker no longer grows without bound.** With a lot of jobs, the
+  old wrapping-chip layout just kept expanding and pushed the clock-in button further down
+  the screen; it's now a compact, scrollable list (capped in width on web, too, so it
+  doesn't stretch edge-to-edge), with a color dot per job and a checkmark on the selected
+  one.
+- Documentation aimed at developers (`development.md`, `deployment.md`) was pitched a
+  little too basic — explaining things like what a terminal is. Trimmed to assume a
+  beginner developer's baseline knowledge, keeping only the genuinely project- and
+  deployment-specific terms (SSH-to-a-server, Docker/Compose, Caddy, DNS, the dual-firewall
+  gotcha).
+
+### Fixed
+
+- **The persistent "clocked in" Android notification could take several seconds to a
+  minute to appear**, and its elapsed-time text could go stale and never update if you
+  didn't reopen the app for a while. Both were the same underlying issue in different
+  forms — work that depended on the app's JS thread happening to be actively running
+  right when it mattered, which Android doesn't guarantee once the app is backgrounded.
+  The notification's setup now happens unconditionally at app launch instead of lazily on
+  first clock-in, and its elapsed time now uses Android's own native chronometer (ticking
+  live, updated by the OS, no ongoing app involvement needed) instead of a string this app
+  had to keep re-rendering.
+- The same notification now shows a small dot in the job's own color, instead of always
+  the app's default accent color.
+- A job name with no spaces (one long unbroken word) could overflow past the edge of a
+  job-list row instead of wrapping — affected every list that shows a job/manager/shift
+  name, not just the new job picker.
+
 ## [1.23.0] - 2026-09-12
 
 ### Added

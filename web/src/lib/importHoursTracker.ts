@@ -55,6 +55,11 @@ export async function runImport(rows: ParsedImportRow[], existingJobs: Job[], ex
       promptForNotesOnClockOut: false,
       expectedWeeklyHours: null,
       expectedHoursWeekStartDay: 1,
+      locationAwarenessEnabled: false,
+      autoClockInOutEnabled: false,
+      locationLatitude: null,
+      locationLongitude: null,
+      locationRadiusMeters: null,
       updatedAt: now,
       deletedAt: null,
     });

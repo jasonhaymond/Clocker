@@ -2,9 +2,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
-import { AppState, ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, AppState, ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
+import { clockIn, clockOut, getJob, getOpenShiftForJob, listJobs } from "../db/database";
+import { dbEvents } from "../lib/events";
+import { syncGeofences, takePendingLocationPrompts, type PendingLocationPrompt } from "../lib/locationTracking";
 import { ClockScreen } from "../screens/ClockScreen";
 import { ExportScreen } from "../screens/ExportScreen";
 import { HelpScreen } from "../screens/HelpScreen";
@@ -130,6 +133,51 @@ function createMenuStyles(colors: ThemeColors) {
   });
 }
 
+// Shows one queued "you've arrived/left — clock in/out?" prompt (see
+// locationTracking.ts's PendingLocationPrompt) and waits for the user to respond before
+// resolving, so checkPendingLocationPrompts can show a queue of them one at a time rather
+// than stacking several Alerts on top of each other.
+function showLocationPrompt(job: { id: string; name: string }, prompt: PendingLocationPrompt, openShiftId: string | null): Promise<void> {
+  const isEnter = prompt.eventType === "enter";
+  return new Promise((resolve) => {
+    Alert.alert(isEnter ? `You've arrived at ${job.name}` : `You've left ${job.name}`, isEnter ? "Clock in now?" : "Clock out now?", [
+      { text: "Not now", style: "cancel", onPress: () => resolve() },
+      {
+        text: isEnter ? "Clock In" : "Clock Out",
+        onPress: async () => {
+          try {
+            if (isEnter) {
+              await clockIn(job.id);
+            } else if (openShiftId) {
+              await clockOut(openShiftId);
+            }
+            synchronize().catch(() => {});
+          } finally {
+            resolve();
+          }
+        },
+      },
+    ]);
+  });
+}
+
+// Runs at mount (covers a cold launch with a prompt already queued from before the app
+// was opened) and every time the app returns to the foreground. Re-checks each prompt's
+// job/shift state before showing it — the underlying situation may have already been
+// resolved manually (or by a previous prompt) since the geofence event that queued it.
+async function checkPendingLocationPrompts(): Promise<void> {
+  const prompts = await takePendingLocationPrompts();
+  for (const prompt of prompts) {
+    const job = await getJob(prompt.jobId);
+    if (!job || job.deletedAt) continue;
+    const openShift = await getOpenShiftForJob(job.id);
+    const isEnter = prompt.eventType === "enter";
+    if (isEnter && openShift) continue; // already clocked in
+    if (!isEnter && !openShift) continue; // already clocked out
+    await showLocationPrompt(job, prompt, openShift?.id ?? null);
+  }
+}
+
 function AppTabs({ colors }: { colors: ThemeColors }) {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -142,17 +190,33 @@ function AppTabs({ colors }: { colors: ThemeColors }) {
   useEffect(() => {
     synchronize().catch(() => {});
     checkForUpdate().catch(() => {});
+    checkPendingLocationPrompts().catch(() => {});
     const interval = setInterval(() => synchronize().catch(() => {}), SYNC_INTERVAL_MS);
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         synchronize().catch(() => {});
         checkForUpdate().catch(() => {});
+        checkPendingLocationPrompts().catch(() => {});
       }
     });
     return () => {
       clearInterval(interval);
       subscription.remove();
     };
+  }, []);
+
+  // Keeps the active geofence set (see app/src/lib/locationTracking.ts) in sync with
+  // whatever job location settings currently exist — runs once at mount and again
+  // whenever any local write happens, since a job's location/awareness/auto settings
+  // could have just changed in JobDetailModal.
+  useEffect(() => {
+    function refreshGeofences() {
+      listJobs(false)
+        .then((jobs) => syncGeofences(jobs))
+        .catch(() => {});
+    }
+    refreshGeofences();
+    return dbEvents.subscribe(refreshGeofences);
   }, []);
 
   return (

@@ -1,6 +1,6 @@
 import { calculateShiftPay, calculateWeeklyProgress, formatCents, formatClock, formatDuration, workedMillis, type Break, type Job, type Shift } from "@clocker/shared";
-import { useEffect, useState } from "react";
-import { IoCreateOutline } from "react-icons/io5";
+import { useEffect, useRef, useState } from "react";
+import { IoCheckmark, IoCreateOutline } from "react-icons/io5";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import { useDateTimePrompt } from "../lib/useDateTimePrompt";
 import { useStore } from "../store";
@@ -18,11 +18,36 @@ export function ClockScreen() {
 
   const openShifts = store.shifts.filter((s) => !s.clockOut);
   const openJobIds = new Set(openShifts.map((s) => s.jobId));
-  const availableJobs = store.jobs.filter((j) => !j.archived && !openJobIds.has(j.id));
+  // Most recent clock-in per job, so the picker can be sorted most-recently-used first —
+  // matches the mobile app, where the same figure is precomputed via a SQL query instead
+  // (getLastActivityByJob) since the web store already holds every shift in memory.
+  const lastActivityByJob: Record<string, string> = {};
+  for (const s of store.shifts) {
+    if (!lastActivityByJob[s.jobId] || s.clockIn > lastActivityByJob[s.jobId]) lastActivityByJob[s.jobId] = s.clockIn;
+  }
+  const availableJobs = store.jobs
+    .filter((j) => !j.archived && !openJobIds.has(j.id))
+    .slice()
+    .sort((a, b) => {
+      const aLast = lastActivityByJob[a.id];
+      const bLast = lastActivityByJob[b.id];
+      if (aLast && bLast) return bLast.localeCompare(aLast);
+      if (aLast) return -1;
+      if (bLast) return 1;
+      return 0;
+    });
 
+  // Tracks whichever job this effect itself last auto-picked, so a manual click on a
+  // different (non-top) job isn't immediately clobbered the next time this runs — only a
+  // selection that's still exactly what we last auto-picked is allowed to keep following
+  // the top of the list as it changes (e.g. right after clocking out of it).
+  const lastAutoTopRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedJobId && availableJobs.some((j) => j.id === selectedJobId)) return;
-    setSelectedJobId(availableJobs[0]?.id ?? null);
+    const topJobId = availableJobs[0]?.id ?? null;
+    const stillValid = selectedJobId && availableJobs.some((j) => j.id === selectedJobId);
+    const followingAuto = !stillValid || selectedJobId === lastAutoTopRef.current;
+    if (followingAuto && selectedJobId !== topJobId) setSelectedJobId(topJobId);
+    lastAutoTopRef.current = topJobId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableJobs.map((j) => j.id).join(",")]);
 
@@ -198,20 +223,25 @@ export function ClockScreen() {
 
       <div className="clock-new-shift">
         <p className="label">{openShifts.length > 0 ? "Clock into another job" : "Select a job"}</p>
-        <div className="job-picker">
-          {availableJobs.map((job) => (
-            <button
-              key={job.id}
-              className={`job-option${selectedJobId === job.id ? " selected" : ""}`}
-              style={{ borderColor: job.colorHex, backgroundColor: selectedJobId === job.id ? job.colorHex : undefined }}
-              onClick={() => setSelectedJobId(job.id)}
-            >
-              {job.name}
-            </button>
-          ))}
-          {store.jobs.length === 0 && <p className="muted">Add a job in the Jobs tab first.</p>}
-          {store.jobs.length > 0 && availableJobs.length === 0 && <p className="muted">Already clocked into every job.</p>}
-        </div>
+        {availableJobs.length > 0 ? (
+          <div className="clock-job-list">
+            {availableJobs.map((job) => (
+              <div
+                key={job.id}
+                className={`row clickable${selectedJobId === job.id ? " selected" : ""}`}
+                onClick={() => setSelectedJobId(job.id)}
+              >
+                <span className="dot" style={{ backgroundColor: job.colorHex }} />
+                <div className="row-main">
+                  <div className="row-title">{job.name}</div>
+                </div>
+                {selectedJobId === job.id && <IoCheckmark />}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">{store.jobs.length === 0 ? "Add a job in the Jobs tab first." : "Already clocked into every job."}</p>
+        )}
 
         {tiers.length > 1 && (
           <>

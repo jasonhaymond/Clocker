@@ -37,6 +37,16 @@ export interface Job {
   // hours target, and the two concepts shouldn't have to agree on what "a week" means.
   expectedWeeklyHours: number | null;
   expectedHoursWeekStartDay: number; // 0=Sun..6=Sat
+  // Location-based clock in/out (mobile only — see app/src/lib/locationTracking.ts). A
+  // job has no location until locationLatitude/Longitude are set; locationAwarenessEnabled
+  // prompts to clock in/out on arrival/departure, autoClockInOutEnabled does it silently
+  // and requires locationAwarenessEnabled to also be true (it's a stronger version of the
+  // same geofence, not an independent setting).
+  locationAwarenessEnabled: boolean;
+  autoClockInOutEnabled: boolean;
+  locationLatitude: number | null;
+  locationLongitude: number | null;
+  locationRadiusMeters: number | null;
   updatedAt: string;
   deletedAt: string | null;
 }

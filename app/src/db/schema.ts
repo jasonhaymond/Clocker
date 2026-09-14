@@ -150,7 +150,19 @@ const V7_SHIFT_OVERTIME_SQL = `
 ALTER TABLE shifts ADD COLUMN is_overtime INTEGER NOT NULL DEFAULT 0;
 `;
 
-export const SCHEMA_VERSION = 7;
+// Version 8 — location-based clock in/out, per job (mobile only). A job has no location
+// until latitude/longitude are set; location_awareness_enabled prompts to clock in/out on
+// arrival/departure, auto_clock_in_out_enabled does it silently — see
+// app/src/lib/locationTracking.ts.
+const V8_JOB_LOCATION_SQL = `
+ALTER TABLE jobs ADD COLUMN location_awareness_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN auto_clock_in_out_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN location_latitude REAL;
+ALTER TABLE jobs ADD COLUMN location_longitude REAL;
+ALTER TABLE jobs ADD COLUMN location_radius_meters REAL;
+`;
+
+export const SCHEMA_VERSION = 8;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
@@ -163,4 +175,5 @@ export const MIGRATIONS: string[] = [
   V5_JOB_PROMPT_FOR_NOTES_SQL,
   V6_JOB_EXPECTED_HOURS_SQL,
   V7_SHIFT_OVERTIME_SQL,
+  V8_JOB_LOCATION_SQL,
 ];

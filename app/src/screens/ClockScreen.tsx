@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
@@ -8,6 +8,7 @@ import {
   deleteShift,
   endBreak,
   getJob,
+  getLastActivityByJob,
   getOpenBreak,
   getOpenShifts,
   listBreaksForShift,
@@ -52,6 +53,7 @@ export function ClockScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [lastActivityByJob, setLastActivityByJob] = useState<Record<string, string>>({});
   const [openShiftDetails, setOpenShiftDetails] = useState<OpenShiftDetail[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [tiers, setTiers] = useState<RateTier[]>([]);
@@ -90,6 +92,7 @@ export function ClockScreen() {
       );
       setWeekDataByJobId(Object.fromEntries(entries));
     });
+    getLastActivityByJob().then(setLastActivityByJob);
     getOpenShifts().then(async (shifts) => {
       const details = await Promise.all(
         shifts.map(async (shift): Promise<OpenShiftDetail> => {
@@ -108,11 +111,32 @@ export function ClockScreen() {
 
   // A job already clocked in can't be picked for a second, simultaneous shift.
   const openJobIds = new Set(openShiftDetails.map((d) => d.shift.jobId));
-  const availableJobs = jobs.filter((j) => !openJobIds.has(j.id));
+  // Most-recently-used first (by last clock-in), so the job you'll likely want is both at
+  // the top of the list and the one auto-selected below. Jobs never clocked into yet keep
+  // their existing (alphabetical) order, after every job with activity.
+  const availableJobs = jobs
+    .filter((j) => !openJobIds.has(j.id))
+    .slice()
+    .sort((a, b) => {
+      const aLast = lastActivityByJob[a.id];
+      const bLast = lastActivityByJob[b.id];
+      if (aLast && bLast) return bLast.localeCompare(aLast);
+      if (aLast) return -1;
+      if (bLast) return 1;
+      return 0;
+    });
 
+  // Tracks whichever job this effect itself last auto-picked, so a manual tap on a
+  // different (non-top) job isn't immediately clobbered the next time this runs — only a
+  // selection that's still exactly what we last auto-picked is allowed to keep following
+  // the top of the list as it changes (e.g. right after clocking out of it).
+  const lastAutoTopRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedJobId && availableJobs.some((j) => j.id === selectedJobId)) return;
-    setSelectedJobId(availableJobs[0]?.id ?? null);
+    const topJobId = availableJobs[0]?.id ?? null;
+    const stillValid = selectedJobId && availableJobs.some((j) => j.id === selectedJobId);
+    const followingAuto = !stillValid || selectedJobId === lastAutoTopRef.current;
+    if (followingAuto && selectedJobId !== topJobId) setSelectedJobId(topJobId);
+    lastAutoTopRef.current = topJobId;
   }, [availableJobs, selectedJobId]);
 
   useEffect(() => {
@@ -147,6 +171,7 @@ export function ClockScreen() {
     updateClockedInNotification(
       openShiftDetails.map(({ shift, job, breaks }) => ({
         jobName: job?.name ?? "Job",
+        jobColorHex: job?.colorHex ?? colors.primaryFill,
         clockInIso: shift.clockIn,
         workedMs: workedMillis(shift, breaks),
       })),
@@ -157,8 +182,21 @@ export function ClockScreen() {
     if (!selectedJobId) return;
     const tierId = tiers.length > 1 ? selectedTierId : null;
     try {
-      await clockIn(selectedJobId, tierId, customTime?.toISOString());
+      const shift = await clockIn(selectedJobId, tierId, customTime?.toISOString());
       synchronize().catch(() => {});
+      // Post the notification immediately rather than waiting for the effect above to
+      // notice the new open shift via the load()/dbEvents round trip — that round trip is
+      // fast, but not instant, and "instant" is the whole point here.
+      const job = jobs.find((j) => j.id === selectedJobId);
+      updateClockedInNotification([
+        ...openShiftDetails.map(({ shift: s, job: j, breaks }) => ({
+          jobName: j?.name ?? "Job",
+          jobColorHex: j?.colorHex ?? colors.primaryFill,
+          clockInIso: s.clockIn,
+          workedMs: workedMillis(s, breaks),
+        })),
+        { jobName: job?.name ?? "Job", jobColorHex: job?.colorHex ?? colors.primaryFill, clockInIso: shift.clockIn, workedMs: 0 },
+      ]).catch(() => {});
     } catch (e: any) {
       Alert.alert("Couldn't clock in", e?.message ?? "Unknown error");
     }
@@ -338,19 +376,31 @@ export function ClockScreen() {
 
       <View style={styles.newShiftSection}>
         <Text style={styles.label}>{openShiftDetails.length > 0 ? "Clock into another job" : "Select a job"}</Text>
-        <View style={styles.jobPicker}>
-          {availableJobs.map((job) => (
-            <TouchableOpacity
-              key={job.id}
-              style={[styles.jobOption, { borderColor: job.colorHex }, selectedJobId === job.id && { backgroundColor: job.colorHex }]}
-              onPress={() => setSelectedJobId(job.id)}
-            >
-              <Text style={[styles.jobOptionText, selectedJobId === job.id && styles.jobOptionTextSelected]}>{job.name}</Text>
-            </TouchableOpacity>
-          ))}
-          {jobs.length === 0 && <Text style={styles.empty}>Add a job in the Jobs tab first.</Text>}
-          {jobs.length > 0 && availableJobs.length === 0 && <Text style={styles.empty}>Already clocked into every job.</Text>}
-        </View>
+        {availableJobs.length > 0 ? (
+          <View style={styles.jobListBox}>
+            <ScrollView style={styles.jobListScroll} nestedScrollEnabled contentContainerStyle={styles.jobListContent}>
+              {availableJobs.map((job, index) => (
+                <TouchableOpacity
+                  key={job.id}
+                  style={[
+                    styles.jobRow,
+                    index < availableJobs.length - 1 && styles.jobRowDivider,
+                    selectedJobId === job.id && styles.jobRowSelected,
+                  ]}
+                  onPress={() => setSelectedJobId(job.id)}
+                >
+                  <View style={[styles.jobDot, { backgroundColor: job.colorHex }]} />
+                  <Text style={[styles.jobRowText, selectedJobId === job.id && styles.jobRowTextSelected]} numberOfLines={1}>
+                    {job.name}
+                  </Text>
+                  {selectedJobId === job.id && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : (
+          <Text style={styles.empty}>{jobs.length === 0 ? "Add a job in the Jobs tab first." : "Already clocked into every job."}</Text>
+        )}
 
         {tiers.length > 1 && (
           <>
@@ -433,6 +483,29 @@ function createStyles(colors: ThemeColors) {
     notesButtonText: { color: colors.primary, fontSize: 12, fontWeight: "600", flexShrink: 1 },
     weeklyProgress: { color: colors.primary, fontSize: 12, marginBottom: 8, textAlign: "center" },
     newShiftSection: { alignItems: "center" },
+    // A bounded, scrollable list rather than the old wrapping chip row — with a lot of
+    // jobs, an unbounded wrap grid just kept growing and pushed everything else (open
+    // shifts, the clock-in button) further down the screen. Capping the height here means
+    // the rest of the screen's layout stays put regardless of how many jobs there are;
+    // ScrollView still shrinks to fit when there are only a couple of jobs; it doesn't
+    // force the full maxHeight.
+    jobListBox: {
+      width: "100%",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.card,
+      marginBottom: 14,
+      overflow: "hidden",
+    },
+    jobListScroll: { maxHeight: 260 },
+    jobListContent: { flexGrow: 1 },
+    jobRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11 },
+    jobRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+    jobRowSelected: { backgroundColor: colors.selectedBg },
+    jobDot: { width: 12, height: 12, borderRadius: 6 },
+    jobRowText: { flex: 1, fontWeight: "600", fontSize: 14, color: colors.text },
+    jobRowTextSelected: { color: colors.primary },
     jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
     jobOption: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.card },
     jobOptionText: { fontWeight: "600", fontSize: 14, color: colors.text },

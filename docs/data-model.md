@@ -125,6 +125,33 @@ which is why this is per-job rather than one app-wide setting.
   the job's `timesheetPeriodType`/`timesheetWeekStartDay` — a monthly-pay job can still
   have a weekly hours target without the two concepts having to agree on what "a week" is.
 
+## Location-based clock in/out (per job, mobile only)
+
+Also fields on `Job` (synced the same way as everything above), but acted on only by the
+phone app — see [`app/src/lib/locationTracking.ts`](../app/src/lib/locationTracking.ts).
+A browser tab has no way to run code while closed or in the background, so the web client
+only ever carries these fields through sync untouched; it has no UI for them.
+
+- **The geofence itself** — `locationLatitude`/`locationLongitude` (both `null` until a
+  location is set for this job) and `locationRadiusMeters`. Set from the phone app's
+  "Use My Current Location" button or the map picker, both ending at a fixed radius choice
+  (100/250/500/1000m).
+- **Location awareness** — `locationAwarenessEnabled` (per job, default `false`). Refuses
+  to turn on (`updateJobLocationAwareness` throws) unless the job already has a location
+  set. When on, entering or leaving the geofence — even with the app closed, via the OS's
+  native region-monitoring, not continuous polling — queues a local "clock in?"/"clock
+  out?" prompt shown the next time the app is foregrounded, plus a tap-to-open
+  notification. Turning it off also forces `autoClockInOutEnabled` off (below).
+- **Auto clock in/out** — `autoClockInOutEnabled` (per job, default `false`). Refuses to
+  turn on unless `locationAwarenessEnabled` is already `true` for this job — it's a
+  stronger version of the same geofence, not an independent setting. When on, the same
+  arrival/departure event clocks in/out directly instead of queuing a prompt, then posts a
+  plain confirmation notification.
+
+Neither setting causes any continuous location trail to be stored anywhere — only the one
+geofence (a single point + radius) you set for the job, synced like the rest of that job's
+data.
+
 ## Server schema (PostgreSQL / Prisma)
 
 Source of truth: [`server/prisma/schema.prisma`](../server/prisma/schema.prisma). Migration
@@ -157,6 +184,10 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `promptForNotesOnClockOut` | `Boolean` | default `false` |
 | | `expectedWeeklyHours` | `Float?` | `null` disables the weekly-hours-target feature for this job |
 | | `expectedHoursWeekStartDay` | `Int` | default `1` (Monday); 0=Sun..6=Sat |
+| | `locationAwarenessEnabled` | `Boolean` | default `false`; requires a location set |
+| | `autoClockInOutEnabled` | `Boolean` | default `false`; requires `locationAwarenessEnabled` |
+| | `locationLatitude` / `locationLongitude` | `Float?` | both `null` until a location is set for this job |
+| | `locationRadiusMeters` | `Float?` | e.g. `250`; `null` until a location is set |
 | | `createdAt` / `updatedAt` | `DateTime` | `updatedAt` is Prisma's `@updatedAt` — server-set on every write, and the field sync pulls by |
 | | `deletedAt` | `DateTime?` | soft delete (tombstone) — see sync protocol |
 | **RateTier** | `id` | `String` (uuid) | primary key, **client-generated** |
