@@ -604,6 +604,31 @@ again (`extra.eas.projectId` reads as `undefined`) and `eas build` re-prompts to
 project from scratch, same as before `2.0.2` — not a crash this time, just back to square
 one on that specific step.
 
+**Amended again (2026-09-15, later session):** Jason did add `EAS_PROJECT_ID` to the
+production host's `app/.env` and re-ran `npm run deploy` — but hit the *exact same*
+"Which account should own this project?" prompt again, proving the env var genuinely
+wasn't reaching `app.config.js` during `eas build`, not just a step Jason had missed.
+Root-caused by testing `app.config.js` directly in a clean environment (unset
+`EAS_PROJECT_ID`, then `require("./app.config.js")` and inspect `expo.extra`): `expo
+start`/`expo export` auto-load `app/.env` into `process.env` before evaluating this file,
+but `eas build`'s own internal project-linking logic evidently reads config through a
+different path that skips that auto-load — confirmed by the fact that the account prompt
+kept appearing even with the file correctly set. Fixed by having `app.config.js` load
+`app/.env` itself via `dotenv` (`require("dotenv").config({ path: ... })`, added as a
+direct `app/` dependency — it was already present transitively, just not declared),
+rather than depending on whichever tool happens to invoke it having already loaded env
+vars. Verified for real: required the file in a clean env with `EAS_PROJECT_ID` unset in
+`process.env` but present in `app/.env`, confirmed `expo.extra.eas.projectId` still
+resolved correctly; and confirmed an already-set `process.env.EAS_PROJECT_ID` (as
+`eas.json`'s build profiles could in principle do) still takes priority over the `.env`
+file, since `dotenv` never overwrites an existing value. `2.0.4`. **This same latent gap
+almost certainly also applied to `ANDROID_GOOGLE_MAPS_API_KEY`** — it just never surfaced
+before now because no `eas build` had ever gotten far enough to reach a code path that
+needed it; worth confirming the Android map picker's API key actually makes it into a real
+build once one finishes. Not yet confirmed against the real host from this session — the
+fix is only proven via a clean-environment `require()` test here, not a live `eas build`
+run there.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -630,11 +655,11 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.2` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.4` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`/`2.0.2` right after it were same-day patches
-fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+default used for every bump before it; `2.0.1`-`2.0.4` right after it were same-day
+patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
 in from `web/package.json` via
@@ -1360,25 +1385,28 @@ Verified present in the repo (code + docs, not just described in memory):
   code.
 
 - ~~EAS/Expo account never logged into from any Claude session~~ — **resolved
-  2026-09-14, `2.0.2`/`2.0.3`**: Jason ran `npm run deploy` for real on the production
+  2026-09-14/15, `2.0.2`-`2.0.4`**: Jason ran `npm run deploy` for real on the production
   host, logged in as `jasonhaymond` (member of both the `jasonhaymond` and
-  `jasonhaymond-team` Expo accounts), and the very first `eas build` found and linked the
-  existing `jasonhaymond-team/clocker` EAS project. That link itself hit the one
-  documented wrinkle: EAS can only auto-write `extra.eas.projectId` into a plain
-  `app.json`, not this project's dynamic `app.config.js`, so it printed the project id and
-  refused to proceed until `app.config.js` could see it. **Current approach (as of
-  `2.0.3`, corrected from `2.0.2`'s first pass)**: `app.config.js` reads it from
-  `process.env.EAS_PROJECT_ID` (same pattern as `ANDROID_GOOGLE_MAPS_API_KEY`) rather than
-  the value being hardcoded into the tracked file — `2.0.2` shipped it hardcoded, and
-  Jason asked for it to be environment config instead, same day. Set in `app/.env` per
-  `app/.env.example`; every build resolves the project from there, no further prompts.
-  **This means the production host's own `app/.env` needs `EAS_PROJECT_ID` set by hand**
-  (env files aren't in git, so `git pull` alone won't carry it over) — the value is
-  `8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`, confirm it's actually there before assuming this
-  is fully unblocked on that host. **Still not fully proven** beyond that: whether a build
-  actually completes and produces an installable artifact hasn't been confirmed from this
-  session (no way to watch `eas build:list`/the EAS dashboard from here) — ask Jason to
-  confirm one finished.
+  `jasonhaymond-team` Expo accounts), and the very first `eas build` found the existing
+  `jasonhaymond-team/clocker` EAS project and tried to link it. Getting there took three
+  rounds: `2.0.2` hardcoded the discovered project id straight into `app.config.js`
+  (worked, but Jason correctly objected — a tracked file isn't the place for
+  deployment-specific config); `2.0.3` moved it to `EAS_PROJECT_ID` in `app/.env`, mirroring
+  `ANDROID_GOOGLE_MAPS_API_KEY`; but Jason then hit the exact same "which account should
+  own this project?" prompt again even with `app/.env` correctly set, which turned up a
+  real, previously-latent bug: `expo start`/`expo export` auto-load `app/.env` before
+  evaluating `app.config.js`, but `eas build`'s own internal project-linking step does
+  not, so the env var never reached `process.env` in that specific code path. `2.0.4`
+  fixed it properly: `app.config.js` now loads `app/.env` itself via `dotenv`, rather than
+  depending on whichever tool happens to invoke it — the same latent gap almost certainly
+  applied to `ANDROID_GOOGLE_MAPS_API_KEY` too, just never surfaced because no EAS build
+  had ever gotten far enough to reach it. **This means the production host's own
+  `app/.env` still needs `EAS_PROJECT_ID` set by hand** (env files aren't in git, so `git
+  pull` alone won't carry it over) — the value is `8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`;
+  confirm it's actually there before assuming this is unblocked on that host. **Still not
+  fully proven** beyond that: whether a build actually completes and produces an
+  installable artifact hasn't been confirmed from this session (no way to watch
+  `eas build:list`/the EAS dashboard from here) — ask Jason to confirm one finished.
 - **The persistent "clocked in" notification has never been built or run** — it's the
   first feature in this project that genuinely requires a custom dev/production build
   rather than Expo Go. The EAS gap above that used to block even producing such a build is

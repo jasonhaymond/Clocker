@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.4] - 2026-09-15
+
+### Fixed
+
+- `EAS_PROJECT_ID` (added in `2.0.3`) still wasn't reaching `app.config.js` during a real
+  `eas build` — the terminal kept re-prompting "Which account should own this project?"
+  as if the value were never set, even with it correctly present in `app/.env`. Root
+  cause: `expo start`/`expo export` auto-load `app/.env` before evaluating `app.config.js`,
+  but `eas build`'s own internal project-linking step does not go through that same
+  loading path. `app.config.js` now loads `app/.env` itself via `dotenv`, rather than
+  depending on whichever tool happens to invoke it to have already done so — the same
+  reliability problem, fixed the same way, for `ANDROID_GOOGLE_MAPS_API_KEY` too.
+
 ## [2.0.3] - 2026-09-14
 
 ### Changed

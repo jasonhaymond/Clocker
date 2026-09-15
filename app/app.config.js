@@ -2,8 +2,12 @@
 // specifically ANDROID_GOOGLE_MAPS_API_KEY, needed by react-native-maps on Android (the
 // job-location map picker; iOS uses Apple Maps by default, no key needed there), and
 // EAS_PROJECT_ID, which links builds to a specific EAS project (see app/.env.example for
-// both). Expo loads app/.env automatically for both `npx expo start` and EAS builds — no
-// extra config needed to get either value into process.env here.
+// both). `expo start`/`expo export` auto-load app/.env before evaluating this file, but
+// `eas build`'s own internal project-linking step does not (confirmed the hard way: it
+// kept re-prompting "Which account should own this project?" as if EAS_PROJECT_ID were
+// never set, even with it correctly present in app/.env) — so this file loads it itself,
+// explicitly, rather than depending on whichever tool happens to invoke it.
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const LOCATION_USAGE_DESCRIPTION =
   "Clocker uses your location to detect when you arrive at or leave a job site you've set up for location awareness, so it can prompt you to clock in/out or — if you've turned that on — do it automatically, even when the app isn't open.";
 
@@ -12,7 +16,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.3",
+    version: "2.0.4",
     runtimeVersion: {
       policy: "appVersion",
     },
