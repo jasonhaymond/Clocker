@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.10] - 2026-09-15
+
+### Fixed
+
+- Added a real, actionable "Google Maps API key" setup section to `docs/deployment.md`'s
+  Step 1 — previously the key was only mentioned as an aside while explaining why
+  `app.config.js` is a dynamic config, with no dedicated instructions for actually getting
+  one (enable "Maps SDK for Android," restrict to the app's package name + signing
+  fingerprint, set `ANDROID_GOOGLE_MAPS_API_KEY` on the deploy host). `docs/development.md`
+  (env var reference) and `docs/user-guide.md` (feature walkthrough) were already
+  thorough; this was the one real documentation gap.
+
 ## [2.0.9] - 2026-09-15
 
 ### Fixed

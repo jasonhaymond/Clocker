@@ -786,6 +786,19 @@ its Maps SDK API isn't enabled, that would still crash the app the same way, wit
 warning from this check. Not verified on a real device (no access from here) — typecheck
 only.
 
+**Amended again (2026-09-15, later session):** Jason asked to double-check the Maps API
+key's setup and functionality were actually documented, since he hadn't found it. Audited
+every doc (`README.md`, `docs/deployment.md`, `docs/development.md`, `docs/user-guide.md`,
+`docs/data-model.md`, `docs/architecture.md`): `docs/development.md`'s env var table
+(corrected 2026-09-15 earlier this same day) and `docs/user-guide.md`'s "Clocking in and
+out automatically by location" section were already thorough — the real gap was
+`docs/deployment.md`, where the key was only ever mentioned as an aside while explaining
+*why* `app.config.js` is a dynamic config, never as an actual step telling a deployer to
+go get one. Added a proper subsection to Step 1 (enable "Maps SDK for Android," restrict
+to `com.haymondtechnologies.clocker` + the signing fingerprint from `eas credentials`, set
+`ANDROID_GOOGLE_MAPS_API_KEY` in `app/.env`), including the crash caveat from the
+amendment above. `2.0.10`, docs-only.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -812,10 +825,11 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.9` as of this session (`2.0.0`
-was major, per the user's explicit instruction — this batch was substantial enough, and
-the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`-`2.0.9` right after it were same-day
+full stop. All five (four packages, one version) are at `2.0.10` as of this session
+(`2.0.0` was major, per the user's explicit instruction — this batch was substantial
+enough, and the user asked for it directly, rather than following the usual "new
+capability = minor" default used for every bump before it; `2.0.1`-`2.0.10` right after it
+were same-day
 patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked

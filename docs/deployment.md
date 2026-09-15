@@ -901,6 +901,31 @@ in `app.config.js` alongside `slug`/`scheme` rather than read from the environme
 **Effectively permanent once first published to the Play Store** — free to change before
 then if a different identifier is wanted.
 
+**Google Maps API key, for the job-location map picker on Android.** The app has two ways
+to set a job's location: "Use My Current Location" (works out of the box, no setup) and
+"Choose on Map" (drops a pin anywhere on an actual map — needs a Google Maps API key on
+Android; iOS uses Apple Maps for free, no key needed there). Without a key, "Choose on
+Map" simply shows an in-app "unavailable" message instead of a map — the app doesn't
+break, but that one path to setting a location doesn't work. To enable it:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/google/maps-apis),
+   create/select a project and enable the **Maps SDK for Android** API.
+2. Create an API key, then restrict it to Android apps: package name
+   `com.haymondtechnologies.clocker` (from `android.package` above) and the SHA-1
+   fingerprint of the credential your builds are actually signed with — `eas credentials`
+   (Android → your build profile → view keystore) prints it for EAS-managed signing.
+3. Set `ANDROID_GOOGLE_MAPS_API_KEY` in `app/.env` on this host (see `app/.env.example`) —
+   same as `EXPO_PUBLIC_API_URL`/`EAS_PROJECT_ID` above, an untracked env var, not
+   hardcoded into `app.config.js`.
+
+This is baked into the native Android build at build time, so it only takes effect on the
+*next* `npm run deploy` (or manual `eas build`) — an OTA update can't add it to an
+already-installed build. A key that's present but restricted to the wrong package
+name/SHA-1, or with the Maps SDK API not enabled, will still crash the app when "Choose on
+Map" is used (`react-native-maps` has no way to catch that failure and show an error
+instead) — double-check the restriction values above match exactly before considering
+this done.
+
 **Monorepo builds need `EXPO_USE_METRO_WORKSPACE_ROOT=1`.** Since this repo is an npm
 workspaces monorepo, `node_modules` (including `expo` itself) is hoisted to the repo
 root rather than living inside `app/node_modules`. Expo's default entry point
