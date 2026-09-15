@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.8] - 2026-09-15
+
+### Fixed
+
+- `docs/development.md` claimed a missing `ANDROID_GOOGLE_MAPS_API_KEY` meant the job
+  location map picker just "won't render" on Android. Confirmed on a real device (the
+  first Android build this app has ever had) that this is wrong — it crashes the app a
+  few seconds after opening "Choose on Map" instead. Corrected the doc; "Use My Current
+  Location" remains entirely unaffected, since it never touches `react-native-maps`.
+
 ## [2.0.7] - 2026-09-15
 
 ### Changed
