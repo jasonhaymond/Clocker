@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.7] - 2026-09-15
+
+### Changed
+
+- Adopted six of the eight major-version bumps flagged in `2.0.6` as "left deliberately
+  unbumped," after testing each independently in an isolated scratch copy (not just
+  typecheck — real functional/end-to-end verification for every one) and confirming none
+  of them broke anything real: `zod` `3` → `4` (full register → login → sync-push round
+  trip against a real database, including a real CAPTCHA solve, confirmed unchanged
+  behavior and error-response shape — only the wording of default validation error
+  messages changed, e.g. "Required" → "Invalid input: expected string, received
+  undefined"), `bcryptjs` `2` → `3` (confirmed it still validates password hashes
+  produced by the old v2 library, so no existing user is logged out or has to reset a
+  password — `@types/bcryptjs` removed entirely, since v3 ships its own types and that
+  package is now a deprecated stub), `vite` `7` → `8` and `@vitejs/plugin-react` `5` →
+  `6` together (both build and a live dev server tested), `typescript` `5`/`6` → `7`
+  (all four workspaces), `@fastify/cors` `10` → `11` (a live server tested with real CORS
+  headers), and `dotenv` `16` → `17`.
+- **`prisma`/`@prisma/client` deliberately held back at `6.x`** — tested and found to be a
+  real breaking change, not a routine bump: Prisma `7` removes `datasource.url` from
+  `schema.prisma` entirely, requiring connection config to move to a new
+  `prisma.config.ts` and be passed via a driver adapter to the `PrismaClient`
+  constructor. That's a genuine migration project, not something to bundle in here.
+
 ## [2.0.6] - 2026-09-15
 
 ### Changed

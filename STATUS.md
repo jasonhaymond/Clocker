@@ -688,6 +688,60 @@ green, `expo install --check` reports clean, and the pdfkit PDF-generation smoke
 above. Not verified: an actual `eas build` against these updated Expo packages (still
 blocked on the `android.package`/EAS-linking chain above being confirmed on the real host).
 
+**Amended again (2026-09-15, later session):** Jason confirmed the EAS build got past the
+`android.package`/EAS-linking chain and reached the "Generate a new Android Keystore?"
+prompt — genuinely the first time this app has ever reached real Android code signing.
+Not yet confirmed whether the build completed after that.
+
+Separately, Jason asked to actually test the eight major-version bumps `2.0.6` deliberately
+left alone, "to see if they break anything," rather than leaving them as an open question
+forever. Set up an isolated scratch copy of the repo (`git init`'d separately, so each
+candidate bump could be applied, tested, and reverted via `git checkout` without
+contaminating the next test) and tested each independently — real functional verification,
+not just typecheck, since a passing `tsc` doesn't prove a crypto library or a validation
+schema still behaves correctly at runtime:
+- `dotenv` `16`→`17`: clean build, functional load round-trip. **Pass.**
+- `@fastify/cors` `10`→`11`: started a real server, confirmed actual CORS response headers
+  on a live request. **Pass.**
+- `bcryptjs` `2`→`3`: real hash/compare round-trip, and critically, confirmed the new
+  library still validates password hashes produced by the *old* v2 library — no existing
+  user would be locked out or need a password reset. **Pass**, with one required companion
+  change: `@types/bcryptjs` removed entirely (v3 ships its own types; the `@types` package
+  is now a deprecated stub, confirmed via its own deprecation notice on npm).
+- `vite` `7`→`8` + `@vitejs/plugin-react` `5`→`6` (tested together, since they're
+  compatibility-linked): both the production build and a live dev server (real HTTP
+  request, HMR client correctly injected) tested. **Pass.**
+- `typescript` `5`/`6`→`7`: clean typecheck across all four workspaces, `shared`'s test
+  suite still green, web build unaffected. **Pass.**
+- `zod` `3`→`4`: the one carrying the most risk, given how heavily `server` leans on
+  `.uuid()`/`.email()`/`.datetime()`/`.flatten()` across `auth.ts`/`sync.ts`/`invoices.ts`.
+  Ran a full live round trip against the real dev Postgres: register → solve a real
+  self-hosted CAPTCHA → sync push with a real `crypto.randomUUID()`-generated job — all
+  succeeded, error-response shape (`{formErrors, fieldErrors}`) unchanged. One real,
+  interesting finding along the way: v4's `.uuid()` got measurably stricter (genuine RFC
+  4122 validation — a fake test UUID that v3 would've accepted was correctly rejected);
+  harmless here since both clients generate real IDs via `crypto.randomUUID()`/
+  `expo-crypto`, never anything else. Default validation error message *wording* changed
+  slightly (e.g. "Required" → "Invalid input: expected string, received undefined") — only
+  visible in the API's raw `flatten()` error detail, never surfaced in either client's UI,
+  so cosmetic in practice. **Pass.**
+- `prisma`/`@prisma/client` `6`→`7`: **real, immediate failure**, not cosmetic. Prisma `7`
+  removes `datasource.url` from `schema.prisma` entirely — connection config now has to
+  move to a new `prisma.config.ts` file and be passed via a driver adapter (e.g.
+  `@prisma/adapter-pg`) to the `PrismaClient` constructor instead. A genuine migration
+  (new file, changed client instantiation, likely a Docker build change too), not a
+  routine bump — deliberately held back at `6.x`, left as its own future scoped project if
+  Jason wants to pursue it. Also worth knowing for whenever that happens: npm's newer
+  install-script gating (`npm install-scripts`) silently skipped fetching Prisma's engine
+  binaries during testing until explicitly approved — a real step any future Prisma-major
+  upgrade needs to account for.
+
+Jason approved shipping the six passers. Applied for real (not just in the scratch copy)
+and re-verified end-to-end against the actual dev server + dev Postgres one more time
+before shipping: a full register → wrong-password-correctly-rejected (401) →
+correct-password-succeeds (200, real JWT) round trip, proving `bcryptjs`/`zod` both work
+correctly outside the isolated test environment too. `2.0.7`.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -714,10 +768,10 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.6` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.7` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`-`2.0.6` right after it were same-day
+default used for every bump before it; `2.0.1`-`2.0.7` right after it were same-day
 patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
@@ -1462,8 +1516,14 @@ Verified present in the repo (code + docs, not just described in memory):
   had ever gotten far enough to reach it. **This means the production host's own
   `app/.env` still needs `EAS_PROJECT_ID` set by hand** (env files aren't in git, so `git
   pull` alone won't carry it over) — the value is `8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`;
-  confirm it's actually there before assuming this is unblocked on that host. **Still not
-  fully proven** beyond that: whether a build actually completes and produces an
+  confirm it's actually there before assuming this is unblocked on that host. Two more
+  real blockers surfaced and got fixed after that: `android.package` had to be added to
+  `app.config.js` by hand too (`2.0.5`, `com.haymondtechnologies.clocker` — permanent once
+  first published to the Play Store, freely changeable before then), and once past that,
+  Jason confirmed reaching EAS's "Generate a new Android Keystore?" prompt — genuinely the
+  first time this app has ever reached real Android code signing (told him to answer `y`;
+  EAS-managed remote credentials, so Expo stores the keystore rather than only this
+  machine). **Still not fully proven**: whether a build actually completes and produces an
   installable artifact hasn't been confirmed from this session (no way to watch
   `eas build:list`/the EAS dashboard from here) — ask Jason to confirm one finished.
 - **The persistent "clocked in" notification has never been built or run** — it's the
@@ -1563,6 +1623,15 @@ Verified present in the repo (code + docs, not just described in memory):
   for it to be its own separate future pass, since there's no first-party Expo solution and
   the community libraries for it are unverified. Pick this up as new work, not as a
   continuation of anything already in progress.
+- **`server`'s `prisma`/`@prisma/client` are held at `6.x` on purpose** — tested bumping to
+  `7.x` (§3) and confirmed it's a real breaking change, not a routine update: Prisma 7
+  removes `datasource.url` from `schema.prisma`, requiring a new `prisma.config.ts` and a
+  driver-adapter-based `PrismaClient` constructor instead. This needs its own scoped,
+  tested migration project (new config file, changed client instantiation, likely a
+  Docker build change, and re-verifying every migration/generate step) rather than being
+  folded into routine dependency maintenance. Also note for whenever this happens: npm's
+  install-script gating silently skips fetching Prisma's engine binaries unless
+  `npm install-scripts approve prisma @prisma/engines` is run first.
 
 ## 5. Deployment
 
