@@ -1,8 +1,9 @@
 // Converted from app.json to app.config.js so this file can read process.env —
 // specifically ANDROID_GOOGLE_MAPS_API_KEY, needed by react-native-maps on Android (the
-// job-location map picker; iOS uses Apple Maps by default, no key needed there). Expo
-// loads app/.env automatically for both `npx expo start` and EAS builds (see
-// app/.env.example) — no extra config needed to get the key into process.env here.
+// job-location map picker; iOS uses Apple Maps by default, no key needed there), and
+// EAS_PROJECT_ID, which links builds to a specific EAS project (see app/.env.example for
+// both). Expo loads app/.env automatically for both `npx expo start` and EAS builds — no
+// extra config needed to get either value into process.env here.
 const LOCATION_USAGE_DESCRIPTION =
   "Clocker uses your location to detect when you arrive at or leave a job site you've set up for location awareness, so it can prompt you to clock in/out or — if you've turned that on — do it automatically, even when the app isn't open.";
 
@@ -11,7 +12,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.2",
+    version: "2.0.3",
     runtimeVersion: {
       policy: "appVersion",
     },
@@ -71,13 +72,13 @@ module.exports = {
       "expo-quick-actions",
     ],
     // EAS can't auto-write this into a dynamic app.config.js the way it does for a plain
-    // app.json (see docs/deployment.md's EAS setup section) — added by hand, once, from
-    // what `eas build`/`eas build:configure` printed when it found the existing
-    // jasonhaymond-team/clocker project. Every build after this one resolves the project
-    // from this field alone, no further prompts.
+    // app.json (see docs/deployment.md's EAS setup section) — set EAS_PROJECT_ID in
+    // app/.env instead, once, from what `eas build`/`eas build:configure` prints the very
+    // first time it finds or creates the project. Every build after that resolves the
+    // project from this field alone, no further prompts.
     extra: {
       eas: {
-        projectId: "8dc29a84-7b7c-4b3d-ba07-a933ef274fdf",
+        projectId: process.env.EAS_PROJECT_ID,
       },
     },
   },

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.3] - 2026-09-14
+
+### Changed
+
+- The EAS project id `2.0.2` added is no longer hardcoded into `app/app.config.js` — it
+  belongs in environment config, not a tracked file. `app.config.js` now reads it from
+  `EAS_PROJECT_ID` (set in `app/.env`, documented in `app/.env.example`), the same pattern
+  already used for `ANDROID_GOOGLE_MAPS_API_KEY`.
+
 ## [2.0.2] - 2026-09-14
 
 ### Fixed

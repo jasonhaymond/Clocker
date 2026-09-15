@@ -590,6 +590,20 @@ should let the build actually proceed past linking, but whether it completes and
 an installable artifact hasn't been confirmed from this session — no way to watch
 `eas build:list`/the EAS dashboard from here.
 
+**Amended again (2026-09-14, same day, later session):** Jason pushed back on the fix
+above — the EAS project id shouldn't be hardcoded into `app/app.config.js` (a tracked
+file); it belongs in environment config, same as this file already does for
+`ANDROID_GOOGLE_MAPS_API_KEY`. Agreed and fixed: `app.config.js` now reads
+`process.env.EAS_PROJECT_ID` instead, documented in `app/.env.example`, and set in this
+dev machine's own `app/.env`. `docs/deployment.md`'s two EAS-setup mentions updated to
+match (set the env var, don't hand-edit `app.config.js`). `2.0.3`. **Real follow-up
+needed, not done from here**: the production host's own `app/.env` (gitignored, so this
+change doesn't reach it via `git pull`) needs `EAS_PROJECT_ID=8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`
+added by hand before its next `npm run deploy`, or the EAS project link is simply unset
+again (`extra.eas.projectId` reads as `undefined`) and `eas build` re-prompts to link a
+project from scratch, same as before `2.0.2` — not a crash this time, just back to square
+one on that specific step.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -1346,17 +1360,25 @@ Verified present in the repo (code + docs, not just described in memory):
   code.
 
 - ~~EAS/Expo account never logged into from any Claude session~~ — **resolved
-  2026-09-14, `2.0.2`**: Jason ran `npm run deploy` for real on the production host,
-  logged in as `jasonhaymond` (member of both the `jasonhaymond` and `jasonhaymond-team`
-  Expo accounts), and the very first `eas build` found and linked the existing
-  `jasonhaymond-team/clocker` EAS project. That link itself hit the one documented
-  wrinkle: EAS can only auto-write `extra.eas.projectId` into a plain `app.json`, not this
-  project's dynamic `app.config.js`, so it printed the field to add by hand and refused to
-  proceed until it existed — added, see `app/app.config.js`. Every build from here on
-  resolves the project from that field alone, no further prompts. **Still not fully
-  proven**: this got the build *submitted* successfully; whether it actually completes and
-  produces an installable artifact hasn't been confirmed from this session (no way to
-  watch `eas build:list`/the EAS dashboard from here) — ask Jason to confirm it finished.
+  2026-09-14, `2.0.2`/`2.0.3`**: Jason ran `npm run deploy` for real on the production
+  host, logged in as `jasonhaymond` (member of both the `jasonhaymond` and
+  `jasonhaymond-team` Expo accounts), and the very first `eas build` found and linked the
+  existing `jasonhaymond-team/clocker` EAS project. That link itself hit the one
+  documented wrinkle: EAS can only auto-write `extra.eas.projectId` into a plain
+  `app.json`, not this project's dynamic `app.config.js`, so it printed the project id and
+  refused to proceed until `app.config.js` could see it. **Current approach (as of
+  `2.0.3`, corrected from `2.0.2`'s first pass)**: `app.config.js` reads it from
+  `process.env.EAS_PROJECT_ID` (same pattern as `ANDROID_GOOGLE_MAPS_API_KEY`) rather than
+  the value being hardcoded into the tracked file — `2.0.2` shipped it hardcoded, and
+  Jason asked for it to be environment config instead, same day. Set in `app/.env` per
+  `app/.env.example`; every build resolves the project from there, no further prompts.
+  **This means the production host's own `app/.env` needs `EAS_PROJECT_ID` set by hand**
+  (env files aren't in git, so `git pull` alone won't carry it over) — the value is
+  `8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`, confirm it's actually there before assuming this
+  is fully unblocked on that host. **Still not fully proven** beyond that: whether a build
+  actually completes and produces an installable artifact hasn't been confirmed from this
+  session (no way to watch `eas build:list`/the EAS dashboard from here) — ask Jason to
+  confirm one finished.
 - **The persistent "clocked in" notification has never been built or run** — it's the
   first feature in this project that genuinely requires a custom dev/production build
   rather than Expo Go. The EAS gap above that used to block even producing such a build is

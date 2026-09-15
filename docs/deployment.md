@@ -852,8 +852,10 @@ verified, `scripts/deploy.mjs`:
    `app/app.config.js` (JavaScript, not plain JSON — needed to read
    `ANDROID_GOOGLE_MAPS_API_KEY` from the environment for the map picker), EAS CLI can't
    safely write the resulting project id into it automatically the way it would for a
-   plain `app.json` — it prints the value instead. Add it yourself as
-   `extra.eas.projectId` in `app/app.config.js`'s exported object and commit that change;
+   plain `app.json` — it prints the value instead. Set it yourself as `EAS_PROJECT_ID` in
+   `app/.env` (see `app/.env.example` — deliberately an env var, not hardcoded into
+   `app.config.js`'s exported object, so the tracked config stays generic and this
+   deployment's own EAS project id lives alongside its other environment-specific values);
    every future deploy's build then goes out unattended again with nothing to answer.
 
 Override the platform/profile, or skip it for one run:
@@ -881,10 +883,15 @@ same field `eas update:configure` uses for [OTA updates](./development.md#ota-up
 you'd only need to link the project once regardless of which you set up first. This
 project's config is `app/app.config.js` instead (JavaScript, not JSON, so it can read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment), which EAS CLI can't auto-write into —
-it prints the `projectId` for you to add yourself under `extra.eas` in the exported
-object, still just the one time. If `eas build:configure` offers to overwrite the existing
-`eas.json`, decline (or re-add the `EXPO_USE_METRO_WORKSPACE_ROOT` env var below
-afterward) — that's the monorepo fix described next.
+it prints the `projectId` for you to add yourself, still just the one time. Set it as
+`EAS_PROJECT_ID` in `app/.env` (see `app/.env.example`), not by hand-editing
+`app.config.js` — `app.config.js` reads it from the environment at build/config time the
+same way it already does for `ANDROID_GOOGLE_MAPS_API_KEY`, so it stays generic and
+committable while this deployment's own EAS project id lives in its own untracked
+environment config, right alongside the API URL and Maps key. If `eas build:configure`
+offers to overwrite the existing `eas.json`, decline (or re-add the
+`EXPO_USE_METRO_WORKSPACE_ROOT` env var below afterward) — that's the monorepo fix
+described next.
 
 **Monorepo builds need `EXPO_USE_METRO_WORKSPACE_ROOT=1`.** Since this repo is an npm
 workspaces monorepo, `node_modules` (including `expo` itself) is hoisted to the repo
