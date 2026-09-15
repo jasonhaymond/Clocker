@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.1] - 2026-09-14
+
+### Fixed
+
+- `npm run deploy`'s mobile app build step could fail on a real host with an opaque
+  `expo config` error whenever a new dependency had been added to `app/package.json`
+  (as `2.0.0` just did — `expo-haptics`, `expo-local-authentication`, `expo-quick-actions`)
+  since the last deploy: unlike the server/web build, which installs its own dependencies
+  inside its own Docker image, `eas build` runs against this host's own `node_modules`,
+  and a plain `git pull` never installs a newly-added dependency on its own. The deploy
+  script now runs `npm install` at the repo root immediately before this step.
+
 ## [2.0.0] - 2026-09-14
 
 A major version bump for a large batch of new features and improvements, shipped

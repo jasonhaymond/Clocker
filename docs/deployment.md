@@ -829,13 +829,20 @@ verified, `scripts/deploy.mjs`:
 1. Confirms `app/` and `shared/` have no uncommitted changes (skips the mobile build,
    with a clear warning, rather than shipping unreviewed code — the server/web deploy
    that already happened is unaffected either way).
-2. Confirms you're logged in to EAS (`npx eas-cli@latest whoami`) — skips with a warning
+2. Runs `npm install` at the repo root, so this host's `node_modules` matches the
+   lockfile before `eas build` shells out internally to `expo config --json` — unlike the
+   server/web build above (each installs its own deps inside its own Docker image), this
+   step runs against the host's own `node_modules`, and a plain `git pull` never installs
+   a dependency added to `app/package.json` since the last time this ran. Skips the
+   mobile build with a warning if `npm install` itself fails; the server/web deploy that
+   already happened is unaffected either way.
+3. Confirms you're logged in to EAS (`npx eas-cli@latest whoami`) — skips with a warning
    if not, telling you to `cd app && npx eas-cli@latest login` and re-run.
-3. Cross-checks `app/eas.json`'s baked `EXPO_PUBLIC_API_URL` against `.env.prod`'s
+4. Cross-checks `app/eas.json`'s baked `EXPO_PUBLIC_API_URL` against `.env.prod`'s
    `DOMAIN` (same check described in [Step 2](#step-2-point-the-build-at-your-server)
    below) — a mismatch here is exactly the class of bug that shipped earlier in this
    project's history.
-4. Submits the build (`eas build --platform android --profile preview` by default) with
+5. Submits the build (`eas build --platform android --profile preview` by default) with
    `--no-wait` — it doesn't block the rest of the deploy for the several minutes a cloud
    build takes; EAS prints a dashboard link/QR code once it's done, separately.
    **The very first build ever is the one exception that isn't hands-off**: if the app

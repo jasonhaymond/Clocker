@@ -559,6 +559,21 @@ from this environment, same standing caveat as every other native-module feature
 project.** The home-screen widget (the one remaining suggestion) was explicitly deferred
 by the user to its own separate future pass, not built here.
 
+**Amended again (2026-09-14, same day, later session):** the user reported `npm run
+deploy`'s mobile build step failing on the real host right after the `2.0.0` batch above,
+with `expo config` exiting non-zero. Root cause: `deploy.mjs` never ran `npm install` on
+the host's own `node_modules` before invoking `eas build` (unlike the server/web build,
+which installs inside its own Docker image) — a plain `git pull` doesn't install a
+dependency newly added to `app/package.json`, and `2.0.0` had just added three
+(`expo-haptics`, `expo-local-authentication`, `expo-quick-actions`). Same class of bug as
+the `node-cron`/host-agent incident earlier in this file, different script. Fixed by
+adding an `npm install` step to `deploy.mjs` right before the EAS build call (skips the
+mobile build with a warning, server/web unaffected, if it fails); `docs/deployment.md`'s
+step list updated to match. `2.0.1` (patch — tooling fix only, no source changes in any of
+the four packages, per this file's versioning policy on repo-wide non-source changes).
+Not verified against the real host from this session (no SSH access) — the user still
+needs to re-run `npm run deploy` there to confirm this actually unblocks it.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -585,10 +600,11 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.0` as of this session (major,
-per the user's explicit instruction — this batch was substantial enough, and the user
-asked for it directly, rather than following the usual "new capability = minor" default
-used for every bump before it); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+full stop. All five (four packages, one version) are at `2.0.1` as of this session (`2.0.0`
+was major, per the user's explicit instruction — this batch was substantial enough, and
+the user asked for it directly, rather than following the usual "new capability = minor"
+default used for every bump before it; `2.0.1` right after it was a patch, a same-day
+deploy-tooling fix, see above); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
 in from `web/package.json` via

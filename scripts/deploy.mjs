@@ -342,26 +342,40 @@ if (wantsSkipApp) {
       warn("app/ or shared/ has uncommitted changes — skipping the mobile app build so it doesn't ship unreviewed code.");
       warn("Commit or stash, then re-run `npm run deploy` to include it.");
     } else {
-      const whoami = captureOutput("npx eas-cli@latest whoami", { cwd: appDir });
-      if (!whoami || /not logged in/i.test(whoami)) {
-        warn("Not logged in to EAS — skipping the mobile app build.");
-        warn("Run `cd app && npx eas-cli@latest login`, then re-run `npm run deploy` to include it.");
+      // Unlike the server/web build above (each installs its own deps inside its own
+      // Docker image via `npm ci`), `eas build` below runs locally against this host's own
+      // node_modules — `expo config --json` (which it shells out to internally, to resolve
+      // app.config.js and its plugins) fails outright if a dependency `app/package.json`
+      // needs isn't installed yet. A `git pull` alone never installs a newly-added
+      // dependency, so without this, the very next deploy after any commit that adds one
+      // to `app/` would fail here with an opaque "config exited with non-zero code: 1".
+      step("Running `npm install` so this host's node_modules matches the current lockfile...");
+      const installedOk = run("npm install", { cwd: rootDir, optional: true });
+      if (!installedOk) {
+        warn("`npm install` failed — skipping the mobile app build. The server/web deploy above is unaffected.");
+        warn("Run `npm install` at the repo root by hand, then re-run `npm run deploy` to include it.");
       } else {
-        step(`Logged in to EAS as ${whoami}`);
-        checkBakedApiUrl(rootDir, appDir, appProfile);
-        // Deliberately not --non-interactive: the very first build ever needs to ask
-        // (interactively, right here) which EAS account/project to link, and forcing
-        // non-interactive mode turns that prompt into a hard failure ("EAS project not
-        // configured... cannot configure it in non-interactive mode") instead of asking.
-        // That one-time answer gets written to app.json (commit it afterward) — every
-        // build after that is unattended again on its own, nothing more to answer.
-        step("Submitting to EAS Build (--no-wait only skips waiting for the *build* to finish — if this is the very first build ever, EAS may ask here which account/project to link; answer it, this part isn't skippable)...");
-        appBuildStarted = run(`npx eas-cli@latest build --platform ${appPlatform} --profile ${appProfile} --no-wait`, {
-          cwd: appDir,
-          optional: true,
-        });
-        if (!appBuildStarted) {
-          warn("Failed to submit the mobile app build — see the error above. The server/web deploy above is unaffected.");
+        const whoami = captureOutput("npx eas-cli@latest whoami", { cwd: appDir });
+        if (!whoami || /not logged in/i.test(whoami)) {
+          warn("Not logged in to EAS — skipping the mobile app build.");
+          warn("Run `cd app && npx eas-cli@latest login`, then re-run `npm run deploy` to include it.");
+        } else {
+          step(`Logged in to EAS as ${whoami}`);
+          checkBakedApiUrl(rootDir, appDir, appProfile);
+          // Deliberately not --non-interactive: the very first build ever needs to ask
+          // (interactively, right here) which EAS account/project to link, and forcing
+          // non-interactive mode turns that prompt into a hard failure ("EAS project not
+          // configured... cannot configure it in non-interactive mode") instead of asking.
+          // That one-time answer gets written to app.json (commit it afterward) — every
+          // build after that is unattended again on its own, nothing more to answer.
+          step("Submitting to EAS Build (--no-wait only skips waiting for the *build* to finish — if this is the very first build ever, EAS may ask here which account/project to link; answer it, this part isn't skippable)...");
+          appBuildStarted = run(`npx eas-cli@latest build --platform ${appPlatform} --profile ${appProfile} --no-wait`, {
+            cwd: appDir,
+            optional: true,
+          });
+          if (!appBuildStarted) {
+            warn("Failed to submit the mobile app build — see the error above. The server/web deploy above is unaffected.");
+          }
         }
       }
     }
