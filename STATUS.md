@@ -629,7 +629,20 @@ build once one finishes. Not yet confirmed against the real host from this sessi
 fix is only proven via a clean-environment `require()` test here, not a live `eas build`
 run there.
 
-A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
+**Amended again (2026-09-15, later session):** the `dotenv` fix worked — the account/
+project-linking prompt is gone — but the same real `eas build` immediately hit the next
+blocker: `android.package` isn't defined in `app.config.js`, and EAS can't auto-write that
+into a dynamic config either (same class of problem as `extra.eas.projectId`, different
+field). Unlike the project id, this one is part of the app's actual identity, not
+per-deployment config — added directly as `android.package` in `app.config.js`
+(`com.haymondtechnologies.clocker`), hardcoded like `slug`/`scheme` already are, not read
+from the environment. Reverse-DNS matching the deployed domain. **This is effectively
+permanent once first published to the Play Store** — freely changeable before then, so
+worth a deliberate look if `com.haymondtechnologies.clocker` isn't the identifier Jason
+actually wants for a real release, rather than assuming this default is final. `2.0.5`.
+This is genuinely the first time this app has ever had an Android package name — nothing
+to compare against, no risk of a mismatch with a previously-published build. Not yet
+confirmed whether the build gets further than this on a live host from this session. (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
 - **`app/`** — Expo/React Native (TypeScript) mobile app. Offline-first: local SQLite
@@ -655,10 +668,10 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.4` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.5` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`-`2.0.4` right after it were same-day
+default used for every bump before it; `2.0.1`-`2.0.5` right after it were same-day
 patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked

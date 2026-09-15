@@ -893,6 +893,14 @@ offers to overwrite the existing `eas.json`, decline (or re-add the
 `EXPO_USE_METRO_WORKSPACE_ROOT` env var below afterward) — that's the monorepo fix
 described next.
 
+**`android.package` must be set in `app.config.js` too** (already done —
+`com.haymondtechnologies.clocker`, reverse-DNS matching the deployed domain). EAS can't
+auto-write this into a dynamic config either, but unlike the project id above, this one
+is part of the app's actual identity rather than per-deployment config, so it's hardcoded
+in `app.config.js` alongside `slug`/`scheme` rather than read from the environment.
+**Effectively permanent once first published to the Play Store** — free to change before
+then if a different identifier is wanted.
+
 **Monorepo builds need `EXPO_USE_METRO_WORKSPACE_ROOT=1`.** Since this repo is an npm
 workspaces monorepo, `node_modules` (including `expo` itself) is hoisted to the repo
 root rather than living inside `app/node_modules`. Expo's default entry point

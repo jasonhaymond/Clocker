@@ -16,7 +16,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.4",
+    version: "2.0.5",
     runtimeVersion: {
       policy: "appVersion",
     },
@@ -31,6 +31,14 @@ module.exports = {
       },
     },
     android: {
+      // EAS can't auto-write this into a dynamic app.config.js either (same class of
+      // problem as extra.eas.projectId above) — but unlike that value, this one is part
+      // of the app's actual identity, not per-deployment config, so it's hardcoded here
+      // like slug/scheme above rather than read from the environment. Reverse-DNS,
+      // matching the deployed domain. Effectively permanent once first published to the
+      // Play Store — fine to change freely before then, so revisit deliberately if this
+      // isn't the identifier you want for a real release.
+      package: "com.haymondtechnologies.clocker",
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/android-icon-foreground.png",

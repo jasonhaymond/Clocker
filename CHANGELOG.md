@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.5] - 2026-09-15
+
+### Fixed
+
+- Getting past the EAS project-linking fix above surfaced the next blocker in the same
+  first-ever real `eas build`: `android.package` isn't defined in `app.config.js`, and
+  EAS can't auto-write it into a dynamic config either. Unlike the EAS project id, this
+  one is part of the app's actual identity, not per-deployment config, so it's hardcoded
+  in `app.config.js` (`com.haymondtechnologies.clocker`, reverse-DNS matching the deployed
+  domain) rather than read from the environment — effectively permanent once first
+  published to the Play Store, free to change before then.
+
 ## [2.0.4] - 2026-09-15
 
 ### Fixed
