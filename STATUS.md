@@ -574,6 +574,22 @@ the four packages, per this file's versioning policy on repo-wide non-source cha
 Not verified against the real host from this session (no SSH access) — the user still
 needs to re-run `npm run deploy` there to confirm this actually unblocks it.
 
+**Amended again (2026-09-14, same day, later session):** the previous fix worked (the
+mobile build got past `expo config` this time), but the user reported EAS then failed one
+step further: the very first `eas build` against this project found the existing
+`jasonhaymond-team/clocker` EAS project and tried to link it, but couldn't auto-write
+`extra.eas.projectId` into `app/app.config.js` since it's a dynamic (JS) config, not a
+plain `app.json` — exactly the wrinkle `docs/deployment.md` had already documented for
+`eas build:configure`, just hit here via plain `eas build` instead. Fixed by adding
+`extra.eas.projectId` to `app/app.config.js` by hand, using the exact ID EAS itself printed
+(`8dc29a84-7b7c-4b3d-ba07-a933ef274fdf`) — a real, permanent one-time fix, not a
+workaround; every build from here on resolves the project from that field alone. `2.0.2`
+(§4 — this also closes out the long-standing "EAS/Expo account never logged into" known
+gap, since Jason has now actually done it for real). **Still not fully proven**: this
+should let the build actually proceed past linking, but whether it completes and produces
+an installable artifact hasn't been confirmed from this session — no way to watch
+`eas build:list`/the EAS dashboard from here.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -600,11 +616,11 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.1` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.2` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1` right after it was a patch, a same-day
-deploy-tooling fix, see above); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+default used for every bump before it; `2.0.1`/`2.0.2` right after it were same-day patches
+fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
 in from `web/package.json` via
@@ -1329,18 +1345,24 @@ Verified present in the repo (code + docs, not just described in memory):
   run `npm install` at the repo root before restarting `clocker-host-agent`, not just pull
   code.
 
-- **EAS/Expo account never logged into from any Claude session.** `app/app.json` has no
-  `extra.eas.projectId` — confirmed absent as of this audit. Needs an interactive
-  `eas login` + `eas update:configure` with Jason's own Expo account before OTA updates or
-  `npm run deploy`'s EAS-build step can work. First `eas build` after that is also
-  interactive one more time (links the EAS project) — deploy script deliberately doesn't
-  pass `--non-interactive` for this reason (see commit `d69b080`). If Jason has since done
-  this himself outside a Claude session, re-check `app/app.json` before assuming this gap
-  still stands.
+- ~~EAS/Expo account never logged into from any Claude session~~ — **resolved
+  2026-09-14, `2.0.2`**: Jason ran `npm run deploy` for real on the production host,
+  logged in as `jasonhaymond` (member of both the `jasonhaymond` and `jasonhaymond-team`
+  Expo accounts), and the very first `eas build` found and linked the existing
+  `jasonhaymond-team/clocker` EAS project. That link itself hit the one documented
+  wrinkle: EAS can only auto-write `extra.eas.projectId` into a plain `app.json`, not this
+  project's dynamic `app.config.js`, so it printed the field to add by hand and refused to
+  proceed until it existed — added, see `app/app.config.js`. Every build from here on
+  resolves the project from that field alone, no further prompts. **Still not fully
+  proven**: this got the build *submitted* successfully; whether it actually completes and
+  produces an installable artifact hasn't been confirmed from this session (no way to
+  watch `eas build:list`/the EAS dashboard from here) — ask Jason to confirm it finished.
 - **The persistent "clocked in" notification has never been built or run** — it's the
   first feature in this project that genuinely requires a custom dev/production build
-  rather than Expo Go, so it's also blocked on the EAS gap above in practice. First real
-  test should happen on an actual Android device, watching for: the foreground service
+  rather than Expo Go. The EAS gap above that used to block even producing such a build is
+  now resolved; what's left is untested is the feature itself, once a build exists to
+  install. First real test should happen on an actual Android device, watching for: the
+  foreground service
   actually starting, the notification surviving the app being backgrounded/swiped from
   recents, and correct behavior when clocked into more than one job at once.
 - **JWT refresh isn't implemented** — a "remember me" token (default) never expires, with

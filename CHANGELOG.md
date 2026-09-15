@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.2] - 2026-09-14
+
+### Fixed
+
+- The very first real `eas build` against the linked `jasonhaymond-team/clocker` EAS
+  project failed with "Cannot automatically write to dynamic config at: app.config.js" —
+  EAS can only auto-write `extra.eas.projectId` into a plain `app.json`, not a dynamic
+  `app.config.js` (needed here to read `ANDROID_GOOGLE_MAPS_API_KEY` from the
+  environment). Added `extra.eas.projectId` to `app/app.config.js` by hand, the one-time
+  fix EAS itself printed instructions for. Every build from here on resolves the project
+  from this field alone — no more prompts.
+
 ## [2.0.1] - 2026-09-14
 
 ### Fixed

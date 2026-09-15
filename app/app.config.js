@@ -11,7 +11,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.1",
+    version: "2.0.2",
     runtimeVersion: {
       policy: "appVersion",
     },
@@ -70,5 +70,15 @@ module.exports = {
       // upgrading/replacing) — see app/src/lib/quickActions.ts.
       "expo-quick-actions",
     ],
+    // EAS can't auto-write this into a dynamic app.config.js the way it does for a plain
+    // app.json (see docs/deployment.md's EAS setup section) — added by hand, once, from
+    // what `eas build`/`eas build:configure` printed when it found the existing
+    // jasonhaymond-team/clocker project. Every build after this one resolves the project
+    // from this field alone, no further prompts.
+    extra: {
+      eas: {
+        projectId: "8dc29a84-7b7c-4b3d-ba07-a933ef274fdf",
+      },
+    },
   },
 };
