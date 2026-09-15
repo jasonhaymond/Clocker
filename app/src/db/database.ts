@@ -74,6 +74,7 @@ function rowToJob(row: any): Job {
     locationLatitude: row.location_latitude,
     locationLongitude: row.location_longitude,
     locationRadiusMeters: row.location_radius_meters,
+    staleShiftReminderHours: row.stale_shift_reminder_hours,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -115,6 +116,7 @@ function rowToShift(row: any): Shift {
     clockOut: row.clock_out,
     notes: row.notes,
     isOvertime: !!row.is_overtime,
+    mileage: row.mileage,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -363,6 +365,15 @@ export async function updateJobAutoClockInOut(id: string, enabled: boolean): Pro
   dbEvents.emit();
 }
 
+// `hours` null disables "forgot to clock out" reminders for this job entirely — see
+// app/src/lib/staleShiftReminder.ts.
+export async function updateJobStaleShiftReminder(id: string, hours: number | null): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE jobs SET stale_shift_reminder_hours = ?, updated_at = ? WHERE id = ?", [hours, nowIso(), id]);
+  await markPending("job", id, "upsert");
+  dbEvents.emit();
+}
+
 export async function setJobArchived(id: string, archived: boolean): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE jobs SET archived = ?, updated_at = ? WHERE id = ?", [archived ? 1 : 0, nowIso(), id]);
@@ -374,6 +385,23 @@ export async function deleteJob(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE jobs SET deleted_at = ? WHERE id = ?", [nowIso(), id]);
   await markPending("job", id, "delete");
+  dbEvents.emit();
+}
+
+// For the Recently Deleted screen — jobs deleted but not yet gone forever (soft-deleted
+// rows are never actually purged; see docs/data-model.md). Ordered by most recently
+// deleted first, using updated_at since that's set to the same timestamp as deleted_at by
+// deleteJob above.
+export async function listDeletedJobs(): Promise<Job[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync("SELECT * FROM jobs WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
+  return rows.map(rowToJob);
+}
+
+export async function restoreJob(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE jobs SET deleted_at = NULL, updated_at = ? WHERE id = ?", [nowIso(), id]);
+  await markPending("job", id, "upsert");
   dbEvents.emit();
 }
 
@@ -531,7 +559,7 @@ export async function clockIn(jobId: string, rateTierId: string | null = null, c
   ]);
   await markPending("shift", id, "upsert");
   dbEvents.emit();
-  return { id, jobId, rateTierId, clockIn: clockInAt, clockOut: null, notes: null, isOvertime: false, updatedAt, deletedAt: null };
+  return { id, jobId, rateTierId, clockIn: clockInAt, clockOut: null, notes: null, isOvertime: false, mileage: null, updatedAt, deletedAt: null };
 }
 
 // `clockOutTime` defaults to now but can be set explicitly ("Clock Out At...").
@@ -549,17 +577,18 @@ export async function clockOut(shiftId: string, clockOutTime?: string): Promise<
 
 export async function updateShiftTimes(
   shiftId: string,
-  patch: { clockIn?: string; clockOut?: string | null; notes?: string | null; isOvertime?: boolean },
+  patch: { clockIn?: string; clockOut?: string | null; notes?: string | null; isOvertime?: boolean; mileage?: number | null },
 ): Promise<void> {
   const db = await getDb();
   const current = await db.getFirstAsync("SELECT * FROM shifts WHERE id = ?", [shiftId]);
   if (!current) return;
   const merged = { ...rowToShift(current), ...patch };
-  await db.runAsync("UPDATE shifts SET clock_in = ?, clock_out = ?, notes = ?, is_overtime = ?, updated_at = ? WHERE id = ?", [
+  await db.runAsync("UPDATE shifts SET clock_in = ?, clock_out = ?, notes = ?, is_overtime = ?, mileage = ?, updated_at = ? WHERE id = ?", [
     merged.clockIn,
     merged.clockOut,
     merged.notes,
     merged.isOvertime ? 1 : 0,
+    merged.mileage,
     nowIso(),
     shiftId,
   ]);
@@ -571,6 +600,20 @@ export async function deleteShift(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE shifts SET deleted_at = ? WHERE id = ?", [nowIso(), id]);
   await markPending("shift", id, "delete");
+  dbEvents.emit();
+}
+
+// For the Recently Deleted screen — see listDeletedJobs above for the same reasoning.
+export async function listDeletedShifts(): Promise<Shift[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync("SELECT * FROM shifts WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
+  return rows.map(rowToShift);
+}
+
+export async function restoreShift(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE shifts SET deleted_at = NULL, updated_at = ? WHERE id = ?", [nowIso(), id]);
+  await markPending("shift", id, "upsert");
   dbEvents.emit();
 }
 
@@ -800,8 +843,8 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       "timesheet_format, timesheet_include_earnings, timesheet_include_notes, timesheet_include_times, " +
       "rounding_enabled, rounding_mode, rounding_increment_minutes, prompt_for_notes_on_clock_out, " +
       "expected_weekly_hours, expected_hours_week_start_day, location_awareness_enabled, auto_clock_in_out_enabled, " +
-      "location_latitude, location_longitude, location_radius_meters, updated_at, deleted_at) " +
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "location_latitude, location_longitude, location_radius_meters, stale_shift_reminder_hours, updated_at, deleted_at) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
       "ON CONFLICT(id) DO UPDATE SET name = excluded.name, color_hex = excluded.color_hex, archived = excluded.archived, " +
       "overtime_multiplier = excluded.overtime_multiplier, overtime_weekly_threshold_hours = excluded.overtime_weekly_threshold_hours, " +
       "timesheet_period_type = excluded.timesheet_period_type, timesheet_week_start_day = excluded.timesheet_week_start_day, " +
@@ -818,6 +861,7 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       "location_latitude = excluded.location_latitude, " +
       "location_longitude = excluded.location_longitude, " +
       "location_radius_meters = excluded.location_radius_meters, " +
+      "stale_shift_reminder_hours = excluded.stale_shift_reminder_hours, " +
       "updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [
       job.id,
@@ -845,6 +889,7 @@ export async function upsertLocalJob(job: Job): Promise<void> {
       job.locationLatitude,
       job.locationLongitude,
       job.locationRadiusMeters,
+      job.staleShiftReminderHours,
       job.updatedAt,
       job.deletedAt,
     ],
@@ -872,8 +917,8 @@ export async function upsertLocalRateVersion(version: RateVersion): Promise<void
 export async function upsertLocalShift(shift: Shift): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    "INSERT INTO shifts (id, job_id, rate_tier_id, clock_in, clock_out, notes, is_overtime, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-      "ON CONFLICT(id) DO UPDATE SET job_id = excluded.job_id, rate_tier_id = excluded.rate_tier_id, clock_in = excluded.clock_in, clock_out = excluded.clock_out, notes = excluded.notes, is_overtime = excluded.is_overtime, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
+    "INSERT INTO shifts (id, job_id, rate_tier_id, clock_in, clock_out, notes, is_overtime, mileage, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET job_id = excluded.job_id, rate_tier_id = excluded.rate_tier_id, clock_in = excluded.clock_in, clock_out = excluded.clock_out, notes = excluded.notes, is_overtime = excluded.is_overtime, mileage = excluded.mileage, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
     [
       shift.id,
       shift.jobId,
@@ -882,6 +927,7 @@ export async function upsertLocalShift(shift: Shift): Promise<void> {
       shift.clockOut,
       shift.notes,
       shift.isOvertime ? 1 : 0,
+      shift.mileage,
       shift.updatedAt,
       shift.deletedAt,
     ],

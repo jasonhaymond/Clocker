@@ -1,13 +1,16 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert, AppState, ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
-import { clockIn, clockOut, getJob, getOpenShiftForJob, listJobs } from "../db/database";
+import { authenticate, isAppLockAvailable, isAppLockEnabled } from "../lib/appLock";
+import { clockIn, clockOut, getJob, getLastActivityByJob, getOpenShiftForJob, getOpenShifts, listJobs } from "../db/database";
 import { dbEvents } from "../lib/events";
 import { syncGeofences, takePendingLocationPrompts, type PendingLocationPrompt } from "../lib/locationTracking";
+import { initQuickActionHandling, updateQuickActions } from "../lib/quickActions";
+import { AppLockScreen } from "../screens/AppLockScreen";
 import { ClockScreen } from "../screens/ClockScreen";
 import { ExportScreen } from "../screens/ExportScreen";
 import { HelpScreen } from "../screens/HelpScreen";
@@ -219,6 +222,35 @@ function AppTabs({ colors }: { colors: ThemeColors }) {
     return dbEvents.subscribe(refreshGeofences);
   }, []);
 
+  // Keeps the Android home-screen quick action pointed at whichever job you'd most likely
+  // want to clock into next — same recency data ClockScreen.tsx's job picker sorts by,
+  // excluding whatever's already clocked in. Also wires up handling a tap on that action,
+  // both the cold-start and already-running cases (see quickActions.ts).
+  useEffect(() => {
+    function refreshQuickActionJob() {
+      Promise.all([listJobs(false), getOpenShifts(), getLastActivityByJob()]).then(([jobs, openShifts, lastActivity]) => {
+        const openJobIds = new Set(openShifts.map((s) => s.jobId));
+        const candidates = jobs.filter((j) => !openJobIds.has(j.id));
+        candidates.sort((a, b) => {
+          const aLast = lastActivity[a.id];
+          const bLast = lastActivity[b.id];
+          if (aLast && bLast) return bLast.localeCompare(aLast);
+          if (aLast) return -1;
+          if (bLast) return 1;
+          return 0;
+        });
+        updateQuickActions(candidates[0] ?? null);
+      });
+    }
+    refreshQuickActionJob();
+    const unsubscribeDb = dbEvents.subscribe(refreshQuickActionJob);
+    const unsubscribeQuickActions = initQuickActionHandling();
+    return () => {
+      unsubscribeDb();
+      unsubscribeQuickActions();
+    };
+  }, []);
+
   return (
     <>
       <Tab.Navigator
@@ -253,11 +285,68 @@ function AppTabs({ colors }: { colors: ThemeColors }) {
   );
 }
 
+// How long the app can sit backgrounded before app-lock re-locks it — long enough that a
+// quick app-switch (checking a notification, answering a call) doesn't demand a
+// fingerprint every time, short enough that leaving the phone somewhere still locks it
+// out in practice.
+const APP_LOCK_GRACE_MS = 30_000;
+
+function useAppLock(isSignedIn: boolean) {
+  const [checking, setChecking] = useState(true);
+  const [locked, setLocked] = useState(false);
+  const enabledRef = useRef(false);
+  const backgroundedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setChecking(false);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([isAppLockEnabled(), isAppLockAvailable()]).then(([enabled, available]) => {
+      if (cancelled) return;
+      // If the user enabled this but then removed their device's fingerprint enrollment,
+      // don't strand them locked out of the app with no way back in.
+      enabledRef.current = enabled && available;
+      setLocked(enabledRef.current);
+      setChecking(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        backgroundedAtRef.current = Date.now();
+        return;
+      }
+      if (state !== "active" || !enabledRef.current) return;
+      const backgroundedAt = backgroundedAtRef.current;
+      backgroundedAtRef.current = null;
+      if (backgroundedAt != null && Date.now() - backgroundedAt > APP_LOCK_GRACE_MS) {
+        setLocked(true);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  async function unlock(): Promise<boolean> {
+    const success = await authenticate();
+    if (success) setLocked(false);
+    return success;
+  }
+
+  return { checking, locked, unlock };
+}
+
 export function RootNavigator() {
   const { isReady, isSignedIn } = useAuth();
   const { colors } = useTheme();
+  const { checking: checkingAppLock, locked, unlock } = useAppLock(isSignedIn);
 
-  if (!isReady) {
+  if (!isReady || checkingAppLock) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
         <ActivityIndicator color={colors.primary} />
@@ -282,7 +371,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      {isSignedIn ? <AppTabs colors={colors} /> : <LoginScreen />}
+      {isSignedIn ? locked ? <AppLockScreen onUnlock={unlock} /> : <AppTabs colors={colors} /> : <LoginScreen />}
     </NavigationContainer>
   );
 }

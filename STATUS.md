@@ -498,6 +498,67 @@ fixes/features, batched into one commit per the usual convention. In order:
 separate user request handled in sequence within the same session, batched into one
 commit at the end rather than one per request, per the usual convention here.
 
+**Amended again (2026-09-14, same day, later session):** the user asked for suggestions on
+improving the app further, then approved building all of them except an iOS Live Activity
+(explicitly not branching into iOS-specific work yet), and mid-review asked to ship this
+batch as a major version. Eight features landed together, `2.0.0` (§3):
+
+- A real automated test suite for `shared/` (31 Vitest tests: pay calculation, weekly-
+  progress, rounding, pay-period math) — closes a gap `docs/development.md` had explicitly
+  flagged as a deliberate, stated limitation rather than an oversight.
+- "Recently Deleted" recovery for jobs and shifts (Settings → Recently Deleted, restorable
+  forever, no expiry, per the user's explicit choice).
+- Per-job "forgot to clock out" reminders (mobile only), defaulting to 8 hours per the
+  user's explicit choice, delivered via a single OS-scheduled trigger notification set at
+  clock-in rather than a polling/background-fetch approach — same reliability class as the
+  chronometer fix in the entry above, deliberately avoiding the same class of bug.
+- Manual per-shift mileage entry, totaled per job on Export/Timesheets/invoice output; the
+  Hours Tracker CSV importer's mileage column now lands in this real field instead of being
+  folded into a text note.
+- A calendar view for History, additive alongside the existing list.
+- A biometric app lock (Android only) — an optional Settings toggle, device-local
+  preference (not synced).
+- An Android home-screen quick action ("Clock in to <most recently used job>").
+- Haptic feedback on clock in/out and break start/end.
+- Invoice generation — PDF, email, and a shareable no-login-required link, per the user's
+  explicit choice of all three rather than just one. Computed once and frozen at generation
+  time (a later rate/shift edit doesn't retroactively change an already-sent invoice). PDF
+  rendered server-side with `pdfkit` directly rather than a headless-browser dependency,
+  deliberately to keep the self-hosted Docker image small.
+
+Caught and fixed three real bugs while building this, none of them the actual feature
+being worked on at the time:
+- **The server had no way to un-delete anything.** `deletedAt` could only ever be set by a
+  client, never cleared — a real gap in the sync route, not just a missing UI, discovered
+  while building Recently Deleted (which needs restore to actually work across sync, not
+  just locally).
+- **`shared/package.json` was missing `"type": "module"`.** Harmless for `app`'s Metro and
+  `web`'s Vite (neither cares), but it silently broke named-export resolution for `server`,
+  which needed to import `@clocker/shared` under real Node ESM for the first time (for
+  invoice pay-math). Root-caused by isolating `tsx -e` vs. a real file and single- vs.
+  multi-symbol imports, not by guessing.
+- **`server/Dockerfile` would have broken the production build entirely** once `server`
+  depended on `@clocker/shared` — it only ever built from an isolated `server/`-only
+  context with no way to resolve a workspace sibling. Caught by reasoning through the
+  actual deploy mechanics (Docker was never invoked live) after noticing `web/Dockerfile`
+  already documents and solves this exact problem for its own `@clocker/shared` dependency.
+  Fixed by rebuilding it to build from the monorepo root like `web/Dockerfile`, and by
+  running the server via `tsx src/index.ts` directly in production instead of a compiled
+  `dist/` — `@clocker/shared`'s raw TypeScript source, deliberately left uncompiled for
+  `app`/`web`'s bundlers, can't be executed by plain `node`.
+
+Verification: full four-workspace typecheck; the new Vitest suite (31/31 passing); a
+standalone script hitting the invoice routes directly against the dev server + dev
+Postgres (create → list → public HTML → public PDF → 404/401 security checks, with
+byte-exact pay-math assertions); a full Playwright pass for every web-side piece (Recently
+Deleted, mileage field, calendar view, invoice generation including opening the generated
+link in a separate unauthenticated browser context), light/dark, mobile/desktop widths.
+**Mobile-side native features (haptics, biometric lock, quick action, trigger
+notifications) are typechecked only — not run on a real device or emulator, no access
+from this environment, same standing caveat as every other native-module feature in this
+project.** The home-screen widget (the one remaining suggestion) was explicitly deferred
+by the user to its own separate future pass, not built here.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -524,8 +585,10 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `1.24.0` as of this session; the
-number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+full stop. All five (four packages, one version) are at `2.0.0` as of this session (major,
+per the user's explicit instruction — this batch was substantial enough, and the user
+asked for it directly, rather than following the usual "new capability = minor" default
+used for every bump before it); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
 in from `web/package.json` via
@@ -1198,6 +1261,36 @@ Verified present in the repo (code + docs, not just described in memory):
     the Jobs screen itself until "Show Archived Jobs" was clicked, then reappeared, then
     hid again on toggling back. Mobile verified via a clean `expo export` bundle compile
     only — no device/emulator access this session.
+- **`2.0.0` feature batch (2026-09-14)** — see the "Amended again" entry above for full
+  detail and the bugs found along the way. Summary of what's now built:
+  - A real Vitest test suite for `shared/` (`shared/src/__tests__/`) — 31 tests, run with
+    `npm run test --workspace=shared`.
+  - Recently Deleted recovery for jobs and shifts (Settings → Recently Deleted, both
+    clients), backed by a real server-side fix allowing `deletedAt` to be cleared (it
+    previously could only ever be set).
+  - Per-job "forgot to clock out" reminder (`Job.staleShiftReminderHours`, default 8h,
+    `null` disables), mobile-only, via a single OS-scheduled trigger notification set at
+    clock-in (`app/src/lib/staleShiftReminder.ts`) and canceled at clock-out.
+  - Manual per-shift mileage (`Shift.mileage`), a "Miles driven" field on both clients'
+    `ShiftEditor`, totaled per job on Export/Timesheets/invoice output.
+  - A calendar view for History (both clients), additive alongside the existing list.
+  - A biometric app lock (Android only, `app/src/lib/appLock.ts` +
+    `AppLockScreen.tsx`) — Settings toggle, device-local `AsyncStorage` preference, not
+    synced.
+  - An Android home-screen quick action (`app/src/lib/quickActions.ts`) — "Clock in to
+    <most recently used job>", both cold-start and warm-tap handled.
+  - Haptic feedback (`expo-haptics`) on clock in/out and break start/end, mobile only.
+  - Invoice generation (`server/src/routes/invoices.ts`, new `Invoice` Prisma model) — PDF
+    (via `pdfkit`, no headless-browser dependency), email, and a public no-login
+    `shareToken`-secured link, generated from Timesheets on both clients. Snapshotted at
+    generation time; never recomputed from live data afterward.
+  - `server/` now depends on `@clocker/shared` for the first time — required rewriting
+    `server/Dockerfile` to build from the monorepo root (like `web/Dockerfile` already
+    does) and switching the server's production runtime to `tsx src/index.ts` rather than
+    compiled `dist/`.
+  - Explicitly deferred: an Android home-screen widget (no first-party Expo solution, only
+    an unverifiable community library) — the user asked for this to be its own separate
+    future pass, not bundled into this batch.
 
 ## 4. Known gaps / open work
 
@@ -1308,6 +1401,21 @@ Verified present in the repo (code + docs, not just described in memory):
   `SERVER_PORT`/`WEB_PORT` directly on `nextcloud` before assuming any specific numbers
   are still current, and cross-check them against the external proxy's actual config if
   anything is 502ing.
+- **The `2.0.0` batch's four native-only mobile features have never run on a real device
+  or emulator**: haptics (`expo-haptics`), the biometric app lock (`expo-local-
+  authentication`), the Android quick action (`expo-quick-actions`, community-maintained —
+  worth knowing if it ever needs upgrading/replacing), and the stale-shift-reminder trigger
+  notification. All four are typecheck-verified only. First real test should specifically
+  watch: whether the app-lock's grace period after backgrounding feels right in practice,
+  whether the quick action actually appears on long-press and both cold-start and warm-tap
+  routes work, and whether the stale-shift trigger notification survives the app being
+  fully closed (it should, per Notifee's own docs, but this project's prior notification
+  work has already found real gaps between "documented to work" and "actually works" on
+  Android — see the chronometer fix above).
+- **An Android home-screen widget was deliberately deferred**, not built — the user asked
+  for it to be its own separate future pass, since there's no first-party Expo solution and
+  the community libraries for it are unverified. Pick this up as new work, not as a
+  continuation of anything already in progress.
 
 ## 5. Deployment
 

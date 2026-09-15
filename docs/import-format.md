@@ -35,7 +35,7 @@ present and silently skipped when it isn't.
 | `Tags` | Folded into shift notes | Appended as a `Tags: ...` line — Clocker has no separate tags field. |
 | `Breaks` | Break start/end times | e.g. `0.25h (12:45 PM to 1:00 PM);0.17h (1:50 PM to 2:00 PM)` — semicolon-separated, each one a time-of-day range in parentheses. The leading `<duration>h` prefix is ignored (it's redundant with, and occasionally rounds differently than, the times themselves); the actual break start/end come from the times. A break's date is inferred from whichever day (the shift's start day, or the next one) actually places it inside the shift — needed because both a shift and a break within it can genuinely cross midnight. |
 | `Adjustments` | Folded into shift notes | Appended as an `Adjustment (not applied to pay): ...` line — Hours Tracker's manual pay adjustments have no Clocker equivalent, so the value is preserved as a note rather than silently dropped, but it does **not** change the computed pay the way it did in Hours Tracker. |
-| `Mileage` | Folded into shift notes | Appended as a `Mileage: ...` line, only when the value is a number greater than 0 — Clocker has no mileage field or calculation. |
+| `Mileage` | Shift mileage | Written directly to the shift's own `mileage` field, only when the value is a number greater than 0. Manually entered/imported only — Clocker has no GPS-based mileage tracking. |
 
 ## New jobs
 

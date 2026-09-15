@@ -21,12 +21,16 @@ cause and fix.
 - [ ] Docker Desktop installed and running — `docker --version` (optional; skip if you'll
       point `DATABASE_URL` at your own Postgres instance instead)
 - [ ] Expo Go installed on a phone, and/or Xcode/Android Studio for a simulator, to
-      actually run the app — **except for two features that need a custom dev/production
-      build** (`eas build --profile development` or `preview`/`production`), not Expo Go:
-      the persistent "clocked in" Android notification (`react-native-notify-kit`) and
-      location-based clock in/out (`expo-location`/`expo-task-manager`/`react-native-maps`
-      — background geofencing and native map rendering are both native-module features).
-      Everything else in the app still works fine in Expo Go.
+      actually run the app — **except for the several features that need a custom dev/
+      production build** (`eas build --profile development` or `preview`/`production`),
+      not Expo Go, because they need native modules Expo Go doesn't ship: the persistent
+      "clocked in" Android notification (`react-native-notify-kit`), location-based clock
+      in/out (`expo-location`/`expo-task-manager`/`react-native-maps` — background
+      geofencing and native map rendering), the "forgot to clock out" reminder (also
+      `react-native-notify-kit`, a scheduled trigger notification), the Android biometric
+      app lock (`expo-local-authentication`), and the Android home-screen quick action
+      (`expo-quick-actions`, a community package). Everything else in the app — including
+      haptic feedback (`expo-haptics`), which Expo Go does bundle — still works fine there.
 
 ## First run
 
@@ -144,6 +148,7 @@ noted:
 | `DATABASE_URL` | Postgres connection string, pointed at whatever port `setup` chose (see [Automatic port selection](#automatic-port-selection)). |
 | `JWT_SECRET` | Signs auth tokens. `npm run setup` generates one for you locally; **must** be set to a real secret before any non-local deployment (see [`deployment.md`](./deployment.md)). |
 | `PORT` | Fastify's listen port — also chosen by `setup`, not a fixed default. |
+| `PUBLIC_URL` | The server's own externally-reachable URL, used to build a generated invoice's shareable link. Left unset for local dev (falls back to reconstructing it from the incoming request); the production Compose files set this automatically to `https://$DOMAIN`. |
 
 Root `.env` (separate file, read by Docker Compose only — not the app or the server):
 

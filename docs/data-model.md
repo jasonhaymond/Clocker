@@ -52,6 +52,9 @@ User 1──* Job 1──* RateTier 1──* RateVersion
   hour of a flagged shift is paid as overtime regardless of the threshold, and the shift is
   excluded entirely from `calculateWeeklyProgress`'s weekly hours target
   (`shared/src/expectedHours.ts`), since overtime worked isn't what that target tracks.
+  `mileage` is manually entered (no GPS-based tracking) — miles driven for this shift,
+  `null` if not entered; shown on the shift editor and totaled per job on Export/
+  Timesheets output and a generated invoice's line items.
 - **Break** — one pause within a shift. `end` is `null` while the break is open. Break time
   is subtracted from a shift's worked-hours total (`app/src/lib/time.ts`'s `workedMillis`).
 - **Manager** — a saved recipient (name + email) for the Timesheets tab's "Submit
@@ -152,6 +155,41 @@ Neither setting causes any continuous location trail to be stored anywhere — o
 geofence (a single point + radius) you set for the job, synced like the rest of that job's
 data.
 
+## "Forgot to clock out" reminders (per job, mobile only)
+
+`Job.staleShiftReminderHours` (`Float?`/`number | null`, defaults to `8` at the database
+level so existing jobs get this too, not just newly created ones) — how many continuous
+hours an open shift on this job can run before a reminder notification fires; `null`
+disables it for that job. See
+[`app/src/lib/staleShiftReminder.ts`](../app/src/lib/staleShiftReminder.ts): scheduled as
+a single OS-level trigger notification at clock-in time (cancelled at clock-out), not a
+periodic check — it fires even with the app fully closed, with no reliance on the app's
+JS thread staying alive. The notification id it schedules is local-only bookkeeping (an
+Android/iOS notification id from one device is meaningless anywhere else), kept in
+AsyncStorage rather than as a synced field.
+
+## Invoices
+
+A generated, immutable snapshot — a separate `Invoice` table (not a field on `Job`/
+`Shift`), created via `POST /invoices` and viewable by anyone with its link via
+`GET /invoices/:shareToken`, no Clocker account needed (the same trust model as a payment-
+link URL — `shareToken`, a random UUID, is the link's only credential). See
+[`server/src/routes/invoices.ts`](../server/src/routes/invoices.ts).
+
+Line items and totals are computed once, server-side, at generation time from the job's
+shifts/rates in exactly the same way Export/Timesheets compute them
+(`shared/src/exportFormat.ts`'s `groupShiftsByJob`) — then frozen into the `lineItems`
+JSON column. A rate change or an edited shift afterward doesn't retroactively alter an
+invoice that's already been generated or sent, the same way a real invoice wouldn't. The
+job's name/color are snapshotted too (`jobName`/`jobColorHex`), since the job itself could
+be renamed, recolored, or deleted later without changing an invoice already sent out.
+
+The public view (`GET /invoices/:shareToken`) renders a plain HTML page with a "Download
+PDF" link; the PDF itself (`GET /invoices/:shareToken/pdf`) is built with `pdfkit`
+directly (drawing primitives, no headless browser) — deliberately avoiding a Chromium
+dependency, which would meaningfully bloat every self-hoster's Docker image for a
+one-page document this simple.
+
 ## Server schema (PostgreSQL / Prisma)
 
 Source of truth: [`server/prisma/schema.prisma`](../server/prisma/schema.prisma). Migration
@@ -188,6 +226,7 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `autoClockInOutEnabled` | `Boolean` | default `false`; requires `locationAwarenessEnabled` |
 | | `locationLatitude` / `locationLongitude` | `Float?` | both `null` until a location is set for this job |
 | | `locationRadiusMeters` | `Float?` | e.g. `250`; `null` until a location is set |
+| | `staleShiftReminderHours` | `Float?` | default `8`; `null` disables the "forgot to clock out" reminder for this job |
 | | `createdAt` / `updatedAt` | `DateTime` | `updatedAt` is Prisma's `@updatedAt` — server-set on every write, and the field sync pulls by |
 | | `deletedAt` | `DateTime?` | soft delete (tombstone) — see sync protocol |
 | **RateTier** | `id` | `String` (uuid) | primary key, **client-generated** |
@@ -209,6 +248,7 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `clockOut` | `DateTime?` | `null` while open |
 | | `notes` | `String?` | free text, editable from the History screen |
 | | `isOvertime` | `Boolean` | default `false`; manual override — see the Shift bullet above |
+| | `mileage` | `Float?` | manually entered; `null` if not entered |
 | | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
 | **Break** | `id` | `String` (uuid) | primary key, **client-generated** |
 | | `shiftId` | `String` | FK → Shift, cascade delete |
@@ -225,11 +265,23 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | | `jobId` | `String` | FK → Job, cascade delete |
 | | `managerId` | `String` | FK → Manager, cascade delete |
 | | `createdAt` / `updatedAt` / `deletedAt` | | same semantics as Job |
+| **Invoice** | `id` | `String` (uuid) | primary key, **server-generated** — unlike everything else in this table, invoices are created by the server (`POST /invoices`), not synced from a client |
+| | `userId` | `String` | FK → User, cascade delete |
+| | `jobId` | `String` | FK → Job, cascade delete |
+| | `shareToken` | `String` | unique, server-generated (a random UUID); the public link's only credential |
+| | `periodStart` / `periodEnd` | `DateTime` | the range invoiced |
+| | `rangeLabel` | `String` | e.g. `"Sep 8 - 14, 2026"`, shown on the invoice |
+| | `jobName` / `jobColorHex` | `String` | snapshotted at generation time — doesn't change if the job is later renamed/recolored/deleted |
+| | `lineItems` | `Json` | array of `{ date, hours, cents, notes }`, frozen at generation time |
+| | `totalHours` | `Float` | |
+| | `totalCents` | `Int` | |
+| | `createdAt` | `DateTime` | no `updatedAt`/`deletedAt` — an invoice is immutable once created, never edited or soft-deleted |
 
 Indexes: `Job`, `Shift`, and `Manager` are indexed on `(userId, updatedAt)` (the sync pull
 query's access pattern); `RateTier` on `(jobId, updatedAt)`; `RateVersion` on `(tierId,
 effectiveFrom)`; `Shift` also on `jobId` and `rateTierId`; `Break` on `(shiftId,
-updatedAt)`; `JobManager` on `(jobId, updatedAt)` and `managerId`.
+updatedAt)`; `JobManager` on `(jobId, updatedAt)` and `managerId`; `Invoice` on
+`(userId, jobId)` and uniquely on `shareToken`.
 
 Note `RateTier`, `RateVersion`, `Break`, and `JobManager` have no `userId` column —
 ownership is checked transitively through their parent(s) (`Job` for tiers, a tier's `Job`
@@ -248,7 +300,9 @@ functions live in `app/src/db/database.ts` (`rowToJob`, `rowToRateTier`,
 **`job_managers`** mirror the server tables above one-for-one (same fields, `snake_case`
 names, `TEXT` for all dates/timestamps as ISO-8601 strings, `INTEGER` 0/1 for booleans).
 There is no `userId` column client-side — the local database only ever holds one
-signed-in user's data, so it's implicit.
+signed-in user's data, so it's implicit. `Invoice` has no client-side table at all — it's
+never synced, only created/viewed via direct API calls (`POST /invoices`, `GET
+/invoices?jobId=`) from whichever client generated it.
 
 The schema evolves via numbered migrations tracked in SQLite's built-in `PRAGMA
 user_version` (`runMigrations` in `database.ts`) — the same idea as

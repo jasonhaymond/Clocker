@@ -1,8 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    // "bundler" (not "NodeNext") specifically because the server actually runs via `tsx`
+    // rather than plain `node dist/index.js` (see server/Dockerfile's comment on why) —
+    // tsx resolves modules the way a bundler does, including the sibling `shared`
+    // workspace's extensionless relative imports (shared/'s own files, and app/'s Metro/
+    // web/'s Vite consuming them the same way, are the reason those stay extensionless
+    // rather than being rewritten to NodeNext's stricter `./foo.js` convention). "build"
+    // below still exists as a type-check gate — its emitted dist/ output is never what
+    // actually runs, so it doesn't need NodeNext-strict resolution either.
+    "moduleResolution": "bundler",
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": "src",

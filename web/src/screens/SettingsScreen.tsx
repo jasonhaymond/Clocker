@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import { useTheme, type ThemeMode } from "../theme";
 import { BackupsScreen } from "./BackupsScreen";
 import { ImportScreen } from "./ImportScreen";
+import { RecentlyDeletedScreen } from "./RecentlyDeletedScreen";
 
 const THEME_OPTIONS: { key: ThemeMode; label: string }[] = [
   { key: "system", label: "System" },
@@ -16,6 +17,7 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const { mode, setMode } = useTheme();
   const [showBackups, setShowBackups] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showRecentlyDeleted, setShowRecentlyDeleted] = useState(false);
   const [serverUpdate, setServerUpdate] = useState<UpdateStatus | null>(null);
   const [serverUpdateError, setServerUpdateError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
@@ -74,6 +76,9 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   }
   if (showImport) {
     return <ImportScreen onClose={() => setShowImport(false)} />;
+  }
+  if (showRecentlyDeleted) {
+    return <RecentlyDeletedScreen onClose={() => setShowRecentlyDeleted(false)} />;
   }
 
   return (
@@ -141,6 +146,9 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
         </button>
         <button className="secondary-button" onClick={() => setShowImport(true)}>
           Import Data
+        </button>
+        <button className="secondary-button" onClick={() => setShowRecentlyDeleted(true)}>
+          Recently Deleted
         </button>
       </section>
 

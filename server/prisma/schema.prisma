@@ -15,6 +15,7 @@ model User {
   jobs         Job[]
   shifts       Shift[]
   managers     Manager[]
+  invoices     Invoice[]
 }
 
 // A saved recipient for the "export to email" flow — a name + email address, so sending
@@ -83,14 +84,52 @@ model Job {
   locationLatitude            Float?
   locationLongitude           Float?
   locationRadiusMeters        Float?
+  // "Forgot to clock out" reminder (mobile only — see app/src/lib/staleShiftReminder.ts).
+  // Hours an open shift on this job can run before a reminder notification fires; null
+  // disables it for this job. Defaults to 8 at the database level so existing jobs get
+  // the reminder too, not just newly created ones.
+  staleShiftReminderHours     Float?     @default(8)
   createdAt                   DateTime   @default(now())
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?
   shifts                      Shift[]
   rateTiers                   RateTier[]
   jobManagers                 JobManager[]
+  invoices                    Invoice[]
 
   @@index([userId, updatedAt])
+}
+
+// A generated invoice snapshot — see docs/data-model.md. Line items are computed once,
+// server-side, at generation time from the job's shifts/rates in exactly the same way
+// Export/Timesheets compute them (shared/src/exportFormat.ts's groupShiftsByJob), then
+// frozen into `lineItems` here — a rate change or edited shift afterward doesn't
+// retroactively alter an invoice that's already been sent. `shareToken` is the public
+// link's only credential: anyone with it can view (and download the PDF for) this one
+// invoice with no login, the same trust model as a payment-link URL — never log or
+// expose it anywhere except the link itself.
+model Invoice {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  shareToken  String   @unique @default(uuid())
+  periodStart DateTime
+  periodEnd   DateTime
+  rangeLabel  String
+  // Snapshotted at generation time, since the job itself could be renamed/recolored/
+  // deleted later and this invoice shouldn't change retroactively.
+  jobName     String
+  jobColorHex String
+  // Array of { clockIn, clockOut, hours, cents, notes } — the exact per-shift figures
+  // shown on the invoice, frozen at generation time.
+  lineItems   Json
+  totalHours  Float
+  totalCents  Int
+  createdAt   DateTime @default(now())
+
+  @@index([userId, jobId])
 }
 
 // Assigns a Manager as a submission recipient for a specific job's timesheets. A plain
@@ -164,6 +203,9 @@ model Shift {
   // shared/src/pay.ts): marks this specific shift as overtime regardless of the
   // threshold, and excludes it from calculateWeeklyProgress's weekly hours target.
   isOvertime Boolean    @default(false)
+  // Manually entered (no GPS-based tracking) — see docs/user-guide.md. Miles driven for
+  // this shift; null means not entered.
+  mileage    Float?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   deletedAt  DateTime?

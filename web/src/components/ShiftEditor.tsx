@@ -11,6 +11,7 @@ import { useStore } from "../store";
 export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => void }) {
   const store = useStore();
   const [notes, setNotes] = useState(shift.notes ?? "");
+  const [mileage, setMileage] = useState(shift.mileage != null ? String(shift.mileage) : "");
   const [isOvertime, setIsOvertime] = useState(shift.isOvertime);
   const { prompt, modal } = useDateTimePrompt();
 
@@ -19,6 +20,9 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
   async function saveNotes() {
     const trimmed = notes.trim();
     if (trimmed !== (shift.notes ?? "")) await store.updateShiftNotes(shift, trimmed || null);
+    const parsedMileage = mileage.trim() ? Number(mileage.trim()) : null;
+    const nextMileage = parsedMileage != null && Number.isFinite(parsedMileage) && parsedMileage > 0 ? parsedMileage : null;
+    if (nextMileage !== shift.mileage) await store.updateShiftTimes(shift, { mileage: nextMileage });
   }
 
   async function editClockIn() {
@@ -110,6 +114,20 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
             Overtime
           </label>
           <p className="hint">Pays this shift entirely at the overtime rate and excludes it from the weekly hours target.</p>
+
+          <div className="row">
+            <span className="row-title" style={{ flex: 1 }}>
+              Miles driven
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="Optional"
+              value={mileage}
+              onChange={(e) => setMileage(e.target.value)}
+              style={{ maxWidth: 100, textAlign: "right" }}
+            />
+          </div>
 
           <h4>Breaks</h4>
           {breaks.length === 0 && <p className="hint">No breaks recorded.</p>}

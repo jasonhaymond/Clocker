@@ -49,6 +49,7 @@ function jobFromRow(row: any): Job {
     locationLatitude: row.location_latitude,
     locationLongitude: row.location_longitude,
     locationRadiusMeters: row.location_radius_meters,
+    staleShiftReminderHours: row.stale_shift_reminder_hours,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };
@@ -83,6 +84,7 @@ function shiftFromRow(row: any): Shift {
     clockOut: row.clock_out,
     notes: row.notes,
     isOvertime: !!row.is_overtime,
+    mileage: row.mileage,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   };

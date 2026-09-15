@@ -60,6 +60,7 @@ export async function runImport(rows: ParsedImportRow[], existingJobs: Job[], ex
       locationLatitude: null,
       locationLongitude: null,
       locationRadiusMeters: null,
+      staleShiftReminderHours: 8,
       updatedAt: now,
       deletedAt: null,
     });
@@ -103,6 +104,7 @@ export async function runImport(rows: ParsedImportRow[], existingJobs: Job[], ex
       clockOut: row.clockOut,
       notes: row.notes,
       isOvertime: false,
+      mileage: row.mileage,
       updatedAt: now,
       deletedAt: null,
     });

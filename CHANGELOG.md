@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.0] - 2026-09-14
+
+A major version bump for a large batch of new features and improvements, shipped
+together — the biggest single release since this changelog started.
+
+### Added
+
+- **A real automated test suite for `shared/`** — 31 tests (`shared/src/__tests__/`)
+  covering pay calculation, weekly-hours-target progress, time rounding, and pay-period
+  math, closing a gap `docs/development.md` had explicitly flagged. Run with `npm run
+  test`.
+- **"Recently Deleted" recovery**, for jobs and shifts — Settings → Recently Deleted.
+  Nothing was ever actually deleted server-side (only soft-deleted, for sync's benefit);
+  this just surfaces those rows with a Restore button, kept recoverable indefinitely.
+  Fixed a real, related bug along the way: the server had no way to *un*-delete a row a
+  client asked it to restore — `deletedAt` could only ever be set, never cleared.
+- **"Forgot to clock out" reminders**, per job (mobile only) — a configurable threshold
+  (defaults to 8 hours) that sends a notification if an open shift runs that long,
+  scheduled as a single OS-level trigger notification at clock-in (not a periodic check),
+  so it fires even with the app fully closed.
+- **Manually-entered mileage**, per shift — a "Miles driven" field, totaled per job on
+  Export/Timesheets output and on generated invoices. The Hours Tracker CSV importer's
+  Mileage column, previously folded into a text note for lack of anywhere better to put
+  it, now goes straight into this field.
+- **A calendar view for History**, alongside the existing list — a month grid with a
+  colored dot per job worked each day; tapping a day jumps to the list narrowed to just
+  that day.
+- **A biometric app lock** (Android) — an optional "Require fingerprint to open" toggle
+  in Settings, re-locking after the app's been backgrounded a while.
+- **An Android home-screen quick action** — long-press the app icon for a one-tap
+  shortcut into whichever job you used most recently.
+- **Haptic feedback** on clock in/out and starting/ending a break.
+- **Invoice generation** — a "Generate Invoice" button on Timesheets produces a real
+  invoice (computed once and frozen at that moment, so it doesn't change later even if a
+  shift or rate is edited afterward), with a shareable link anyone can view — and
+  download a PDF from — with no Clocker account needed, plus a "Send by Email" option.
+  The PDF is generated server-side with `pdfkit` directly, deliberately avoiding a
+  headless-browser dependency that would otherwise bloat every self-hoster's Docker image.
+
+### Changed
+
+- `server/` now depends on `shared/` for its pay-calculation logic (used by invoice
+  generation), rather than that logic living only in the two clients. This required
+  restructuring `server/Dockerfile` to build from the monorepo root (matching how
+  `web/Dockerfile` already had to, for the same reason) and running the server via `tsx`
+  directly in production rather than a separately-compiled `dist/` output — see
+  `docs/data-model.md`'s Invoices section and the Dockerfile's own comments for why.
+
+### Fixed
+
+- A job name with no spaces (one long unbroken word) could overflow past its row instead
+  of wrapping, in the job picker and anywhere else a job/manager/shift name is shown.
+- The `shared` workspace package was missing `"type": "module"` in its `package.json` —
+  harmless for `app`'s Metro and `web`'s Vite (their own bundlers don't care), but it
+  silently broke named-export resolution for any *other* consumer using real Node ESM,
+  which is exactly what `server` needed for the invoice feature above.
+
 ## [1.24.0] - 2026-09-14
 
 ### Added

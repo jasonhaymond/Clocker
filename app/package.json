@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "1.24.0",
+  "version": "2.0.0",
   "main": "index.ts",
   "dependencies": {
     "@clocker/shared": "*",
@@ -12,11 +12,15 @@
     "@react-navigation/native-stack": "^7.18.10",
     "expo": "^57.0.21",
     "expo-application": "~57.0.2",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.17",
     "expo-crypto": "~57.0.2",
     "expo-file-system": "~57.0.6",
+    "expo-haptics": "~57.0.3",
+    "expo-local-authentication": "~57.0.3",
     "expo-location": "~57.0.17",
     "expo-mail-composer": "~57.0.1",
+    "expo-quick-actions": "^6.0.2",
     "expo-sharing": "~57.0.18",
     "expo-sqlite": "~57.0.2",
     "expo-status-bar": "~57.0.1",

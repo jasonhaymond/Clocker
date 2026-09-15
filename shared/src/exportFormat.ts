@@ -10,6 +10,10 @@ export interface ExportJobGroup {
   totalHours: number;
   totalCents: number;
   hasRate: boolean;
+  // Sum of every shift's manually-entered mileage in this group (shifts with none entered
+  // contribute 0) — shown in export output only when at least one shift actually has a
+  // value, so a group where nobody uses this feature doesn't show a clutter "0.0 mi" line.
+  totalMileage: number;
 }
 
 // Groups shifts by job (sorted chronologically within each job) and computes pay for
@@ -57,7 +61,8 @@ export function groupShiftsByJob(params: {
       for (const shift of sorted) totalHours += workedMillis(shift, breaksByShift[shift.id] ?? []) / 3_600_000;
     }
 
-    groups.push({ jobId, job, shifts: sorted, totalHours, totalCents, hasRate });
+    const totalMileage = sorted.reduce((sum, s) => sum + (s.mileage ?? 0), 0);
+    groups.push({ jobId, job, shifts: sorted, totalHours, totalCents, hasRate, totalMileage });
   }
 
   groups.sort((a, b) => {
@@ -73,7 +78,7 @@ function csvEscape(value: string): string {
 }
 
 export function buildCsv(groups: ExportJobGroup[], payByShiftId: Map<string, ShiftPay>, breaksByShift: Record<string, Break[]>): string {
-  const header = ["Job", "Rate", "Clock In", "Clock Out", "Break (hrs)", "Regular (hrs)", "Overtime (hrs)", "Pay", "Notes"];
+  const header = ["Job", "Rate", "Clock In", "Clock Out", "Break (hrs)", "Regular (hrs)", "Overtime (hrs)", "Pay", "Mileage", "Notes"];
   const rows: string[][] = [];
   for (const group of groups) {
     for (const shift of group.shifts) {
@@ -88,6 +93,7 @@ export function buildCsv(groups: ExportJobGroup[], payByShiftId: Map<string, Shi
         (pay?.regularHours ?? workedMillis(shift, breaksByShift[shift.id] ?? []) / 3_600_000).toFixed(2),
         (pay?.overtimeHours ?? 0).toFixed(2),
         pay && pay.rateCentsPerHour != null ? (pay.totalCents / 100).toFixed(2) : "",
+        shift.mileage != null ? String(shift.mileage) : "",
         shift.notes ?? "",
       ]);
     }
@@ -116,6 +122,7 @@ export function buildEmailHtml(params: {
   const anyRate = groups.some((g) => g.hasRate);
   const grandHours = groups.reduce((sum, g) => sum + g.totalHours, 0);
   const grandCents = groups.reduce((sum, g) => sum + g.totalCents, 0);
+  const grandMileage = groups.reduce((sum, g) => sum + g.totalMileage, 0);
 
   const th = 'style="text-align:left;padding:6px 10px;border-bottom:2px solid #333;font-size:13px;color:#333;"';
   const td = 'style="padding:6px 10px;border-bottom:1px solid #e5e5e5;font-size:13px;color:#111;"';
@@ -163,7 +170,7 @@ export function buildEmailHtml(params: {
         <p style="font-family:sans-serif;font-size:13px;color:#444;margin:6px 0 0 0;">
           Subtotal: <strong>${group.totalHours.toFixed(2)} hrs</strong>${
             options.includeEarnings && group.hasRate ? ` &middot; <strong>${formatCents(group.totalCents)}</strong>` : ""
-          }
+          }${group.totalMileage > 0 ? ` &middot; <strong>${group.totalMileage.toFixed(1)} mi</strong>` : ""}
         </p>`;
     })
     .join("");
@@ -176,7 +183,7 @@ export function buildEmailHtml(params: {
       <p style="font-size:16px;">
         <strong>Total: ${grandHours.toFixed(2)} hrs${
           options.includeEarnings && anyRate ? ` &middot; ${formatCents(grandCents)}` : ""
-        }</strong>
+        }${grandMileage > 0 ? ` &middot; ${grandMileage.toFixed(1)} mi` : ""}</strong>
       </p>
     </div>`;
 }
@@ -198,6 +205,7 @@ export function buildPlainText(params: {
   const anyRate = groups.some((g) => g.hasRate);
   const grandHours = groups.reduce((sum, g) => sum + g.totalHours, 0);
   const grandCents = groups.reduce((sum, g) => sum + g.totalCents, 0);
+  const grandMileage = groups.reduce((sum, g) => sum + g.totalMileage, 0);
 
   const lines: string[] = [rangeLabel, ""];
 
@@ -224,12 +232,16 @@ export function buildPlainText(params: {
     lines.push(
       `  Subtotal: ${group.totalHours.toFixed(2)} hrs${
         options.includeEarnings && group.hasRate ? ` · ${formatCents(group.totalCents)}` : ""
-      }`,
+      }${group.totalMileage > 0 ? ` · ${group.totalMileage.toFixed(1)} mi` : ""}`,
     );
     lines.push("");
   }
 
-  lines.push(`Total: ${grandHours.toFixed(2)} hrs${options.includeEarnings && anyRate ? ` · ${formatCents(grandCents)}` : ""}`);
+  lines.push(
+    `Total: ${grandHours.toFixed(2)} hrs${options.includeEarnings && anyRate ? ` · ${formatCents(grandCents)}` : ""}${
+      grandMileage > 0 ? ` · ${grandMileage.toFixed(1)} mi` : ""
+    }`,
+  );
 
   return lines.join("\n");
 }

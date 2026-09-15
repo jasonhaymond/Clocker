@@ -23,6 +23,7 @@ import {
   updateJobOvertime,
   updateJobPromptForNotes,
   updateJobRounding,
+  updateJobStaleShiftReminder,
   updateJobTimesheetSettings,
 } from "../db/database";
 import { LocationPickerModal } from "../components/LocationPickerModal";
@@ -241,6 +242,10 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
   const [expectedHoursEnabled, setExpectedHoursEnabled] = useState(job.expectedWeeklyHours != null);
   const [expectedHours, setExpectedHours] = useState(job.expectedWeeklyHours != null ? String(job.expectedWeeklyHours) : "40");
   const [expectedWeekStartDay, setExpectedWeekStartDay] = useState(job.expectedHoursWeekStartDay);
+  const [staleReminderEnabled, setStaleReminderEnabled] = useState(job.staleShiftReminderHours != null);
+  const [staleReminderHours, setStaleReminderHours] = useState(
+    job.staleShiftReminderHours != null ? String(job.staleShiftReminderHours) : "8",
+  );
   const [locationCoords, setLocationCoords] = useState<{ latitude: number; longitude: number } | null>(
     job.locationLatitude != null && job.locationLongitude != null
       ? { latitude: job.locationLatitude, longitude: job.locationLongitude }
@@ -286,6 +291,16 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
     const value = parseFloat(hours);
     if (!Number.isFinite(value) || value <= 0) return;
     await updateJobExpectedHours(job.id, { expectedWeeklyHours: value, expectedHoursWeekStartDay: weekStartDay });
+  }
+
+  async function saveStaleReminder(enabled: boolean, hours: string) {
+    if (!enabled) {
+      await updateJobStaleShiftReminder(job.id, null);
+      return;
+    }
+    const value = parseFloat(hours);
+    if (!Number.isFinite(value) || value <= 0) return;
+    await updateJobStaleShiftReminder(job.id, value);
   }
 
   async function saveLocation(coords: { latitude: number; longitude: number } | null, radius: number) {
@@ -580,6 +595,31 @@ export function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void
         <Text style={styles.hint}>
           Shows remaining hours this week (and, while clocked in, an expected clock-out time) on the Clock tab. Uses
           this job's own rounding rules, and doesn't have to match its timesheet period.
+        </Text>
+
+        <View style={styles.overtimeHeader}>
+          <Text style={styles.sectionLabel}>Remind me if I forget to clock out</Text>
+          <Switch
+            value={staleReminderEnabled}
+            onValueChange={(v) => {
+              setStaleReminderEnabled(v);
+              saveStaleReminder(v, staleReminderHours);
+            }}
+          />
+        </View>
+        {staleReminderEnabled && (
+          <TextInput
+            style={styles.input}
+            keyboardType="decimal-pad"
+            value={staleReminderHours}
+            onChangeText={setStaleReminderHours}
+            onBlur={() => saveStaleReminder(staleReminderEnabled, staleReminderHours)}
+            placeholder="e.g. 8"
+          />
+        )}
+        <Text style={styles.hint}>
+          Sends a notification once you've been clocked into this job continuously for this many hours — in case you
+          forgot to clock out. Works even if the app is closed.
         </Text>
 
         <Text style={styles.sectionLabel}>Location</Text>

@@ -44,6 +44,11 @@ const jobInput = z.object({
   locationLatitude: z.number().min(-90).max(90).nullable().optional(),
   locationLongitude: z.number().min(-180).max(180).nullable().optional(),
   locationRadiusMeters: z.number().positive().nullable().optional(),
+  staleShiftReminderHours: z.number().positive().nullable().optional(),
+  // Normally only ever set server-side, via deletedJobIds below — accepted here too so a
+  // client can explicitly restore a job it soft-deleted (the Recently Deleted screen),
+  // which is otherwise a one-way door: nothing else in this schema can ever clear it.
+  deletedAt: z.string().datetime().nullable().optional(),
 });
 
 const rateTierInput = z.object({
@@ -69,6 +74,10 @@ const shiftInput = z.object({
   clockOut: z.string().datetime().nullable().optional(),
   notes: z.string().nullable().optional(),
   isOvertime: z.boolean().optional(),
+  mileage: z.number().positive().nullable().optional(),
+  // See jobInput's deletedAt above — same reasoning, lets a client restore a shift it
+  // soft-deleted.
+  deletedAt: z.string().datetime().nullable().optional(),
 });
 
 const breakInput = z.object({
@@ -113,10 +122,14 @@ const pushSchema = z.object({
 // Update the row if this user already owns it, otherwise create it under this user.
 // Prevents one account from overwriting rows it doesn't own via a guessed/duplicate id.
 async function upsertOwnedJob(userId: string, data: z.infer<typeof jobInput>) {
-  const { id, timesheetBiweeklyAnchor, ...rest } = data;
+  const { id, timesheetBiweeklyAnchor, deletedAt, ...rest } = data;
   const fields = {
     ...rest,
     ...(timesheetBiweeklyAnchor !== undefined ? { timesheetBiweeklyAnchor: new Date(timesheetBiweeklyAnchor) } : {}),
+    // Left out of `fields` entirely (not even `undefined`) unless the client explicitly
+    // sent it — every normal edit pushes a job without this field, and Prisma treats an
+    // omitted key as "don't touch," not "set to null."
+    ...(deletedAt !== undefined ? { deletedAt: deletedAt ? new Date(deletedAt) : null } : {}),
   };
   const updated = await prisma.job.updateMany({ where: { id, userId }, data: fields });
   if (updated.count === 0) {
@@ -146,7 +159,7 @@ async function upsertOwnedRateVersion(userId: string, data: z.infer<typeof rateV
 }
 
 async function upsertOwnedShift(userId: string, data: z.infer<typeof shiftInput>) {
-  const { id, jobId, rateTierId, clockIn, clockOut, notes, isOvertime } = data;
+  const { id, jobId, rateTierId, clockIn, clockOut, notes, isOvertime, mileage, deletedAt } = data;
   const job = await prisma.job.findFirst({ where: { id: jobId, userId } });
   if (!job) return; // silently drop shifts referencing a job we don't own
   if (rateTierId) {
@@ -160,6 +173,9 @@ async function upsertOwnedShift(userId: string, data: z.infer<typeof shiftInput>
     clockOut: clockOut ? new Date(clockOut) : null,
     notes: notes ?? null,
     isOvertime: isOvertime ?? false,
+    mileage: mileage ?? null,
+    // See upsertOwnedJob's identical comment — omitted unless explicitly sent.
+    ...(deletedAt !== undefined ? { deletedAt: deletedAt ? new Date(deletedAt) : null } : {}),
   };
   const updated = await prisma.shift.updateMany({ where: { id, userId }, data: fields });
   if (updated.count === 0) {

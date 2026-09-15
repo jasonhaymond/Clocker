@@ -229,3 +229,29 @@ export function restoreFromDisasterRecovery(
     auth: true,
   });
 }
+
+// See server/src/routes/invoices.ts. `shareUrl` is computed server-side (it needs to know
+// its own externally-reachable base URL) — this client just displays/shares it.
+export interface Invoice {
+  id: string;
+  jobId: string;
+  shareToken: string;
+  shareUrl: string;
+  periodStart: string;
+  periodEnd: string;
+  rangeLabel: string;
+  jobName: string;
+  jobColorHex: string;
+  lineItems: { date: string; hours: number; cents: number | null; notes: string | null }[];
+  totalHours: number;
+  totalCents: number;
+  createdAt: string;
+}
+
+export function createInvoice(jobId: string, periodStart: string, periodEnd: string, rangeLabel: string) {
+  return request<Invoice>("/invoices", { method: "POST", body: { jobId, periodStart, periodEnd, rangeLabel }, auth: true });
+}
+
+export function listInvoices(jobId: string) {
+  return request<Invoice[]>(`/invoices?jobId=${jobId}`, { auth: true });
+}

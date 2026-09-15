@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { authRoutes } from "./routes/auth.js";
+import { invoiceRoutes } from "./routes/invoices.js";
 import { syncRoutes } from "./routes/sync.js";
 
 const app = Fastify({ logger: true });
@@ -34,6 +35,7 @@ app.get("/health", async () => ({ ok: true }));
 
 await app.register(authRoutes);
 await app.register(syncRoutes);
+await app.register(invoiceRoutes);
 
 const port = Number(process.env.PORT ?? 3000);
 app

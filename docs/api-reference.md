@@ -212,6 +212,57 @@ Returns **every** row with `updatedAt > since`, including soft-deleted ones (`de
 non-null) — the client is expected to apply those as local tombstones, not skip them.
 Save `serverTimestamp` as the new cursor for the next call's `since`.
 
+## Invoices
+
+See [`data-model.md`](./data-model.md#invoices) for the `Invoice` model itself. Unlike
+everything under Sync above, invoices are never pushed/pulled by a client — they're
+created and read directly. The first two routes require the normal `Authorization: Bearer
+<token>` header; the last two are deliberately public (`shareToken`, a random UUID, is
+the only credential a viewer needs — no login).
+
+### `POST /invoices`
+
+```
+POST /invoices
+Authorization: Bearer <token>
+{ "jobId": "...", "periodStart": "2026-09-08T00:00:00.000Z", "periodEnd": "2026-09-15T00:00:00.000Z", "rangeLabel": "Sep 8 - 14, 2026" }
+
+→ 200 { "id": "...", "shareToken": "...", "shareUrl": "https://.../invoices/...",
+        "jobId": "...", "jobName": "...", "jobColorHex": "...",
+        "periodStart": "...", "periodEnd": "...", "rangeLabel": "...",
+        "lineItems": [ { "date": "9/9/2026", "hours": 8, "cents": 36000, "notes": "..." } ],
+        "totalHours": 12, "totalCents": 54000, "createdAt": "..." }
+→ 400 { "error": {...} }   // malformed body
+→ 401 { "error": "..." }
+→ 404 { "error": "Job not found" }   // jobId doesn't belong to this user
+```
+
+Computes line items and totals once, server-side, from that job's shifts/rates in the
+period given — the exact same calculation Export/Timesheets use
+(`shared/src/exportFormat.ts`'s `groupShiftsByJob`) — and freezes them into the created
+row. Calling this again for the same job/period creates a **new**, separate invoice; it
+doesn't update or replace a previous one.
+
+### `GET /invoices?jobId=`
+
+```
+GET /invoices?jobId=...
+Authorization: Bearer <token>
+
+→ 200 [ { ...same shape as the POST response... }, ... ]   // newest first
+```
+
+### `GET /invoices/:shareToken`
+
+Public — no `Authorization` header. Renders a plain HTML page (job name, line items,
+total, a "Download PDF" link). `404`s for a malformed or nonexistent token.
+
+### `GET /invoices/:shareToken/pdf`
+
+Public, same rules. Streams a one-page PDF (`Content-Type: application/pdf`) built with
+`pdfkit` directly — no headless browser involved (see
+[`data-model.md`](./data-model.md#invoices) for why that matters for self-hosting).
+
 ## Deployment
 
 Not served by `server/` at all — routed to a separate host process

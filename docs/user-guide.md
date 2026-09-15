@@ -20,10 +20,13 @@ an email).
 - [Clocking in and out automatically by location](#clocking-in-and-out-automatically-by-location)
 - [Taking breaks](#taking-breaks)
 - [Adding a note to a shift](#adding-a-note-to-a-shift)
+- [Recording miles driven](#recording-miles-driven)
+- [Getting reminded if you forget to clock out](#getting-reminded-if-you-forget-to-clock-out)
 - [Weekly hours targets](#weekly-hours-targets)
 - [Overtime](#overtime)
 - [Reviewing and fixing past shifts (History)](#reviewing-and-fixing-past-shifts-history)
 - [Timesheets: getting paid](#timesheets-getting-paid)
+- [Invoicing a client](#invoicing-a-client)
 - [Exporting your hours](#exporting-your-hours)
 - [Settings](#settings)
 - [Backups (if you run your own Clocker server)](#backups-if-you-run-your-own-clocker-server)
@@ -186,6 +189,10 @@ different schedules) is fine — clock into each one separately, and each gets i
 on the Clock screen with its own timer, breaks, and clock-out. You can't clock into the
 *same* job twice at once, though — clock out first if you need to correct something.
 
+**On Android**, long-press the Clocker app icon on your home screen for a shortcut that
+clocks you straight into whichever job you used most recently, without opening the app
+first.
+
 ## Clocking in and out automatically by location
 
 Available on the phone app only (a website can't run anything once you close the tab, so
@@ -239,6 +246,23 @@ long, anything worth remembering later.
 Some jobs are also set up to *ask* you for a note automatically right after you clock out
 — if you'd like that for a job you manage, look for "Prompt for notes on clock out" in
 that job's settings.
+
+## Recording miles driven
+
+Open a shift from **History** (or edit it right after clocking out) and enter a number in
+**Miles driven** — it's optional, and there's no automatic GPS tracking involved, so
+enter whatever your car or a map lookup tells you. It shows up on that shift, and gets
+totaled per job on your Export/Timesheets output and on a generated invoice, right
+alongside hours and pay.
+
+## Getting reminded if you forget to clock out
+
+In a job's settings, turn on **Remind me if I forget to clock out** and choose how many
+hours (8, by default). If a shift on that job runs longer than that continuously, Clocker
+sends you a notification — even if the app is closed — so a forgotten clock-out doesn't
+sit there all night inflating your hours. Set it to whatever's actually unusual for that
+job; a job with regular 10-12 hour shifts should use a higher number than one that's
+normally a quick 2-hour visit.
 
 ## Weekly hours targets
 
@@ -298,6 +322,15 @@ you select and delete several shifts at once.
 week, last 90 days, a custom range you choose, and more) and by job — handy once you have
 a long history.
 
+**To see your shifts on a calendar** instead of a list, tap **Calendar** at the top. Each
+day with a shift shows a small colored dot per job you worked that day; tap a day to jump
+back to the list, already narrowed down to just that one day. Use the arrows to move
+between months.
+
+**Deleted a job or shift by mistake?** Open **Settings → Recently Deleted** — everything
+you've ever deleted stays there, recoverable, for as long as you keep it (nothing is
+purged automatically). Tap **Restore** on whatever you want back.
+
 ## Timesheets: getting paid
 
 The **Timesheets** tab is built around actually getting paid — it groups your hours into
@@ -316,6 +349,22 @@ Depending on that job's settings, a submission can be a CSV spreadsheet attachme
 nicely formatted plain-text summary, or both. Your phone/computer's mail app opens with
 everything already filled in — review it and hit send from there, same as any other email
 you'd send yourself.
+
+## Invoicing a client
+
+If you bill a client directly for a job rather than submitting a timesheet, tap
+**Generate Invoice** on the Timesheets tab (same job/period you've already picked). This
+creates a real invoice — hours, rate, and total, computed once and frozen at that moment,
+so it won't change later even if you edit a shift or change that job's rate. You get:
+
+- **A shareable link** — anyone with it can view the invoice, and download a PDF of it,
+  with no Clocker account of their own needed. Tap **Copy Link** to grab it, or
+  **Send by Email** to open your mail app with it already filled in.
+- **A downloadable PDF** — a clean, one-page invoice, available right from the link.
+
+Your job's saved coordinates (if you use location awareness) or any of your other jobs'
+data are never part of an invoice — just that one job's hours, rate, and total for the
+period you picked.
 
 ## Exporting your hours
 
@@ -351,6 +400,11 @@ Open the menu (☰) and choose **Settings**.
 - **Import Data** — bring in a CSV export from the Hours Tracker app, if you're switching
   from it. Clocker matches job names automatically and skips anything it's already
   imported, so it's safe to run more than once (e.g. after a newer export).
+- **Recently Deleted** — see [Reviewing and fixing past shifts](#reviewing-and-fixing-past-shifts-history)
+  above.
+- **Require fingerprint to open** *(Android, if your phone supports it)* — locks the app
+  behind your fingerprint. You'll need it again on a fresh launch, or after the app's been
+  in the background a little while (a quick app-switch doesn't ask again).
 - **Sign Out** — signs you out of this device. Your data stays safely on the server;
   signing back in brings it all back.
 

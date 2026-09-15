@@ -47,6 +47,11 @@ export interface Job {
   locationLatitude: number | null;
   locationLongitude: number | null;
   locationRadiusMeters: number | null;
+  // "Forgot to clock out" reminder (mobile only — see app/src/lib/staleShiftReminder.ts).
+  // How many continuous hours an open shift on this job can run before a reminder
+  // notification fires; null disables the reminder entirely for this job. New jobs
+  // default to 8.
+  staleShiftReminderHours: number | null;
   updatedAt: string;
   deletedAt: string | null;
 }
@@ -91,6 +96,9 @@ export interface Shift {
   // excludes it entirely from calculateWeeklyProgress's worked-hours total, since overtime
   // worked isn't what a weekly hours *target* is meant to track.
   isOvertime: boolean;
+  // Manually entered — see docs/user-guide.md. Distance driven for this shift, in miles.
+  // Not automatically tracked (no GPS-based distance calculation); null means not entered.
+  mileage: number | null;
   updatedAt: string;
   deletedAt: string | null;
 }

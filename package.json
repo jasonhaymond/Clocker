@@ -17,7 +17,8 @@
     "dev:app": "npm run start --workspace=app",
     "dev:web": "npm run dev --workspace=web",
     "db:generate": "npm run db:generate --workspace=server",
-    "db:migrate": "npm run db:migrate --workspace=server"
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "test": "npm run test --workspace=shared"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",

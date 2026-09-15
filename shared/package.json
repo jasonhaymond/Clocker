@@ -1,13 +1,16 @@
 {
   "name": "@clocker/shared",
-  "version": "1.24.0",
+  "version": "2.0.0",
   "private": true,
+  "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.0"
   }
 }

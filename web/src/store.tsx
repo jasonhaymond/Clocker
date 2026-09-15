@@ -15,6 +15,11 @@ interface StoreState {
   breaks: Break[];
   managers: Manager[];
   jobManagers: JobManager[];
+  // Soft-deleted jobs/shifts, kept for the Recently Deleted screen — the server already
+  // sends these on every pull (see docs/sync-protocol.md), previously just filtered out
+  // and discarded below; no extra request needed to show them.
+  deletedJobs: Job[];
+  deletedShifts: Shift[];
   loading: boolean;
   error: string | null;
   lastSyncedAt: string | null;
@@ -28,6 +33,8 @@ const EMPTY_STATE: StoreState = {
   breaks: [],
   managers: [],
   jobManagers: [],
+  deletedJobs: [],
+  deletedShifts: [],
   loading: true,
   error: null,
   lastSyncedAt: null,
@@ -73,6 +80,7 @@ interface StoreActions {
   ): Promise<void>;
   setJobArchived(job: Job, archived: boolean): Promise<void>;
   deleteJob(job: Job): Promise<void>;
+  restoreJob(job: Job): Promise<void>;
 
   createRateTier(
     jobId: string,
@@ -95,9 +103,10 @@ interface StoreActions {
   clockIn(jobId: string, rateTierId: string | null, clockInTime?: string): Promise<Shift>;
   clockOut(shift: Shift, clockOutTime?: string): Promise<void>;
   updateShiftNotes(shift: Shift, notes: string | null): Promise<void>;
-  updateShiftTimes(shift: Shift, patch: { clockIn?: string; clockOut?: string | null; isOvertime?: boolean }): Promise<void>;
+  updateShiftTimes(shift: Shift, patch: { clockIn?: string; clockOut?: string | null; isOvertime?: boolean; mileage?: number | null }): Promise<void>;
   deleteShift(shift: Shift): Promise<void>;
   deleteShifts(shifts: Shift[]): Promise<void>;
+  restoreShift(shift: Shift): Promise<void>;
   startBreak(shiftId: string, startTime?: string): Promise<Break>;
   endBreak(brk: Break, endTime?: string): Promise<void>;
   updateBreakTimes(brk: Break, patch: { start?: string; end?: string | null }): Promise<void>;
@@ -121,6 +130,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         breaks: pulled.breaks.filter((b) => !b.deletedAt),
         managers: pulled.managers.filter((m) => !m.deletedAt),
         jobManagers: pulled.jobManagers.filter((jm) => !jm.deletedAt),
+        deletedJobs: pulled.jobs.filter((j) => !!j.deletedAt),
+        deletedShifts: pulled.shifts.filter((s) => !!s.deletedAt),
         loading: false,
         error: null,
         lastSyncedAt: nowIso(),
@@ -191,6 +202,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           locationLatitude: null,
           locationLongitude: null,
           locationRadiusMeters: null,
+          // Matches the SQLite column default on the mobile side, so a job created here
+          // doesn't desync from one created on mobile.
+          staleShiftReminderHours: 8,
           updatedAt: now,
           deletedAt: null,
         };
@@ -238,6 +252,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       async deleteJob(job) {
         await pushChanges({ deletedJobIds: [job.id] });
+        await refresh();
+      },
+      async restoreJob(job) {
+        await pushChanges({ jobs: [{ ...job, deletedAt: null, updatedAt: nowIso() }] });
         await refresh();
       },
 
@@ -309,6 +327,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           clockOut: null,
           notes: null,
           isOvertime: false,
+          mileage: null,
           updatedAt: now,
           deletedAt: null,
         };
@@ -334,6 +353,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       async deleteShifts(shifts) {
         await pushChanges({ deletedShiftIds: shifts.map((s) => s.id) });
+        await refresh();
+      },
+      async restoreShift(shift) {
+        await pushChanges({ shifts: [{ ...shift, deletedAt: null, updatedAt: nowIso() }] });
         await refresh();
       },
       async startBreak(shiftId, startTime) {

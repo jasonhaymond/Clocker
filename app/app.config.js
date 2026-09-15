@@ -11,7 +11,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "1.24.0",
+    version: "2.0.0",
     runtimeVersion: {
       policy: "appVersion",
     },
@@ -62,6 +62,13 @@ module.exports = {
           isAndroidBackgroundLocationEnabled: true,
         },
       ],
+      // Android-only feature for now (see app/src/lib/appLock.ts) — the plugin itself
+      // auto-adds the Android USE_BIOMETRIC/USE_FINGERPRINT manifest permissions, no
+      // manual entry needed in android.permissions above.
+      "expo-local-authentication",
+      // Community-maintained, not an Expo-org package (worth knowing if it ever needs
+      // upgrading/replacing) — see app/src/lib/quickActions.ts.
+      "expo-quick-actions",
     ],
   },
 };

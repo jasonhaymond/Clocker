@@ -64,6 +64,11 @@
   --shadow: rgba(0, 0, 0, 0.08);
   --shadow-strong: rgba(0, 0, 0, 0.12);
   --selected-bg: #eff6ff;
+  /* A stronger selection highlight than --selected-bg (used for lighter-touch selection
+     elsewhere, like the header menu) — the job picker needs to stay legible at a glance
+     in a scrollable list of otherwise-identical rows, not just distinguishable on close
+     look. */
+  --selected-bg-strong: #c7dbf7;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -100,6 +105,7 @@
     --shadow: rgba(0, 0, 0, 0.35);
     --shadow-strong: rgba(0, 0, 0, 0.5);
     --selected-bg: #1e3a5f;
+    --selected-bg-strong: #2c4d78;
   }
 }
 :root[data-theme="dark"] {
@@ -135,6 +141,7 @@
   --shadow: rgba(0, 0, 0, 0.35);
   --shadow-strong: rgba(0, 0, 0, 0.5);
   --selected-bg: #1e3a5f;
+  --selected-bg-strong: #2c4d78;
 }
 
 * {
@@ -571,6 +578,28 @@ hr {
   font-weight: 600;
   margin-top: 8px;
 }
+/* A <button> gets the rule above for free; an <a> styled the same way (the invoice
+   "Download PDF" link) needs its browser-default underline/inline text behavior reset. */
+a.secondary-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.invoice-result {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+.invoice-link-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.invoice-link-row input {
+  flex: 1;
+  min-width: 0;
+}
 .danger-button {
   border-color: var(--danger);
   color: var(--danger);
@@ -709,6 +738,86 @@ hr {
   justify-content: space-between;
   align-items: center;
   padding: 6px 2px 10px;
+}
+
+/* History's List/Calendar toggle — an additional lens onto the same data, not a
+   replacement for the list (see HistoryScreen.tsx's own comment). */
+.view-mode-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+.view-mode-button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+.view-mode-button.active {
+  background: var(--primary-fill);
+  color: var(--on-primary);
+}
+.calendar-container {
+  padding: 10px 2px;
+}
+.calendar-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.calendar-month-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.calendar-weekday-row,
+.calendar-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+.calendar-weekday-label {
+  width: 14.28%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted-2);
+}
+.calendar-cell {
+  width: 14.28%;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 0.5px solid var(--border);
+  background: none;
+  cursor: pointer;
+}
+.calendar-cell.dim {
+  cursor: default;
+}
+.calendar-cell.dim .calendar-day-number {
+  color: var(--text-muted);
+}
+.calendar-day-number {
+  font-size: 13px;
+  color: var(--text);
+}
+.calendar-dots-row {
+  display: flex;
+  gap: 2px;
+  margin-top: 3px;
+  height: 6px;
+}
+.calendar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
 }
 .total-bar {
   display: flex;
@@ -1051,6 +1160,12 @@ button.primary {
 }
 .clock-job-list .row {
   padding: 10px 12px;
+}
+.clock-job-list .row-title {
+  font-size: 16px;
+}
+.clock-job-list .row.selected {
+  background: var(--selected-bg-strong);
 }
 .tier-option.selected {
   background: var(--invert-bg);

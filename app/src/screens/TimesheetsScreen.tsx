@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Clipboard from "expo-clipboard";
 import { File, Paths } from "expo-file-system";
 import * as MailComposer from "expo-mail-composer";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { JobDetailModal } from "./JobDetailModal";
 import {
   listBreaksForShifts,
@@ -13,6 +14,7 @@ import {
   listRateVersionsForTiers,
   listShiftsInRange,
 } from "../db/database";
+import { createInvoice, type Invoice } from "../sync/api";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 import {
@@ -47,6 +49,8 @@ export function TimesheetsScreen() {
   const [versions, setVersions] = useState<RateVersion[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
 
   useDbRefresh(
     useCallback(() => {
@@ -95,6 +99,44 @@ export function TimesheetsScreen() {
   function goToPeriod(offset: number) {
     if (!period || !job) return;
     setPeriod(shiftPeriod(period, jobPeriodSettings(job), offset));
+  }
+
+  // A stale invoice/link from a previous job or period shouldn't linger once either
+  // changes — regenerating is cheap and avoids ever showing a link for the wrong data.
+  useEffect(() => {
+    setInvoice(null);
+  }, [job?.id, period?.start.getTime()]);
+
+  // The invoice's line items/total are computed once, server-side, from this exact job +
+  // period at generation time — a real financial-document snapshot, not something this
+  // screen recomputes live the way the preview above does (see
+  // server/src/routes/invoices.ts).
+  async function generateInvoice() {
+    if (!job || !period) return;
+    setInvoiceBusy(true);
+    try {
+      setInvoice(await createInvoice(job.id, period.start.toISOString(), period.end.toISOString(), period.label));
+    } catch (e: any) {
+      Alert.alert("Couldn't generate invoice", e?.message ?? "Unknown error");
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+  async function emailInvoice() {
+    if (!invoice || !job) return;
+    const available = await MailComposer.isAvailableAsync();
+    if (!available) {
+      Alert.alert("No email app found", "Set up a Mail app on this device to email an invoice.");
+      return;
+    }
+    await MailComposer.composeAsync({
+      subject: `Invoice from ${job.name} — ${invoice.rangeLabel}`,
+      body:
+        `Here's your invoice for ${invoice.rangeLabel}:\n\n${invoice.shareUrl}\n\n` +
+        `Total: ${formatCents(invoice.totalCents)} (${invoice.totalHours.toFixed(2)} hrs). ` +
+        `A downloadable PDF is available at that link.`,
+    });
   }
 
   async function submitTimesheet() {
@@ -219,10 +261,49 @@ export function TimesheetsScreen() {
             })}
           </ScrollView>
 
-          <TouchableOpacity style={styles.submitButton} onPress={submitTimesheet} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Timesheet</Text>}
-          </TouchableOpacity>
+          <View style={styles.bottomBar}>
+            <TouchableOpacity style={styles.submitButton} onPress={submitTimesheet} disabled={submitting}>
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Submit Timesheet</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryButton} onPress={generateInvoice} disabled={invoiceBusy || !group}>
+              {invoiceBusy ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.secondaryButtonText}>Generate Invoice</Text>}
+            </TouchableOpacity>
+          </View>
         </>
+      )}
+
+      {/* A separate modal rather than expanding the floating bottom bar above — that bar
+          is deliberately kept small so it doesn't cover much of the scrollable shift list
+          behind it; a growing result panel there would fight with that. */}
+      {invoice && (
+        <Modal visible animationType="slide" transparent onRequestClose={() => setInvoice(null)}>
+          <View style={styles.invoiceModalBackdrop}>
+            <View style={styles.invoiceModalCard}>
+              <Text style={styles.invoiceModalTitle}>Invoice Generated</Text>
+              <Text style={styles.hint}>
+                {invoice.totalHours.toFixed(2)} hrs · {formatCents(invoice.totalCents)}
+              </Text>
+              <Text style={styles.invoiceLink} numberOfLines={1}>
+                {invoice.shareUrl}
+              </Text>
+              <View style={styles.invoiceActionsRow}>
+                <TouchableOpacity style={styles.invoiceActionButton} onPress={() => Clipboard.setStringAsync(invoice.shareUrl)}>
+                  <Text style={styles.secondaryButtonText}>Copy Link</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.invoiceActionButton} onPress={emailInvoice}>
+                  <Text style={styles.secondaryButtonText}>Send by Email</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.hint}>
+                Anyone with this link can view (and download the PDF for) this one invoice — no Clocker account
+                needed. It won't change even if this job's rates or hours are edited later.
+              </Text>
+              <TouchableOpacity style={styles.invoiceCloseButton} onPress={() => setInvoice(null)}>
+                <Text style={styles.secondaryButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
 
       {editingJob && <JobDetailModal job={editingJob} onClose={() => setEditingJob(null)} />}
@@ -248,7 +329,10 @@ function createStyles(colors: ThemeColors) {
     periodArrow: { padding: 6 },
     periodLabel: { flex: 1, textAlign: "center", fontWeight: "700", fontSize: 15, color: colors.text },
     settingsButton: { padding: 6 },
-    container: { padding: 12, paddingBottom: 90 },
+    // Bumped from the single-submit-button era to clear the now-two-button bottomBar
+    // stacked above it, so the last shift entries in the scrollable list above never sit
+    // behind either floating button.
+    container: { padding: 12, paddingBottom: 150 },
     totalsRow: { flexDirection: "row", justifyContent: "center", alignItems: "baseline", gap: 10, marginVertical: 10 },
     totalsHours: { fontSize: 26, fontWeight: "700", color: colors.text },
     totalsPay: { fontSize: 16, color: colors.success, fontWeight: "600" },
@@ -266,16 +350,30 @@ function createStyles(colors: ThemeColors) {
     entryTimes: { fontSize: 12, color: colors.textMuted3 },
     entryHours: { fontSize: 12, fontWeight: "600", marginLeft: "auto", color: colors.text },
     entryNotes: { fontSize: 11, color: colors.textMuted2, fontStyle: "italic", width: "100%" },
+    bottomBar: { position: "absolute", left: 12, right: 12, bottom: 12, gap: 8 },
     submitButton: {
-      position: "absolute",
-      left: 12,
-      right: 12,
-      bottom: 12,
       backgroundColor: colors.primaryFill,
       borderRadius: 12,
       padding: 14,
       alignItems: "center",
     },
     submitButtonText: { color: colors.onPrimary, fontWeight: "700", fontSize: 15 },
+    secondaryButton: {
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 12,
+      alignItems: "center",
+    },
+    secondaryButtonText: { color: colors.primary, fontWeight: "700", fontSize: 14 },
+    hint: { fontSize: 11, color: colors.textMuted2, lineHeight: 16 },
+    invoiceModalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 20 },
+    invoiceModalCard: { backgroundColor: colors.card, borderRadius: 14, padding: 18, gap: 8 },
+    invoiceModalTitle: { fontSize: 17, fontWeight: "700", color: colors.text },
+    invoiceLink: { color: colors.primary, fontSize: 13 },
+    invoiceActionsRow: { flexDirection: "row", gap: 8, marginVertical: 4 },
+    invoiceActionButton: { flex: 1, borderWidth: 1, borderColor: colors.primary, borderRadius: 10, padding: 10, alignItems: "center" },
+    invoiceCloseButton: { alignItems: "center", padding: 10, marginTop: 4 },
   });
 }

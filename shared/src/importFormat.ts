@@ -29,6 +29,10 @@ export interface ParsedImportRow {
   hourlyRateCents: number | null;
   notes: string | null;
   breaks: ParsedBreak[];
+  // Was previously folded into `notes` as a "Mileage: ..." text line, back when Clocker
+  // had no dedicated mileage field — now it has one (Shift.mileage), so it goes straight
+  // there instead.
+  mileage: number | null;
 }
 
 export interface ParseImportResult {
@@ -169,17 +173,23 @@ function parseHourlyRateCents(raw: string): number | null {
   return Math.round(value * 100);
 }
 
-// Comment/Tags/Adjustments/Mileage all fold into Clocker's single shift-notes field,
-// which is the only free-text field a shift has — rather than silently dropping data
-// Hours Tracker recorded that Clocker has no dedicated place for.
-function buildNotes(comment: string, tags: string, adjustments: string, mileage: string): string | null {
+// Comment/Tags/Adjustments fold into Clocker's single shift-notes field, which is the
+// only other free-text field a shift has — rather than silently dropping data Hours
+// Tracker recorded that Clocker has no dedicated place for. Mileage has its own dedicated
+// field (Shift.mileage) instead, parsed separately below.
+function buildNotes(comment: string, tags: string, adjustments: string): string | null {
   const parts: string[] = [];
   if (comment.trim()) parts.push(comment.trim());
   if (tags.trim()) parts.push(`Tags: ${tags.trim()}`);
   if (adjustments.trim()) parts.push(`Adjustment (not applied to pay): ${adjustments.trim()}`);
-  const mileageNum = Number(mileage.trim());
-  if (mileage.trim() && Number.isFinite(mileageNum) && mileageNum > 0) parts.push(`Mileage: ${mileage.trim()}`);
   return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function parseMileage(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function parseHoursTrackerCsv(csvText: string): ParseImportResult {
@@ -242,9 +252,9 @@ export function parseHoursTrackerCsv(csvText: string): ParseImportResult {
         commentCol >= 0 ? (cells[commentCol] ?? "") : "",
         tagsCol >= 0 ? (cells[tagsCol] ?? "") : "",
         adjustmentsCol >= 0 ? (cells[adjustmentsCol] ?? "") : "",
-        mileageCol >= 0 ? (cells[mileageCol] ?? "") : "",
       ),
       breaks: breaksCol >= 0 ? parseBreaksField(cells[breaksCol] ?? "", clockIn, clockOut) : [],
+      mileage: mileageCol >= 0 ? parseMileage(cells[mileageCol] ?? "") : null,
     });
   }
   return { rows, errors };

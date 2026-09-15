@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Haptics from "expo-haptics";
 import { ShiftNotesModal } from "../components/ShiftNotesModal";
 import {
   clockIn,
@@ -21,6 +22,7 @@ import {
   startBreak,
 } from "../db/database";
 import { requestClockedInNotificationPermission, updateClockedInNotification } from "../lib/clockedInNotification";
+import { cancelStaleShiftReminder, scheduleStaleShiftReminder } from "../lib/staleShiftReminder";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { useDateTimePicker } from "../lib/useDateTimePicker";
 import { synchronize } from "../sync/sync";
@@ -184,10 +186,19 @@ export function ClockScreen() {
     try {
       const shift = await clockIn(selectedJobId, tierId, customTime?.toISOString());
       synchronize().catch(() => {});
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       // Post the notification immediately rather than waiting for the effect above to
       // notice the new open shift via the load()/dbEvents round trip — that round trip is
       // fast, but not instant, and "instant" is the whole point here.
       const job = jobs.find((j) => j.id === selectedJobId);
+      if (job?.staleShiftReminderHours != null) {
+        scheduleStaleShiftReminder({
+          shiftId: shift.id,
+          jobName: job.name,
+          clockInIso: shift.clockIn,
+          hours: job.staleShiftReminderHours,
+        }).catch(() => {});
+      }
       updateClockedInNotification([
         ...openShiftDetails.map(({ shift: s, job: j, breaks }) => ({
           jobName: j?.name ?? "Job",
@@ -221,6 +232,8 @@ export function ClockScreen() {
     }
     await clockOut(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    cancelStaleShiftReminder(shift.id).catch(() => {});
     const job = jobs.find((j) => j.id === shift.jobId);
     if (job?.promptForNotesOnClockOut) setNotesEditor({ shiftId: shift.id, notes: shift.notes });
   }
@@ -234,6 +247,7 @@ export function ClockScreen() {
         onPress: async () => {
           await deleteShift(shift.id);
           synchronize().catch(() => {});
+          cancelStaleShiftReminder(shift.id).catch(() => {});
         },
       },
     ]);
@@ -256,6 +270,7 @@ export function ClockScreen() {
     }
     await startBreak(shift.id, customTime?.toISOString());
     synchronize().catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }
 
   async function handleStartBreakAt(shift: Shift) {
@@ -270,6 +285,7 @@ export function ClockScreen() {
     }
     await endBreak(openBreak.id, customTime?.toISOString());
     synchronize().catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }
 
   async function handleEndBreakAt(openBreak: Break) {
@@ -502,9 +518,12 @@ function createStyles(colors: ThemeColors) {
     jobListContent: { flexGrow: 1 },
     jobRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11 },
     jobRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
-    jobRowSelected: { backgroundColor: colors.selectedBg },
+    // A bit stronger than the shared colors.selectedBg (used for lighter-touch selection
+    // elsewhere, like the header menu) — this one needs to stay legible at a glance in a
+    // scrollable list of otherwise-identical rows, not just distinguishable on close look.
+    jobRowSelected: { backgroundColor: colors.isDark ? "#2c4d78" : "#c7dbf7" },
     jobDot: { width: 12, height: 12, borderRadius: 6 },
-    jobRowText: { flex: 1, fontWeight: "600", fontSize: 14, color: colors.text },
+    jobRowText: { flex: 1, fontWeight: "600", fontSize: 16, color: colors.text },
     jobRowTextSelected: { color: colors.primary },
     jobPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 14 },
     jobOption: { borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.card },

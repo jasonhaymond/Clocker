@@ -1,9 +1,10 @@
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
+import { isAppLockAvailable, isAppLockEnabled, setAppLockEnabled } from "../lib/appLock";
 import { getSyncCursor } from "../db/database";
 import { useDbRefresh } from "../lib/useDbRefresh";
 import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../sync/api";
@@ -13,6 +14,7 @@ import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/upda
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
 import { ImportScreen } from "./ImportScreen";
+import { RecentlyDeletedScreen } from "./RecentlyDeletedScreen";
 
 const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "dev";
 
@@ -57,12 +59,25 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [showPreviousServerLog, setShowPreviousServerLog] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showRecentlyDeleted, setShowRecentlyDeleted] = useState(false);
+  const [appLockAvailable, setAppLockAvailable] = useState(false);
+  const [appLockEnabled, setAppLockEnabledState] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     getSyncCursor().then(setLastSynced);
   }, []);
   useDbRefresh(load);
+
+  useEffect(() => {
+    isAppLockAvailable().then(setAppLockAvailable);
+    isAppLockEnabled().then(setAppLockEnabledState);
+  }, []);
+
+  async function toggleAppLock(value: boolean) {
+    setAppLockEnabledState(value);
+    await setAppLockEnabled(value);
+  }
 
   useEffect(() => updateState.subscribe(setUpdate), []);
 
@@ -246,6 +261,21 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.syncButton} onPress={() => setShowRecentlyDeleted(true)}>
+            <Text style={styles.syncButtonText}>Recently Deleted</Text>
+          </TouchableOpacity>
+        </View>
+
+        {appLockAvailable && (
+          <View style={styles.card}>
+            <View style={styles.lockRow}>
+              <Text style={styles.syncButtonText}>Require fingerprint to open</Text>
+              <Switch value={appLockEnabled} onValueChange={toggleAppLock} />
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.signOutButton}
           onPress={() => Alert.alert("Sign out", "You can sign back in any time; your data stays on the server.", [
@@ -258,6 +288,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
         {showImport && <ImportScreen onClose={() => setShowImport(false)} />}
+        {showRecentlyDeleted && <RecentlyDeletedScreen onClose={() => setShowRecentlyDeleted(false)} />}
       </ScrollView>
     </Modal>
   );
@@ -271,6 +302,7 @@ function createStyles(colors: ThemeColors) {
     title: { fontSize: 17, fontWeight: "700", color: colors.text },
     doneText: { color: colors.primary, fontWeight: "600", fontSize: 15 },
     card: { backgroundColor: colors.surface, borderRadius: 10, padding: 14, marginBottom: 14 },
+    lockRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     label: { color: colors.textMuted3, fontSize: 13 },
     value: { fontSize: 16, fontWeight: "600", marginTop: 3, marginBottom: 6, color: colors.text },
     updateStatus: { color: colors.textMuted3, marginBottom: 10, fontSize: 13 },

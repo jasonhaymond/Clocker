@@ -25,6 +25,7 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [notes, setNotes] = useState(shift.notes ?? "");
+  const [mileage, setMileage] = useState(shift.mileage != null ? String(shift.mileage) : "");
   const [isOvertime, setIsOvertime] = useState(shift.isOvertime);
   const [breaks, setBreaks] = useState<Break[]>([]);
   const { pick, modal } = useDateTimePicker();
@@ -36,7 +37,11 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
 
   async function saveNotes() {
     const trimmed = notes.trim();
-    if (trimmed !== (shift.notes ?? "")) await updateShiftTimes(shift.id, { notes: trimmed || null });
+    const parsedMileage = mileage.trim() ? Number(mileage.trim()) : null;
+    const nextMileage = parsedMileage != null && Number.isFinite(parsedMileage) && parsedMileage > 0 ? parsedMileage : null;
+    if (trimmed !== (shift.notes ?? "") || nextMileage !== shift.mileage) {
+      await updateShiftTimes(shift.id, { notes: trimmed || null, mileage: nextMileage });
+    }
   }
 
   async function editClockIn() {
@@ -136,6 +141,17 @@ export function ShiftEditor({ shift, onClose }: { shift: Shift; onClose: () => v
           </View>
         </TouchableOpacity>
 
+        <View style={styles.timeRow}>
+          <Text style={styles.timeLabel}>Miles driven</Text>
+          <TextInput
+            style={styles.mileageInput}
+            placeholder="Optional"
+            keyboardType="decimal-pad"
+            value={mileage}
+            onChangeText={setMileage}
+          />
+        </View>
+
         <Text style={styles.sectionLabel}>Breaks</Text>
         {breaks.length === 0 && <Text style={styles.hint}>No breaks recorded.</Text>}
         {breaks.map((brk) => (
@@ -213,6 +229,7 @@ function createStyles(colors: ThemeColors) {
     secondaryButton: { marginTop: 8, alignItems: "center", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.primary },
     secondaryButtonText: { color: colors.primary, fontWeight: "600", fontSize: 13 },
     notesInput: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, padding: 10, minHeight: 90, textAlignVertical: "top", color: colors.text },
+    mileageInput: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, color: colors.text, minWidth: 90, textAlign: "right" },
     actions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 16 },
     actionButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
     actionButtonPrimary: { backgroundColor: colors.primaryFill },

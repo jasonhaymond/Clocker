@@ -68,7 +68,7 @@ export async function runImport(
 
     const shift = await clockIn(jobId, null, row.clockIn);
     await clockOut(shift.id, row.clockOut);
-    if (row.notes) await updateShiftTimes(shift.id, { notes: row.notes });
+    if (row.notes || row.mileage != null) await updateShiftTimes(shift.id, { notes: row.notes, mileage: row.mileage });
     for (const brk of row.breaks) {
       const b = await startBreak(shift.id, brk.start);
       await endBreak(b.id, brk.end);

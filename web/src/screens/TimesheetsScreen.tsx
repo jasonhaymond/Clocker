@@ -13,6 +13,7 @@ import {
   type Period,
 } from "@clocker/shared";
 import { useEffect, useMemo, useState } from "react";
+import { createInvoice, type Invoice } from "../api";
 import { JobEditor } from "../components/JobEditor";
 import { downloadText } from "../lib/download";
 import { useStore } from "../store";
@@ -23,6 +24,9 @@ export function TimesheetsScreen() {
   const [period, setPeriod] = useState<Period | null>(null);
   const [editingJob, setEditingJob] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
   // Archived jobs are hidden everywhere except the Jobs screen itself — not selectable
   // here, matching Export/History's own job checklists.
@@ -58,6 +62,13 @@ export function TimesheetsScreen() {
   const group = groups[0];
   const totalHours = group?.totalHours ?? 0;
   const totalCents = group?.totalCents ?? 0;
+
+  // A stale invoice/link from a previous job or period shouldn't linger once either
+  // changes — regenerating is cheap and avoids ever showing a link for the wrong data.
+  useEffect(() => {
+    setInvoice(null);
+    setInvoiceError(null);
+  }, [job?.id, period?.start.getTime()]);
 
   function goToPeriod(offset: number) {
     if (!period || !job) return;
@@ -114,6 +125,33 @@ export function TimesheetsScreen() {
     window.location.href = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailtoBody)}`;
     messages.push("Opened your mail app.");
     setStatus(messages.join(" "));
+  }
+
+  // The invoice's line items/total are computed once, server-side, from this exact job +
+  // period at generation time — a real financial-document snapshot, not something this
+  // screen recomputes live the way the timesheet preview above does (see
+  // server/src/routes/invoices.ts).
+  async function generateInvoice() {
+    if (!job || !period) return;
+    setInvoiceBusy(true);
+    setInvoiceError(null);
+    try {
+      setInvoice(await createInvoice(job.id, period.start.toISOString(), period.end.toISOString(), period.label));
+    } catch (e) {
+      setInvoiceError(e instanceof Error ? e.message : "Couldn't generate invoice");
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+  function emailInvoice() {
+    if (!invoice || !job) return;
+    const subject = `Invoice from ${job.name} — ${invoice.rangeLabel}`;
+    const body =
+      `Here's your invoice for ${invoice.rangeLabel}:\n\n${invoice.shareUrl}\n\n` +
+      `Total: ${formatCents(invoice.totalCents)} (${invoice.totalHours.toFixed(2)} hrs). ` +
+      `A downloadable PDF is available at that link.`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
   if (activeJobs.length === 0) {
@@ -180,6 +218,36 @@ export function TimesheetsScreen() {
             Submit Timesheet
           </button>
           {status && <p className="hint">{status}</p>}
+
+          <button className="secondary-button" onClick={generateInvoice} disabled={invoiceBusy || !group}>
+            {invoiceBusy ? "Generating…" : "Generate Invoice"}
+          </button>
+          {invoiceError && <p className="error">{invoiceError}</p>}
+          {invoice && (
+            <div className="invoice-result">
+              <p className="hint">
+                Invoice generated — {invoice.totalHours.toFixed(2)} hrs · {formatCents(invoice.totalCents)}
+              </p>
+              <div className="invoice-link-row">
+                <input type="text" readOnly value={invoice.shareUrl} onFocus={(e) => e.target.select()} />
+                <button className="link-button" onClick={() => navigator.clipboard.writeText(invoice.shareUrl)}>
+                  Copy Link
+                </button>
+              </div>
+              <div className="chip-row">
+                <a className="secondary-button" href={`${invoice.shareUrl}/pdf`} target="_blank" rel="noreferrer">
+                  Download PDF
+                </a>
+                <button className="secondary-button" onClick={emailInvoice}>
+                  Send by Email
+                </button>
+              </div>
+              <p className="hint">
+                Anyone with this link can view (and download the PDF for) this one invoice — no Clocker account
+                needed. It won't change even if this job's rates or hours are edited later.
+              </p>
+            </div>
+          )}
         </>
       )}
 

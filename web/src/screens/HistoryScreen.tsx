@@ -47,6 +47,15 @@ export function HistoryScreen() {
   const selectionMode = selectedIds.size > 0;
 
   const [showFilters, setShowFilters] = useState(false);
+  // Additive, not a replacement for the list — see app/'s HistoryScreen for the same
+  // feature and the same reasoning. Tapping a day jumps back to List with the range
+  // narrowed to just that day, reusing every existing list interaction rather than
+  // duplicating any of it inside the grid.
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [rangeKey, setRangeKey] = useState<RangeKey>("last90");
   const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
   const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
@@ -57,6 +66,11 @@ export function HistoryScreen() {
   const didInitJobFilter = useRef(false);
 
   const range = useMemo(() => {
+    if (viewMode === "calendar") {
+      const start = calendarMonth;
+      const end = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+      return { start, end, label: calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" }) };
+    }
     if (rangeKey === "custom") {
       const start = customStart;
       const end = addDays(customEnd, 1);
@@ -64,7 +78,15 @@ export function HistoryScreen() {
       return { start, end, label };
     }
     return rangeFor(rangeKey);
-  }, [rangeKey, customStart, customEnd]);
+  }, [viewMode, calendarMonth, rangeKey, customStart, customEnd]);
+
+  function selectCalendarDay(date: Date) {
+    const day = startOfDay(date);
+    setCustomStart(day);
+    setCustomEnd(day);
+    setRangeKey("custom");
+    setViewMode("list");
+  }
 
   // Archived jobs are hidden everywhere except the Jobs screen itself — not offered as a
   // filter option here, same as Export's own job checklist.
@@ -159,6 +181,32 @@ export function HistoryScreen() {
       ),
     [shifts, store.breaks, jobsById],
   );
+
+  const shiftsByDayKey = useMemo(() => {
+    const map = new Map<string, Shift[]>();
+    for (const shift of visibleShifts) {
+      const key = startOfDay(new Date(shift.clockIn)).toISOString();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(shift);
+    }
+    return map;
+  }, [visibleShifts]);
+
+  // A fixed 6-row (42-cell) grid — see app/'s HistoryScreen for the same reasoning.
+  const calendarCells = useMemo(() => {
+    const firstWeekday = calendarMonth.getDay();
+    const gridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1 - firstWeekday);
+    const cells: { date: Date; inMonth: boolean; jobColors: string[] }[] = [];
+    for (let i = 0; i < 42; i++) {
+      const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const key = startOfDay(date).toISOString();
+      const dayShifts = shiftsByDayKey.get(key) ?? [];
+      const jobIds = Array.from(new Set(dayShifts.map((s) => s.jobId)));
+      const jobColors = jobIds.map((id) => jobsById[id]?.colorHex).filter((c): c is string => !!c);
+      cells.push({ date, inMonth: date.getMonth() === calendarMonth.getMonth(), jobColors });
+    }
+    return cells;
+  }, [calendarMonth, shiftsByDayKey, jobsById]);
 
   const sections = useMemo(() => {
     const byDay = new Map<string, Shift[]>();
@@ -331,6 +379,55 @@ export function HistoryScreen() {
 
   return (
     <div className="screen">
+      <div className="view-mode-row">
+        <button className={`view-mode-button${viewMode === "list" ? " active" : ""}`} onClick={() => setViewMode("list")}>
+          List
+        </button>
+        <button className={`view-mode-button${viewMode === "calendar" ? " active" : ""}`} onClick={() => setViewMode("calendar")}>
+          Calendar
+        </button>
+      </div>
+
+      {viewMode === "calendar" && (
+        <div className="calendar-container">
+          <div className="calendar-nav-row">
+            <button className="link-button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>
+              ←
+            </button>
+            <span className="calendar-month-label">{range.label}</span>
+            <button className="link-button" onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>
+              →
+            </button>
+          </div>
+          <div className="calendar-weekday-row">
+            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+              <span key={i} className="calendar-weekday-label">
+                {d}
+              </span>
+            ))}
+          </div>
+          <div className="calendar-grid">
+            {calendarCells.map((cell, i) => (
+              <button
+                key={i}
+                className={`calendar-cell${cell.inMonth ? "" : " dim"}`}
+                disabled={!cell.inMonth}
+                onClick={() => selectCalendarDay(cell.date)}
+              >
+                <span className="calendar-day-number">{cell.date.getDate()}</span>
+                <span className="calendar-dots-row">
+                  {cell.jobColors.slice(0, 4).map((c, j) => (
+                    <span key={j} className="calendar-dot" style={{ backgroundColor: c }} />
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="hint">Tap a day to see its shifts in List view.</p>
+        </div>
+      )}
+
+      {viewMode === "list" && (
       <div className="history-filter-toggle">
         <button className="link" onClick={() => setShowFilters(!showFilters)}>
           {showFilters ? "Hide Filters" : "Filters"}
@@ -339,7 +436,8 @@ export function HistoryScreen() {
           {range.label} · {allJobsSelected ? "All jobs" : `${selectedJobIds.size} job${selectedJobIds.size === 1 ? "" : "s"}`}
         </span>
       </div>
-      {showFilters && (
+      )}
+      {viewMode === "list" && showFilters && (
         <>
           <div className="chip-row">
             {RANGES.map((r) => (
@@ -399,13 +497,13 @@ export function HistoryScreen() {
         </>
       )}
 
-      {!selectionMode && shifts.length > 0 && totalCents > 0 && (
+      {viewMode === "list" && !selectionMode && shifts.length > 0 && totalCents > 0 && (
         <div className="total-bar">
           <span className="total-label">Total earned ({range.label})</span>
           <span className="total-value">{formatCents(totalCents)}</span>
         </div>
       )}
-      {selectionMode && (
+      {viewMode === "list" && selectionMode && (
         <div className="selection-bar">
           <button className="link-button" onClick={() => setSelectedIds(new Set())}>
             Cancel
@@ -420,9 +518,9 @@ export function HistoryScreen() {
         </div>
       )}
 
-      {visibleShifts.length === 0 && <p className="muted">No shifts match the current filter.</p>}
+      {viewMode === "list" && visibleShifts.length === 0 && <p className="muted">No shifts match the current filter.</p>}
 
-      {sections.map((section) => (
+      {viewMode === "list" && sections.map((section) => (
         <div key={section.day}>
           <h4 className="section-header">{section.title}</h4>
           {section.shifts.map((shift) => {

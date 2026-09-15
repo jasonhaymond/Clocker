@@ -162,7 +162,17 @@ ALTER TABLE jobs ADD COLUMN location_longitude REAL;
 ALTER TABLE jobs ADD COLUMN location_radius_meters REAL;
 `;
 
-export const SCHEMA_VERSION = 8;
+// Version 9 — two independent, unrelated additions shipped in the same batch: a per-job
+// "forgot to clock out" reminder threshold (app/src/lib/staleShiftReminder.ts), and
+// manually-entered per-shift mileage (shared/src/types.ts's Shift.mileage). Defaulting the
+// reminder threshold to 8 at the SQL level (not just in app code) means every existing job
+// gets the reminder on by default too, not just newly created ones.
+const V9_STALE_REMINDER_AND_MILEAGE_SQL = `
+ALTER TABLE jobs ADD COLUMN stale_shift_reminder_hours REAL DEFAULT 8;
+ALTER TABLE shifts ADD COLUMN mileage REAL;
+`;
+
+export const SCHEMA_VERSION = 9;
 
 // Applied in order to bring a database from version N-1 to version N. Index 0 here is
 // the migration to version 1 (the baseline, safe to (re)run via CREATE TABLE IF NOT
@@ -176,4 +186,5 @@ export const MIGRATIONS: string[] = [
   V6_JOB_EXPECTED_HOURS_SQL,
   V7_SHIFT_OVERTIME_SQL,
   V8_JOB_LOCATION_SQL,
+  V9_STALE_REMINDER_AND_MILEAGE_SQL,
 ];

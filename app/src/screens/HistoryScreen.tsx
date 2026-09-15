@@ -47,6 +47,15 @@ export function HistoryScreen() {
   const selectionMode = selectedIds.size > 0;
 
   const [showFilters, setShowFilters] = useState(false);
+  // Additive, not a replacement for the list — a different lens onto the same
+  // date-range-filtered/job-filtered data. Tapping a day jumps back to List with the
+  // range narrowed to just that day, reusing every existing list interaction (edit,
+  // swipe-to-delete, bulk-select) rather than duplicating any of it inside the grid.
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [rangeKey, setRangeKey] = useState<RangeKey>("last90");
   const [customStart, setCustomStart] = useState(() => startOfDay(new Date()));
   const [customEnd, setCustomEnd] = useState(() => startOfDay(new Date()));
@@ -80,6 +89,11 @@ export function HistoryScreen() {
   }
 
   const range = useMemo(() => {
+    if (viewMode === "calendar") {
+      const start = calendarMonth;
+      const end = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+      return { start, end, label: calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" }) };
+    }
     if (rangeKey === "custom") {
       const start = customStart;
       const end = addDays(customEnd, 1);
@@ -87,7 +101,15 @@ export function HistoryScreen() {
       return { start, end, label };
     }
     return rangeFor(rangeKey);
-  }, [rangeKey, customStart, customEnd]);
+  }, [viewMode, calendarMonth, rangeKey, customStart, customEnd]);
+
+  function selectCalendarDay(date: Date) {
+    const day = startOfDay(date);
+    setCustomStart(day);
+    setCustomEnd(day);
+    setRangeKey("custom");
+    setViewMode("list");
+  }
 
   async function pickCustomStart() {
     const date = await pick(customStart, "Start Date");
@@ -204,6 +226,34 @@ export function HistoryScreen() {
       });
   }, [visibleShifts, breaksByShift, jobsById]);
 
+  const shiftsByDayKey = useMemo(() => {
+    const map = new Map<string, Shift[]>();
+    for (const shift of visibleShifts) {
+      const key = startOfDay(new Date(shift.clockIn)).toISOString();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(shift);
+    }
+    return map;
+  }, [visibleShifts]);
+
+  // A fixed 6-row (42-cell) grid, padded with the tail of the previous month and the head
+  // of the next so every week row is complete — dimmed via `inMonth: false` rather than
+  // left blank, so the grid's shape never jumps between months with different day counts.
+  const calendarCells = useMemo(() => {
+    const firstWeekday = calendarMonth.getDay();
+    const gridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1 - firstWeekday);
+    const cells: { date: Date; inMonth: boolean; jobColors: string[] }[] = [];
+    for (let i = 0; i < 42; i++) {
+      const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const key = startOfDay(date).toISOString();
+      const dayShifts = shiftsByDayKey.get(key) ?? [];
+      const jobIds = Array.from(new Set(dayShifts.map((s) => s.jobId)));
+      const jobColors = jobIds.map((id) => jobsById[id]?.colorHex).filter((c): c is string => !!c);
+      cells.push({ date, inMonth: date.getMonth() === calendarMonth.getMonth(), jobColors });
+    }
+    return cells;
+  }, [calendarMonth, shiftsByDayKey, jobsById]);
+
   function confirmDelete(shift: Shift) {
     Alert.alert("Delete shift", "This can't be undone.", [
       { text: "Cancel", style: "cancel" },
@@ -243,15 +293,70 @@ export function HistoryScreen() {
 
   return (
     <>
-      <View style={styles.filterToggleRow}>
-        <TouchableOpacity onPress={() => setShowFilters(!showFilters)}>
-          <Text style={styles.link}>{showFilters ? "Hide Filters" : "Filters"}</Text>
+      <View style={styles.viewModeRow}>
+        <TouchableOpacity
+          style={[styles.viewModeButton, viewMode === "list" && styles.viewModeButtonActive]}
+          onPress={() => setViewMode("list")}
+        >
+          <Text style={[styles.viewModeButtonText, viewMode === "list" && styles.viewModeButtonTextActive]}>List</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>
-          {range.label} · {allJobsSelected ? "All jobs" : `${selectedJobIds.size} job${selectedJobIds.size === 1 ? "" : "s"}`}
-        </Text>
+        <TouchableOpacity
+          style={[styles.viewModeButton, viewMode === "calendar" && styles.viewModeButtonActive]}
+          onPress={() => setViewMode("calendar")}
+        >
+          <Text style={[styles.viewModeButtonText, viewMode === "calendar" && styles.viewModeButtonTextActive]}>Calendar</Text>
+        </TouchableOpacity>
       </View>
-      {showFilters && (
+
+      {viewMode === "list" && (
+        <View style={styles.filterToggleRow}>
+          <TouchableOpacity onPress={() => setShowFilters(!showFilters)}>
+            <Text style={styles.link}>{showFilters ? "Hide Filters" : "Filters"}</Text>
+          </TouchableOpacity>
+          <Text style={styles.hint}>
+            {range.label} · {allJobsSelected ? "All jobs" : `${selectedJobIds.size} job${selectedJobIds.size === 1 ? "" : "s"}`}
+          </Text>
+        </View>
+      )}
+      {viewMode === "calendar" && (
+        <View style={styles.calendarContainer}>
+          <View style={styles.calendarNavRow}>
+            <TouchableOpacity onPress={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>
+              <Ionicons name="chevron-back" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.calendarMonthLabel}>{range.label}</Text>
+            <TouchableOpacity onPress={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>
+              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.calendarWeekdayRow}>
+            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+              <Text key={i} style={styles.calendarWeekdayLabel}>
+                {d}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.calendarGrid}>
+            {calendarCells.map((cell, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.calendarCell}
+                disabled={!cell.inMonth}
+                onPress={() => selectCalendarDay(cell.date)}
+              >
+                <Text style={[styles.calendarDayNumber, !cell.inMonth && styles.calendarDayNumberDim]}>{cell.date.getDate()}</Text>
+                <View style={styles.calendarDotsRow}>
+                  {cell.jobColors.slice(0, 4).map((c, j) => (
+                    <View key={j} style={[styles.calendarDot, { backgroundColor: c }]} />
+                  ))}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.hint}>Tap a day to see its shifts in List view.</Text>
+        </View>
+      )}
+      {viewMode === "list" && showFilters && (
         <View style={styles.filterPanel}>
           <View style={styles.chipRow}>
             {RANGES.map((r) => (
@@ -302,13 +407,13 @@ export function HistoryScreen() {
         </View>
       )}
 
-      {!selectionMode && shifts.length > 0 && totalCents > 0 && (
+      {viewMode === "list" && !selectionMode && shifts.length > 0 && totalCents > 0 && (
         <View style={styles.totalBar}>
           <Text style={styles.totalLabel}>Total earned ({range.label})</Text>
           <Text style={styles.totalValue}>{formatCents(totalCents)}</Text>
         </View>
       )}
-      {selectionMode && (
+      {viewMode === "list" && selectionMode && (
         <View style={styles.selectionBar}>
           <TouchableOpacity onPress={() => setSelectedIds(new Set())} style={styles.selectionAction}>
             <Text style={styles.selectionActionText}>Cancel</Text>
@@ -322,6 +427,7 @@ export function HistoryScreen() {
           </TouchableOpacity>
         </View>
       )}
+      {viewMode === "list" && (
       <SectionList
         style={styles.container}
         sections={sections}
@@ -377,6 +483,7 @@ export function HistoryScreen() {
         }}
         ListEmptyComponent={<Text style={styles.empty}>No shifts match the current filter.</Text>}
       />
+      )}
       {editingShift && (
         <ShiftEditor shift={editingShift} onClose={() => setEditingShift(null)} />
       )}
@@ -388,6 +495,29 @@ export function HistoryScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.card },
+    viewModeRow: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 12 },
+    viewModeButton: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center", backgroundColor: colors.surface },
+    viewModeButtonActive: { backgroundColor: colors.primaryFill },
+    viewModeButtonText: { fontWeight: "600", fontSize: 13, color: colors.textSecondary },
+    viewModeButtonTextActive: { color: colors.onPrimary },
+    calendarContainer: { padding: 12 },
+    calendarNavRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+    calendarMonthLabel: { fontSize: 15, fontWeight: "700", color: colors.text },
+    calendarWeekdayRow: { flexDirection: "row" },
+    calendarWeekdayLabel: { flex: 1, textAlign: "center", fontSize: 11, color: colors.textMuted2, fontWeight: "600" },
+    calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+    calendarCell: {
+      width: "14.28%",
+      aspectRatio: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 0.5,
+      borderColor: colors.border,
+    },
+    calendarDayNumber: { fontSize: 13, color: colors.text },
+    calendarDayNumberDim: { color: colors.textMuted },
+    calendarDotsRow: { flexDirection: "row", gap: 2, marginTop: 3, height: 6 },
+    calendarDot: { width: 5, height: 5, borderRadius: 2.5 },
     filterToggleRow: {
       flexDirection: "row",
       justifyContent: "space-between",
