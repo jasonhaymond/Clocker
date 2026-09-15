@@ -1,5 +1,6 @@
+import Constants from "expo-constants";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, type MapPressEvent, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getCurrentLocation } from "../lib/locationTracking";
@@ -13,6 +14,17 @@ interface Coords {
 // Roughly a 1km-wide view — close enough to tell one building/site from the next without
 // having to pinch-zoom before you can place the pin accurately.
 const DEFAULT_DELTA = 0.01;
+
+// react-native-maps' native Android view crashes the whole app if no Google Maps API key
+// was baked into the build (no JS-catchable error — confirmed on a real device; the
+// library exposes onMapReady/onMapLoaded but nothing for an auth/key failure). iOS uses
+// Apple Maps for free, so this only ever applies on Android. Checking the config value
+// that was actually baked in at build time (see app/app.config.js) lets this render a
+// normal error message instead of ever mounting the native map at all. This can't detect
+// a key that's present but invalid/wrongly-restricted — only a genuinely missing one —
+// since that failure only shows up once Google's servers reject the native SDK's request.
+const MAPS_UNAVAILABLE =
+  Platform.OS === "android" && !Constants.expoConfig?.android?.config?.googleMaps?.apiKey;
 
 // A full-screen map for dropping a pin anywhere (not just where you're standing — see
 // JobDetailModal's "Use My Current Location" button for that simpler path). Just picks a
@@ -39,7 +51,7 @@ export function LocationPickerModal({
   // currently are, a reasonable starting point for most jobs, rather than an arbitrary
   // default like (0, 0).
   useEffect(() => {
-    if (region) return;
+    if (region || MAPS_UNAVAILABLE) return;
     getCurrentLocation().then((current) => {
       const start = current ?? { latitude: 0, longitude: 0 };
       setRegion({ ...start, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA });
@@ -59,11 +71,19 @@ export function LocationPickerModal({
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Choose Location</Text>
-          <TouchableOpacity onPress={() => coords && onConfirm(coords)} disabled={!coords}>
-            <Text style={[styles.confirmText, !coords && styles.confirmTextDisabled]}>Done</Text>
+          <TouchableOpacity onPress={() => coords && onConfirm(coords)} disabled={!coords || MAPS_UNAVAILABLE}>
+            <Text style={[styles.confirmText, (!coords || MAPS_UNAVAILABLE) && styles.confirmTextDisabled]}>Done</Text>
           </TouchableOpacity>
         </View>
-        {region ? (
+        {MAPS_UNAVAILABLE ? (
+          <View style={styles.unavailable}>
+            <Text style={styles.unavailableTitle}>Map picker unavailable</Text>
+            <Text style={styles.unavailableBody}>
+              This build isn't configured with a Google Maps key, so the map can't be shown. Use "Use My Current
+              Location" instead, or contact whoever manages this deployment.
+            </Text>
+          </View>
+        ) : region ? (
           <MapView style={styles.map} initialRegion={region} onPress={handlePress}>
             {coords && <Marker coordinate={coords} draggable onDragEnd={(e) => setCoords(e.nativeEvent.coordinate)} />}
           </MapView>
@@ -72,7 +92,7 @@ export function LocationPickerModal({
             <ActivityIndicator color={colors.primary} />
           </View>
         )}
-        <Text style={styles.hint}>Tap the map, or drag the pin, to set this job's location.</Text>
+        {!MAPS_UNAVAILABLE && <Text style={styles.hint}>Tap the map, or drag the pin, to set this job's location.</Text>}
       </View>
     </Modal>
   );
@@ -96,6 +116,9 @@ function createStyles(colors: ThemeColors) {
     confirmTextDisabled: { color: colors.textMuted },
     map: { flex: 1 },
     loading: { flex: 1, alignItems: "center", justifyContent: "center" },
+    unavailable: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 8 },
+    unavailableTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+    unavailableBody: { fontSize: 14, color: colors.textSecondary, textAlign: "center", lineHeight: 20 },
     hint: { textAlign: "center", color: colors.textMuted2, fontSize: 12, padding: 10 },
   });
 }

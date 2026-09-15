@@ -768,6 +768,24 @@ EAS-managed signing credential, set `ANDROID_GOOGLE_MAPS_API_KEY` in the product
 `app/.env`, then rebuild — the key is baked in at build time, so this can't be fixed via
 an OTA update to an existing build.
 
+**Amended again (2026-09-15, later session):** Jason asked whether the crash above had
+been made to fail gracefully instead — it hadn't been, only the docs were corrected.
+Checked first whether that's even possible: `react-native-maps`' `MapView` exposes
+`onMapReady`/`onMapLoaded` but no error callback for an auth/key failure, confirmed by
+reading its own type definitions — so a key that's *present but invalid* is a genuine
+native-only crash with no JS-level way to intercept it. A key that's *missing entirely*
+is different, though: `LocationPickerModal.tsx` now reads
+`Constants.expoConfig?.android?.config?.googleMaps?.apiKey` (the value actually baked into
+the build, same field `app.config.js` sets from `ANDROID_GOOGLE_MAPS_API_KEY`) before ever
+mounting the native map, and shows a plain "Map picker unavailable... use 'Use My Current
+Location' instead" message instead if it's absent — Android-only, since iOS uses Apple
+Maps for free and was never at risk. `2.0.9`. Directly fixes the exact scenario Jason hit
+(the key was never set at all) but **does not and cannot fully close the gap** — once a
+key is actually configured, if it's ever wrongly restricted (wrong package name/SHA-1) or
+its Maps SDK API isn't enabled, that would still crash the app the same way, with no
+warning from this check. Not verified on a real device (no access from here) — typecheck
+only.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -794,10 +812,10 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.8` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.9` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`-`2.0.8` right after it were same-day
+default used for every bump before it; `2.0.1`-`2.0.9` right after it were same-day
 patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
@@ -1658,14 +1676,19 @@ Verified present in the repo (code + docs, not just described in memory):
   folded into routine dependency maintenance. Also note for whenever this happens: npm's
   install-script gating silently skips fetching Prisma's engine binaries unless
   `npm install-scripts approve prisma @prisma/engines` is run first.
-- **The job-location map picker ("Choose on Map") crashes on Android** — confirmed on a
-  real device, the app's first-ever real-hardware run. Near-certain cause:
-  `ANDROID_GOOGLE_MAPS_API_KEY` was never set (see §3's 2026-09-15 amendment for the full
-  trace). Needs a real Google Maps API key from Jason's own Google Cloud account,
-  restricted to `com.haymondtechnologies.clocker` + the EAS-managed signing credential's
-  SHA-1 fingerprint (`eas credentials` prints it), set in the production host's
-  `app/.env`, then a rebuild — baked in at build time, an OTA update can't fix it. "Use My
-  Current Location" is unaffected and remains a safe fallback in the meantime.
+- **The job-location map picker ("Choose on Map") crashed on Android** with no
+  `ANDROID_GOOGLE_MAPS_API_KEY` configured — confirmed on a real device, the app's
+  first-ever real-hardware run (see §3's 2026-09-15 amendments for the full trace). `2.0.9`
+  made the *missing-key* case fail gracefully (a plain in-app message, no crash) rather
+  than fixing the underlying gap — a real key is still needed for the feature to actually
+  work: from Jason's own Google Cloud account, restricted to
+  `com.haymondtechnologies.clocker` + the EAS-managed signing credential's SHA-1
+  fingerprint (`eas credentials` prints it), set in the production host's `app/.env`, then
+  a rebuild — baked in at build time, an OTA update can't fix it. **A key that's present
+  but invalid/wrongly-restricted would still crash** — `react-native-maps` has no
+  JS-catchable error callback for that case, confirmed by reading its type definitions, so
+  there's no way to guard against it from here. "Use My Current Location" is unaffected
+  and remains a safe fallback regardless.
 
 ## 5. Deployment
 

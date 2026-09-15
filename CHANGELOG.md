@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.9] - 2026-09-15
+
+### Fixed
+
+- The job-location map picker ("Choose on Map") crashed the whole app on Android when no
+  Google Maps API key was configured, instead of failing gracefully. `LocationPickerModal`
+  now checks the config value actually baked into the build at build time
+  (`Constants.expoConfig`) before ever mounting the native map, and shows a plain error
+  message ("Map picker unavailable... Use 'Use My Current Location' instead") if it's
+  missing — no native crash, and the map is simply never rendered. iOS is unaffected
+  (Apple Maps, no key needed). **Known limitation**: this only catches a genuinely missing
+  key; `react-native-maps` doesn't expose any error callback for a key that's present but
+  invalid or wrongly restricted — that failure mode is a native-only crash outside what
+  can be checked or caught in JavaScript, and still isn't preventable from here.
+
 ## [2.0.8] - 2026-09-15
 
 ### Fixed
