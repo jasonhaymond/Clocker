@@ -16,7 +16,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.5",
+    version: "2.0.6",
     runtimeVersion: {
       policy: "appVersion",
     },
@@ -82,6 +82,12 @@ module.exports = {
       // Community-maintained, not an Expo-org package (worth knowing if it ever needs
       // upgrading/replacing) — see app/src/lib/quickActions.ts.
       "expo-quick-actions",
+      // As of the 57.0.19/57.0.3 updates, `expo install --fix` wants these listed as
+      // plugins too (previously worked with no plugin entry) — can't auto-write that into
+      // a dynamic config either, added by hand for the same reason as everything else in
+      // this array.
+      "expo-sharing",
+      "expo-sqlite",
     ],
     // EAS can't auto-write this into a dynamic app.config.js the way it does for a plain
     // app.json (see docs/deployment.md's EAS setup section) — set EAS_PROJECT_ID in

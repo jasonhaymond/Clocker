@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.0.6] - 2026-09-15
+
+### Changed
+
+- Dependency audit in response to deprecated-package warnings during `npm install`.
+  `app/`'s Expo/React Native packages brought fully in line with the Expo SDK 57
+  compatibility matrix via `expo install --fix` (`expo`, `expo-application`,
+  `expo-constants`, `expo-crypto`, `expo-file-system`, `expo-mail-composer`,
+  `expo-sharing`, `expo-sqlite`, `expo-updates`, `@types/react`), which in turn now
+  requires `expo-sharing`/`expo-sqlite` to be listed in `app.config.js`'s `plugins`
+  (added). `server`'s `pdfkit` bumped `0.15.2` → `0.20.2`, which drops its `crypto-js`
+  and `jpeg-exif` dependencies (both deprecated, `crypto-js` unmaintained) in favor of
+  `@noble/hashes`/`@noble/ciphers` — verified the invoice PDF route's exact drawing calls
+  still produce a valid PDF after the bump. `@types/pdfkit` bumped to match. `@types/node`
+  and `fastify` bumped to their latest patch versions.
+- **Deliberately not bumped**: `react`, `react-native`, `react-native-gesture-handler`,
+  `react-native-maps`, `react-native-safe-area-context`, `react-native-screens`,
+  `@react-native-async-storage/async-storage`, and `@react-native-community/
+  datetimepicker` all show newer versions on npm, but `expo install --check` confirms the
+  currently-installed versions are the ones this Expo SDK actually expects — the npm
+  "latest" versions are for a newer SDK and would break compatibility if installed
+  directly. `zod`, `@prisma/client`/`prisma`, `bcryptjs`, `vite`, `typescript`,
+  `@fastify/cors`, `@vitejs/plugin-react`, and `dotenv` are all genuinely behind, but each
+  is a major-version jump with real breaking-change surface (particularly `zod` v4's
+  schema/error API and `bcryptjs` v3, both used throughout `server`) — left as a
+  deliberate, separate decision rather than bundled into this pass.
+
 ## [2.0.5] - 2026-09-15
 
 ### Fixed

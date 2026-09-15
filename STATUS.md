@@ -642,7 +642,53 @@ worth a deliberate look if `com.haymondtechnologies.clocker` isn't the identifie
 actually wants for a real release, rather than assuming this default is final. `2.0.5`.
 This is genuinely the first time this app has ever had an Android package name — nothing
 to compare against, no risk of a mismatch with a previously-published build. Not yet
-confirmed whether the build gets further than this on a live host from this session. (multiple jobs, clock in/out, breaks, history,
+confirmed whether the build gets further than this on a live host from this session.
+
+**Amended again (2026-09-15, later session):** Jason asked to confirm all dependencies
+were current after seeing deprecated-package warnings during `npm install`. Traced the
+actual warnings (a throwaway clean `npm ci` in a scratch copy of the repo, since an
+already-satisfied `npm install` prints nothing) to exactly four packages: `uuid@3.4.0` (via
+`@expo/ngrok`, dev-only tunnel tool), `uuid@7.0.3` (via `react-native-notify-kit`'s `xcode`
+dependency, iOS-tooling-only and inert on this Android-only project), and `crypto-js`/
+`jpeg-exif` (via `pdfkit`, unused features — no PDF encryption or JPEG embedding in the
+invoice route). Fixed what's fixable: bumped `pdfkit` `0.15.2` → `0.20.2`, which replaces
+`crypto-js`/`jpeg-exif` with `@noble/hashes`/`@noble/ciphers` — verified by actually
+generating a PDF with the invoice route's exact drawing calls afterward, byte-checked as a
+valid `%PDF` file. The `uuid` warnings are upstream-locked: both `@expo/ngrok` and
+`react-native-notify-kit` are already at their latest published versions; nothing to do
+until their maintainers update.
+
+Separately brought `app/`'s Expo/React Native packages fully in line with the SDK 57
+compatibility matrix via `npx expo install --fix` (10 packages) — this is the authoritative
+source for what's safe to bump here, **not raw `npm outdated`**: several packages
+(`react`, `react-native`, `react-native-gesture-handler`, `react-native-maps`,
+`react-native-safe-area-context`, `react-native-screens`,
+`@react-native-async-storage/async-storage`, `@react-native-community/datetimepicker`)
+show newer versions on npm, but `expo install --check` confirms the *currently installed*
+versions are the ones SDK 57 actually wants — those newer npm versions target a later SDK
+and bumping to them directly would break native-module compatibility. This is the same
+"trust the framework's own tool, not generic tooling" lesson as `docs/deployment.md`'s
+Prisma migration guidance, just for Expo instead. The fix required adding
+`expo-sharing`/`expo-sqlite` to `app.config.js`'s `plugins` array by hand (same
+can't-auto-write-dynamic-config wrinkle as `extra.eas.projectId`/`android.package` above —
+newer versions of these two packages now expect a plugin entry). Also bumped `@types/node`
+and `fastify` to their latest already-in-range patch versions.
+
+**Left deliberately unbumped, pending a separate decision**: `zod` (3→4), `@prisma/client`
++ `prisma` CLI (6→7), `bcryptjs` (2→3), `vite` (7→8), `typescript` (6→7 for `app`/`shared`,
+5→7 for `server`/`web`), `@fastify/cors` (10→11), `@vitejs/plugin-react` (5→6), and
+`dotenv` (16→17). None of these show up as *deprecated* — they're just behind — but each
+is a major-version jump with real breaking-change surface, `zod` and `bcryptjs` especially
+(schema/error API changes touching every route in `server`, and an auth-critical hashing
+library, respectively). Deliberately not bundled into this pass; needs its own scoped,
+tested effort if Jason wants to pursue it.
+
+`2.0.6`. Verified: full four-workspace typecheck, `shared`'s 31-test Vitest suite still
+green, `expo install --check` reports clean, and the pdfkit PDF-generation smoke test
+above. Not verified: an actual `eas build` against these updated Expo packages (still
+blocked on the `android.package`/EAS-linking chain above being confirmed on the real host).
+
+A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
 - **`app/`** — Expo/React Native (TypeScript) mobile app. Offline-first: local SQLite
@@ -668,10 +714,10 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.5` as of this session (`2.0.0`
+full stop. All five (four packages, one version) are at `2.0.6` as of this session (`2.0.0`
 was major, per the user's explicit instruction — this batch was substantial enough, and
 the user asked for it directly, rather than following the usual "new capability = minor"
-default used for every bump before it; `2.0.1`-`2.0.5` right after it were same-day
+default used for every bump before it; `2.0.1`-`2.0.6` right after it were same-day
 patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
