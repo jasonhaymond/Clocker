@@ -392,13 +392,19 @@ const updaterManaged = commandExists("pm2 --version") && captureOutput("pm2 jlis
 const updaterLine = updaterManaged
   ? "Update-trigger service: running under pm2 as \"clocker-host-agent\" — the in-app \"Update Server\" button is live."
   : "Update-trigger service: NOT running — see the warning above to start it before the in-app \"Update Server\" button will work.";
+// Surfaced only while genuinely unconfigured — not on every deploy forever once someone's
+// already made a deliberate choice either way (including deliberately leaving both off).
+const configureLine = readEnvValue(envProdPath, "SMTP_HOST")
+  ? null
+  : "Tip: `npm run configure` walks through optional multi-user settings (email for password reset, closing registration) interactively.";
+const configureBlock = configureLine ? `${configureLine}\n` : "";
 if (proxyMode === "local") {
   console.log(`
 Server: https://${domain}
 Web client: https://${domain}/
 ${appBuildLine}
 ${updaterLine}
-
+${configureBlock}
 Useful commands:
   docker compose ${composeFlags} ps        # container status
   docker compose ${composeFlags} logs -f   # follow logs
@@ -448,7 +454,7 @@ to everything. See docs/deployment.md#deploying-behind-your-own-reverse-proxy.
 
 ${appBuildLine}
 ${updaterLine}
-
+${configureBlock}
 Useful commands:
   docker compose ${composeFlags} ps        # container status
   docker compose ${composeFlags} logs -f   # follow logs

@@ -896,6 +896,51 @@ and `server`'s build all clean throughout. **Not verified**: the address-search 
 native-module feature this session) and the web reset-password page at a desktop
 viewport width (verified at mobile width only, though the change is layout-trivial).
 
+**Amended again (2026-09-15, later session):** the user asked to review both the docs
+and the deployment scripts to make sure every required decision/input has an actual
+interactive path, not just written instructions, and to check comment/description
+density is "sufficient but not too much." Audited `scripts/*.mjs` and `docs/deployment.md`
+in full before touching anything.
+
+Key finding: `scripts/deploy.mjs` and `scripts/update.mjs` are *deliberately*
+non-interactive already — `deploy.mjs` can run headlessly as a child process of
+`scripts/host-agent.mjs` (the in-app "Update Server" button), which already passes
+`--skip-app` specifically to dodge a different interactive hazard (`eas build`'s own
+one-time account-linking prompt). Adding a blocking prompt anywhere in `deploy.mjs`'s
+always-executed path would hang that button forever with no TTY to read from. So the real
+gap wasn't "deploy.mjs should prompt more" — it was that this session's new optional
+settings (SMTP, `REGISTRATION_ENABLED`) and two pre-existing ones with no tooling at all
+(`ANDROID_GOOGLE_MAPS_API_KEY`, `EAS_PROJECT_ID`) had *zero* interactive path, only
+"hand-edit a file" documentation.
+
+Added `scripts/configure.mjs` (`npm run configure`) — a genuinely separate, standalone
+interactive script (never invoked by the host agent, so the TTY-hang risk doesn't apply)
+covering exactly those four settings. New `prompt()`/`confirm()`/`closePrompt()` helpers
+in `scripts/lib.mjs`, built on Node's built-in `readline/promises` (no new dependency).
+Asks before replacing anything already set; correctly detects and offers to *reopen*
+registration if it's already closed, rather than only ever offering to close it (caught
+this while testing — the first draft's success message claimed "answer no to reopen it,"
+which was simply false, since answering no just left the existing value alone). Verified
+for real, not just typechecked: piping input directly at the script (`node scripts/
+configure.mjs < input.txt`) hit a genuine Node `readline` quirk where rapid-fire buffered
+input races the interface's internal listener setup and drops lines — not a bug in this
+script, confirmed by re-testing with a small delay between each answer (simulating actual
+human typing speed), which passed clean end-to-end for every path: skip everything, fill
+in real values, decline to replace existing ones, and reopen a closed registration.
+`deploy.mjs`'s final summary also gained one conditional tip line pointing at
+`npm run configure` — shown only while `SMTP_HOST` is still unset, not on every deploy
+forever once a real choice (on or off) has actually been made.
+
+While auditing comment density specifically: found and fixed a real staleness bug in
+`docs/development.md`'s `ANDROID_GOOGLE_MAPS_API_KEY` entry — it still described the
+*crash* that `2.0.9` (earlier this same session) had already fixed into a graceful
+"unavailable" message, and had grown quite long in the process. Rewrote it shorter and
+factually current. Everything else audited (deploy.mjs's own comments, the `.env.example`
+files) was judged consistent with this codebase's own established, consistently
+purposeful "why, not what" comment style — verbose in absolute terms, but not judged
+excessive relative to that existing convention, so left alone rather than trimmed for its
+own sake. `2.1.1`, docs/tooling-only.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -922,12 +967,13 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.1.0` as of this session
+full stop. All five (four packages, one version) are at `2.1.1` as of this session
 (`2.0.0` was major, per the user's explicit instruction — this batch was substantial
 enough, and the user asked for it directly, rather than following the usual "new
 capability = minor" default used for every bump before it; `2.0.1`-`2.0.10` right after it
 were same-day patches fixing deploy tooling and the EAS project link, see §4; `2.1.0` is
-the next real minor, back to the normal policy — the multi-user security batch above);
+the next real minor, back to the normal policy — the multi-user security batch above;
+`2.1.1` right after it was a same-day patch, the deploy-tooling/docs audit below);
 the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked

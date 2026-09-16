@@ -149,6 +149,15 @@ same thing by hand instead — useful if you want to see every step, or `npm run
 doesn't fit your setup — see [Manual setup, without the deploy script](#manual-setup-without-the-deploy-script)
 below.
 
+Everything above is what `npm run deploy` needs to get a working server running — nothing
+else is required. A handful of things beyond that are optional and can't be
+auto-generated the way `POSTGRES_PASSWORD`/`JWT_SECRET` are, since they depend on real
+decisions or accounts only you have (email for password reset, closing registration once
+your people are signed up, the Android Google Maps key, the EAS project id for mobile
+builds): run `npm run configure` any time to walk through those interactively — it asks
+before replacing anything already set, and is covered in more detail wherever each one
+comes up below.
+
 Once it succeeds, point the app at it. For local development against this server
 (`npx expo start` / Expo Go), the persistent way is a **file**, not a shell command:
 
@@ -728,9 +737,10 @@ audited by a third party).
   failing to start, and a locked-out user can still be helped by whoever runs the server
   resetting their password directly in the database.
 - **Uncontrolled self-registration** — closed, optionally. `REGISTRATION_ENABLED=false`
-  (see [`.env.example`](../server/.env.example)) closes `/auth/register` once your
-  intended group has signed up, for a deployment meant for a fixed set of people rather
-  than the general public. Off by default — nothing changes until you opt in.
+  (see [`.env.example`](../server/.env.example), or run `npm run configure`) closes
+  `/auth/register` once your intended group has signed up, for a deployment meant for a
+  fixed set of people rather than the general public. Off by default — nothing changes
+  until you opt in.
 
 `/auth/login` and `/auth/register` **are** rate-limited (10 requests / 15 min per IP,
 `@fastify/rate-limit`) and gated behind a self-hosted arithmetic CAPTCHA
@@ -763,8 +773,10 @@ nothing else in this app depends on server-sent email (timesheet submission and 
 delivery both hand off to the device's own mail app instead, since those always have a
 signed-in user with a mail client of their own — a forgotten password has neither).
 
-Set these in `.env.prod` (see [`.env.prod.example`](../.env.prod.example)) before your
-next `npm run deploy`/`npm run update`:
+Fastest path: `npm run configure` walks through this (and the Google Maps key/EAS project
+id below, and closing registration) interactively, asking before it replaces anything
+already set. To do it by hand instead, set these in `.env.prod` (see
+[`.env.prod.example`](../.env.prod.example)) before your next `npm run deploy`/`npm run update`:
 
 ```bash
 SMTP_HOST=smtp.your-provider.com
@@ -928,9 +940,10 @@ same field `eas update:configure` uses for [OTA updates](./development.md#ota-up
 you'd only need to link the project once regardless of which you set up first. This
 project's config is `app/app.config.js` instead (JavaScript, not JSON, so it can read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment), which EAS CLI can't auto-write into —
-it prints the `projectId` for you to add yourself, still just the one time. Set it as
-`EAS_PROJECT_ID` in `app/.env` (see `app/.env.example`), not by hand-editing
-`app.config.js` — `app.config.js` reads it from the environment at build/config time the
+it prints the `projectId` for you to add yourself, still just the one time. Run
+`npm run configure` and paste it in when asked, or set `EAS_PROJECT_ID` in `app/.env` by
+hand (see `app/.env.example`) — not by hand-editing `app.config.js` itself.
+`app.config.js` reads it from the environment at build/config time the
 same way it already does for `ANDROID_GOOGLE_MAPS_API_KEY`, so it stays generic and
 committable while this deployment's own EAS project id lives in its own untracked
 environment config, right alongside the API URL and Maps key. If `eas build:configure`
@@ -946,12 +959,13 @@ in `app.config.js` alongside `slug`/`scheme` rather than read from the environme
 **Effectively permanent once first published to the Play Store** — free to change before
 then if a different identifier is wanted.
 
-**Google Maps API key, for the job-location map picker on Android.** The app has two ways
-to set a job's location: "Use My Current Location" (works out of the box, no setup) and
-"Choose on Map" (drops a pin anywhere on an actual map — needs a Google Maps API key on
-Android; iOS uses Apple Maps for free, no key needed there). Without a key, "Choose on
-Map" simply shows an in-app "unavailable" message instead of a map — the app doesn't
-break, but that one path to setting a location doesn't work. To enable it:
+**Google Maps API key, for the job-location map picker on Android.** The app has three
+ways to set a job's location: "Use My Current Location" and "Enter an Address" (both work
+out of the box, no setup) and "Choose on Map" (drops a pin anywhere on an actual map —
+needs a Google Maps API key on Android; iOS uses Apple Maps for free, no key needed
+there). Without a key, "Choose on Map" simply shows an in-app "unavailable" message
+instead of a map — the app doesn't break, and the other two ways to set a location are
+completely unaffected. To enable it:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/google/maps-apis),
    create/select a project and enable the **Maps SDK for Android** API.
@@ -959,9 +973,10 @@ break, but that one path to setting a location doesn't work. To enable it:
    `com.haymondtechnologies.clocker` (from `android.package` above) and the SHA-1
    fingerprint of the credential your builds are actually signed with — `eas credentials`
    (Android → your build profile → view keystore) prints it for EAS-managed signing.
-3. Set `ANDROID_GOOGLE_MAPS_API_KEY` in `app/.env` on this host (see `app/.env.example`) —
-   same as `EXPO_PUBLIC_API_URL`/`EAS_PROJECT_ID` above, an untracked env var, not
-   hardcoded into `app.config.js`.
+3. Run `npm run configure` and paste it in when asked, or set
+   `ANDROID_GOOGLE_MAPS_API_KEY` in `app/.env` on this host by hand (see
+   `app/.env.example`) — same as `EXPO_PUBLIC_API_URL`/`EAS_PROJECT_ID` above, an
+   untracked env var, not hardcoded into `app.config.js`.
 
 This is baked into the native Android build at build time, so it only takes effect on the
 *next* `npm run deploy` (or manual `eas build`) — an OTA update can't add it to an

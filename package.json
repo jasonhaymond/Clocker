@@ -10,6 +10,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "update": "node scripts/update.mjs",
+    "configure": "node scripts/configure.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:app": "node scripts/deploy-app.mjs",
     "host-agent": "node scripts/host-agent.mjs",

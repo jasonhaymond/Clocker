@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { createInterface } from "node:readline/promises";
 
 // Plain-text section/step logging (no chalk dependency, so these scripts run with zero
 // extra installs on a completely fresh clone).
@@ -123,6 +124,33 @@ export function readEnvValue(filePath, key) {
   if (!existsSync(filePath)) return null;
   const match = readFileSync(filePath, "utf8").match(new RegExp(`^${key}=(.*)$`, "m"));
   return match ? match[1].trim().replace(/^"|"$/g, "") : null;
+}
+
+// Only for genuinely interactive scripts a person runs by hand (scripts/configure.mjs) —
+// never scripts/deploy.mjs or scripts/update.mjs, both of which can run headlessly as a
+// child process of the host agent (the in-app "Update Server" button) with no TTY to read
+// from; a blocking prompt there would hang that button forever instead of failing fast.
+// One shared readline interface, lazily created, so call sites don't each manage their
+// own — closePrompt() must be called once at the end or the process won't exit on its own.
+let rl;
+function getRl() {
+  if (!rl) rl = createInterface({ input: process.stdin, output: process.stdout });
+  return rl;
+}
+
+export async function prompt(question, defaultValue = "") {
+  const suffix = defaultValue ? ` [${defaultValue}]` : "";
+  const answer = (await getRl().question(`${question}${suffix}: `)).trim();
+  return answer || defaultValue;
+}
+
+export async function confirm(question, defaultYes = false) {
+  const answer = (await prompt(`${question} ${defaultYes ? "[Y/n]" : "[y/N]"}`)).toLowerCase();
+  return answer ? answer.startsWith("y") : defaultYes;
+}
+
+export function closePrompt() {
+  rl?.close();
 }
 
 // Shared between scripts/deploy.mjs (which picks the mode) and scripts/host-agent.mjs

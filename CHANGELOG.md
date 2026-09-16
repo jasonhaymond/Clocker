@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.1.1] - 2026-09-15
+
+### Added
+
+- `npm run configure` — an interactive script for the optional production settings that
+  couldn't be auto-generated the way `POSTGRES_PASSWORD`/`JWT_SECRET` are and, until now,
+  had zero tooling support at all: email (for password reset), closing registration, the
+  Android Google Maps key, and the EAS project id. Deliberately a separate command, not
+  folded into `npm run deploy` — that script can run headlessly as a child process of the
+  host agent (the in-app "Update Server" button), and a blocking prompt there would hang
+  it forever instead of failing fast. Safe to re-run; asks before replacing anything
+  already set, and correctly offers to reopen registration if it's already closed rather
+  than only ever offering to close it. `npm run deploy` now prints a one-line tip pointing
+  at it, but only while genuinely unconfigured (`SMTP_HOST` unset) — not on every deploy
+  forever once a real choice has been made either way.
+
+### Fixed
+
+- `docs/development.md`'s `ANDROID_GOOGLE_MAPS_API_KEY` entry still described the crash
+  that `2.0.9` already fixed ("Choose on Map" now degrades to an "unavailable" message,
+  not a crash) — corrected, and trimmed down from its previous length while there.
+
 ## [2.1.0] - 2026-09-15
 
 Closes every item in `docs/deployment.md#security-gaps-to-close-before-this-is-public` —
