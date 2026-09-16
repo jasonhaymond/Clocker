@@ -705,22 +705,41 @@ yours to supply. Running the server directly, set all of these however your host
 
 ## Security gaps to close before this is public
 
-The current code is fine for "one person, their own devices, their own network or a
-trusted host" and does **not** currently have:
+**Every item that used to be listed here is now closed.** This section's history is kept
+below since the reasoning is still useful, but there's nothing currently outstanding —
+the app is meant to be genuinely deployable for more than one person at this point (still
+worth your own judgment for anything beyond a small, trusted group; nothing here is
+audited by a third party).
 
-- **A refresh-token flow** — a "remember me" token (the default; see
-  [`api-reference.md`](./api-reference.md#authentication)) never expires, with no
-  revocation mechanism short of rotating `JWT_SECRET` (which logs out every device at
-  once, not just one). Unchecking "remember me" gets a 1-day token instead, which bounds
-  the exposure but still isn't a real revocation story.
+- **Token revocation** — closed. A "remember me" token used to never expire with no way
+  to invalidate it short of rotating `JWT_SECRET` (which logs out *every* user's every
+  device at once). Every issued JWT now embeds a `tokenVersion`
+  (see [`api-reference.md`](./api-reference.md#authentication)), checked against the
+  user's current value on every request. `POST /auth/change-password` and
+  `POST /auth/logout-everywhere` (both clients, in Settings) bump it, instantly
+  invalidating every other token that user has ever been issued. There was previously no
+  way to change a password at all — this closed that gap too, not just the revocation
+  half of it.
+- **Forgotten passwords** — closed, optionally. `POST /auth/forgot-password` /
+  `POST /auth/reset-password` (both clients: "Forgot password?" on sign-in) email a
+  single-use, 1-hour reset link. Requires `SMTP_*` to actually be configured (see
+  [Configuring email](#configuring-email-password-reset) below) — genuinely optional: a
+  server with none of those set just reports the feature as unavailable rather than
+  failing to start, and a locked-out user can still be helped by whoever runs the server
+  resetting their password directly in the database.
+- **Uncontrolled self-registration** — closed, optionally. `REGISTRATION_ENABLED=false`
+  (see [`.env.example`](../server/.env.example)) closes `/auth/register` once your
+  intended group has signed up, for a deployment meant for a fixed set of people rather
+  than the general public. Off by default — nothing changes until you opt in.
 
 `/auth/login` and `/auth/register` **are** rate-limited (10 requests / 15 min per IP,
 `@fastify/rate-limit`) and gated behind a self-hosted arithmetic CAPTCHA
 (`/auth/captcha`) — enough to blunt generic credential-stuffing/signup-spam bots without
 depending on a third-party service (reCAPTCHA/Turnstile). It won't stop a determined,
-targeted attacker; nothing here is meant to.
+targeted attacker; nothing here is meant to. The four new auth routes above share the same
+rate limit.
 
-**CORS is now restricted to `CORS_ORIGIN`** (`server/src/index.ts`) instead of reflecting
+**CORS is restricted to `CORS_ORIGIN`** (`server/src/index.ts`) instead of reflecting
 any request's `Origin`. Both production Compose files set it to `https://$DOMAIN`
 automatically — nothing to configure by hand. This only ever gated *browser* requests
 from some other origin (the mobile app and any non-browser client never send an `Origin`
@@ -736,6 +755,32 @@ itself listens on plain HTTP — a JWT sent over that is trivially interceptable
 
 None of this matters for local development against `localhost`/your own LAN — it starts
 mattering the moment the server is reachable from the open internet.
+
+## Configuring email (password reset)
+
+Optional — skip this entirely if self-service password reset isn't something you need;
+nothing else in this app depends on server-sent email (timesheet submission and invoice
+delivery both hand off to the device's own mail app instead, since those always have a
+signed-in user with a mail client of their own — a forgotten password has neither).
+
+Set these in `.env.prod` (see [`.env.prod.example`](../.env.prod.example)) before your
+next `npm run deploy`/`npm run update`:
+
+```bash
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_SECURE=       # "true" for implicit TLS (typically port 465); leave unset for STARTTLS (587)
+SMTP_USER=your-smtp-username
+SMTP_PASS=your-smtp-password
+SMTP_FROM="Clocker <noreply@your-domain.com>"
+```
+
+Any real SMTP provider works — your own mail server, or a transactional-email service
+(Postmark, SES, Mailgun, etc.) used in plain SMTP mode. `SMTP_FROM` must be an address
+your provider is actually allowed to send as; most reject anything else outright. Leaving
+any of these unset keeps the feature off — `/auth/forgot-password` responds with a clear
+"not configured" message instead of a broken/silent one, and every other feature in the
+app is completely unaffected.
 
 ## Deploying the web client
 

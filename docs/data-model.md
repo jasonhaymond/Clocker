@@ -202,6 +202,9 @@ history — including the backfill that moved existing flat `Job.hourlyRateCents
 | **User** | `id` | `String` (uuid) | primary key |
 | | `email` | `String` | unique |
 | | `passwordHash` | `String` | bcrypt, cost 12 |
+| | `tokenVersion` | `Int` | default `0`; embedded in every issued JWT, bumped on password change/"log out everywhere" to revoke every previously-issued token — see [`api-reference.md`](./api-reference.md#authentication) |
+| | `passwordResetTokenHash` | `String?` | sha256 of a random reset token (never the raw token — same principle as `passwordHash`); `null` when there's no in-flight reset request |
+| | `passwordResetExpiresAt` | `DateTime?` | 1 hour after `/auth/forgot-password` issues a token; `null` alongside the hash above |
 | | `createdAt` | `DateTime` | |
 | **Job** | `id` | `String` (uuid) | primary key, **client-generated** |
 | | `userId` | `String` | FK → User, cascade delete |

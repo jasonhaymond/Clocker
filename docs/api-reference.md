@@ -13,20 +13,26 @@ a separate process — see that section for why).
 
 ## Authentication
 
-Every endpoint except `/health`, `/auth/register`, and `/auth/login` requires:
+Every endpoint except `/health`, `/auth/register`, `/auth/login`, `/auth/forgot-password`,
+and `/auth/reset-password` requires:
 
 ```
 Authorization: Bearer <token>
 ```
 
 `<token>` is the JWT returned by register/login. It's an `HS256` JWT signed with
-`JWT_SECRET`, payload `{ userId }`. Its lifetime depends on the `rememberMe` flag sent at
-sign-in (`server/src/lib/auth.ts`): `true` (the default, and what both clients check by
-default) produces a token with no `exp` claim at all — it never expires; `false` produces
-a 1-day token. There is no refresh flow — a fresh sign-in via `/auth/login` is how a
-client gets a new one. A missing or invalid/expired token gets a `401` with
-`{ "error": "..." }` from the `requireAuth` preHandler, which runs on the whole `/sync/*`
-route group.
+`JWT_SECRET`, payload `{ userId, tokenVersion }`. Its lifetime depends on the `rememberMe`
+flag sent at sign-in (`server/src/lib/auth.ts`): `true` (the default, and what both
+clients check by default) produces a token with no `exp` claim at all — it never expires;
+`false` produces a 1-day token. There is no refresh flow — a fresh sign-in via
+`/auth/login` is how a client gets a new one.
+
+`tokenVersion` is how a token gets revoked before it would otherwise expire (or at all, for
+a never-expiring "remember me" one) — `requireAuth` checks it against the user's current
+value on every request, not just the JWT signature. `POST /auth/change-password` and
+`POST /auth/logout-everywhere` both bump it, instantly invalidating every token issued
+before that point, on every device. A missing, invalid/expired, or revoked token gets a
+`401` with `{ "error": "..." }` from the `requireAuth` preHandler.
 
 Both `/auth/register` and `/auth/login` are rate-limited (10 requests / 15 minutes per
 IP) and require a CAPTCHA answer, obtained from `GET /auth/captcha`:
@@ -71,6 +77,7 @@ No auth. Liveness check.
 → 201 { "token": "<jwt>", "userId": "<uuid>" }
 → 400 { "error": { "fieldErrors": {...}, "formErrors": [...] } }   // zod validation failure
 → 400 { "error": "Incorrect answer to the verification question — fetch a new one and try again." }
+→ 403 { "error": "Registration is currently closed on this server." }   // REGISTRATION_ENABLED=false
 → 409 { "error": "Email already registered" }
 → 429 { "error": "Rate limit exceeded, retry in ..." }
 ```
@@ -84,6 +91,70 @@ Same body shape as register.
 → 400 { "error": {...} }          // validation failure (same shape as above)
 → 400 { "error": "Incorrect answer to the verification question — fetch a new one and try again." }
 → 401 { "error": "Invalid email or password" }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
+```
+
+### `POST /auth/change-password`
+
+Auth required. Bumps `tokenVersion`, invalidating every other token this user has ever
+been issued — the response's token is a fresh one for the device that just made this call,
+so it isn't logged out by its own action.
+
+```json
+{ "currentPassword": "the-old-one", "newPassword": "at-least-8-chars" }
+```
+
+```json
+→ 200 { "token": "<jwt>" }
+→ 400 { "error": {...} }                          // validation failure
+→ 401 { "error": "Current password is incorrect" }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
+```
+
+### `POST /auth/logout-everywhere`
+
+Auth required, empty body. Bumps `tokenVersion` with no new token issued — including for
+the token used to call this. The client should clear its own local session immediately
+rather than expecting to keep using it.
+
+```json
+→ 200 { "ok": true }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
+```
+
+### `POST /auth/forgot-password`
+
+No auth. Always responds with the same generic message regardless of whether the email is
+actually registered, to avoid using this endpoint to enumerate accounts — the one
+exception is a `503` when this server has no `SMTP_*` configured at all (see
+[`.env.example`](../server/.env.example)), which is a fact about the deployment, not
+about the submitted email, and safe to disclose.
+
+```json
+{ "email": "jane@example.com" }
+```
+
+```json
+→ 200 { "message": "If that email is registered, a password reset link has been sent." }
+→ 400 { "error": {...} }   // validation failure
+→ 503 { "error": "Password reset isn't configured on this server. Contact whoever manages it." }
+→ 429 { "error": "Rate limit exceeded, retry in ..." }
+```
+
+### `POST /auth/reset-password`
+
+No auth. `token` is the value from the `?token=` query parameter in the emailed reset
+link, single-use and valid for 1 hour. Also bumps `tokenVersion` — resetting a forgotten
+password revokes every existing session, same as a deliberate password change.
+
+```json
+{ "token": "<from the emailed link>", "newPassword": "at-least-8-chars" }
+```
+
+```json
+→ 200 { "message": "Password reset. Sign in with your new password." }
+→ 400 { "error": {...} }                                                     // validation failure
+→ 400 { "error": "This reset link is invalid or has expired. Request a new one." }
 → 429 { "error": "Rate limit exceeded, retry in ..." }
 ```
 

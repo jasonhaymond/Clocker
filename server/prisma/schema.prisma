@@ -11,6 +11,17 @@ model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
+  // Bumped on password change or "log out everywhere" — embedded in every issued JWT
+  // (see server/src/lib/auth.ts) and checked on every authenticated request. A mismatch
+  // means the token was issued before the last revocation event, so it's rejected the
+  // same as an invalid one. This is the only revocation mechanism available for a
+  // stateless JWT that otherwise has no server-side session to delete.
+  tokenVersion Int      @default(0)
+  // Single in-flight reset request per user (a new one overwrites the last, rather than
+  // tracking a history) — the hash of a random token emailed to the user, never the raw
+  // token itself, same principle as passwordHash. Null when there's no active request.
+  passwordResetTokenHash  String?
+  passwordResetExpiresAt  DateTime?
   createdAt    DateTime @default(now())
   jobs         Job[]
   shifts       Shift[]

@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.1.0] - 2026-09-15
+
+Closes every item in `docs/deployment.md#security-gaps-to-close-before-this-is-public` —
+Clocker is now meant to be genuinely deployable for more than one person, not just "one
+person, their own devices."
+
+### Added
+
+- **Token revocation** — every JWT now embeds a `tokenVersion`, checked against the
+  user's current value on every request. Two new authenticated routes bump it:
+  `POST /auth/change-password` (Settings on both clients — there was previously no way to
+  change a password at all) and `POST /auth/logout-everywhere` ("Log Out Everywhere" in
+  Settings — signs out every device and browser at once, including the one that asked).
+  Either instantly invalidates every other token that user has ever been issued, closing
+  the "no revocation mechanism" gap for a "remember me" token that otherwise never
+  expires.
+- **Forgotten passwords** — `POST /auth/forgot-password` / `POST /auth/reset-password`
+  ("Forgot password?" on both clients' sign-in screens) email a single-use, 1-hour reset
+  link. Requires SMTP to be configured (new `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/
+  `SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` env vars, `server/.env.example` has the full
+  writeup) — genuinely optional, since nothing else in this app has ever needed
+  server-sent email; a server with none of those set just reports the feature as
+  unavailable rather than breaking.
+- **Closeable registration** — `REGISTRATION_ENABLED=false` closes `/auth/register` once
+  a deployment's intended group has signed up, for a server meant for a fixed set of
+  people rather than the general public. Off by default.
+- **Enter an address**, as a third way to set a job's location (mobile), alongside "Use My
+  Current Location" and "Choose on Map" — a search box inside the map picker resolves a
+  typed address to coordinates via the device's own geocoder, then centers the map there
+  for a final visual check/adjustment. Works even on a build with no Google Maps API key
+  configured (the device geocoder doesn't depend on it), so it also serves as a real
+  fallback when the map itself can't be shown.
+
+### Fixed
+
+- A body-less authenticated `POST` (the new `logout-everywhere` route, the first one this
+  server has ever had) failed outright with a 400 — Fastify rejects any request carrying
+  `Content-Type: application/json` with a genuinely empty body. Both clients' shared
+  `request()` helper now only sets that header when actually sending a body.
+
 ## [2.0.10] - 2026-09-15
 
 ### Fixed

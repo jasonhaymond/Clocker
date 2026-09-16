@@ -16,7 +16,7 @@ module.exports = {
     name: "Clocker",
     slug: "clocker",
     scheme: "clocker",
-    version: "2.0.10",
+    version: "2.1.0",
     runtimeVersion: {
       policy: "appVersion",
     },

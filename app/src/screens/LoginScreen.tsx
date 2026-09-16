@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
-import { getCaptcha } from "../sync/api";
+import { forgotPassword, getCaptcha } from "../sync/api";
 import { useTheme, type ThemeColors } from "../theme/ThemeContext";
 
 export function LoginScreen() {
   const { signIn, signUp } = useAuth();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
+  const [mode, setMode] = useState<"signIn" | "signUp" | "forgotPassword">("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -16,6 +16,7 @@ export function LoginScreen() {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState<string | null>(null);
 
   const refreshCaptcha = useCallback(() => {
     setCaptchaAnswer("");
@@ -43,6 +44,60 @@ export function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function submitForgotPassword() {
+    setError(null);
+    setForgotPasswordMessage(null);
+    setLoading(true);
+    try {
+      const { message } = await forgotPassword(email.trim());
+      setForgotPasswordMessage(message);
+    } catch (e: any) {
+      setError(e?.message ?? "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (mode === "forgotPassword") {
+    return (
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <Image source={require("../../assets/logo-mark.png")} style={styles.logo} />
+        <Text style={styles.title}>Reset Password</Text>
+        <Text style={styles.subtitle}>
+          Enter your account email. If it's registered, we'll send a link to set a new password — open it in a
+          browser to finish.
+        </Text>
+        {forgotPasswordMessage ? (
+          <Text style={styles.forgotPasswordSuccess}>{forgotPasswordMessage}</Text>
+        ) : (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <TouchableOpacity style={styles.button} onPress={submitForgotPassword} disabled={loading || !email}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send Reset Link</Text>}
+            </TouchableOpacity>
+          </>
+        )}
+        <TouchableOpacity
+          onPress={() => {
+            setMode("signIn");
+            setError(null);
+            setForgotPasswordMessage(null);
+          }}
+        >
+          <Text style={styles.switchText}>Back to sign in</Text>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    );
   }
 
   return (
@@ -96,6 +151,11 @@ export function LoginScreen() {
           {mode === "signIn" ? "Need an account? Sign up" : "Already have an account? Sign in"}
         </Text>
       </TouchableOpacity>
+      {mode === "signIn" && (
+        <TouchableOpacity onPress={() => setMode("forgotPassword")}>
+          <Text style={styles.forgotPasswordLink}>Forgot password?</Text>
+        </TouchableOpacity>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -131,6 +191,8 @@ function createStyles(colors: ThemeColors) {
     button: { backgroundColor: colors.primaryFill, borderRadius: 10, padding: 16, alignItems: "center", marginTop: 8 },
     buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: "600" },
     switchText: { textAlign: "center", color: colors.primary, marginTop: 16 },
+    forgotPasswordLink: { textAlign: "center", color: colors.textMuted3, marginTop: 12, fontSize: 13 },
+    forgotPasswordSuccess: { textAlign: "center", color: colors.textSecondary, fontSize: 15, marginBottom: 16 },
     error: { color: colors.danger, textAlign: "center", marginBottom: 8 },
   });
 }

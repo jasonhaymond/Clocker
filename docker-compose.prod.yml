@@ -36,6 +36,17 @@ services:
       PORT: 3001
       CORS_ORIGIN: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
       PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env.prod to your server's hostname}
+      # All optional — see server/.env.example for what each does. Left blank by default
+      # so a server that hasn't set these up doesn't fail to start; the features that
+      # depend on them (closing registration, password-reset email) just report
+      # themselves as unavailable instead.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       - postgres
 

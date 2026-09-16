@@ -29,6 +29,13 @@ export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
+// Whether the current session was signed in with "remember me" on (localStorage) vs. off
+// (sessionStorage). Used when replacing the token after a password change, so the fresh
+// one gets stored the same way the original sign-in chose.
+export function isTokenPersisted(): boolean {
+  return localStorage.getItem(TOKEN_KEY) !== null;
+}
+
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -39,7 +46,13 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Only set when actually sending a body — Fastify's default JSON parser rejects a
+  // request with Content-Type: application/json and a genuinely empty body outright
+  // (FST_ERR_CTP_EMPTY_JSON_BODY), which every body-less authenticated POST here (e.g.
+  // logout-everywhere) would otherwise hit. Discovered the hard way once this app added
+  // its first one — every earlier POST always sent a real JSON body.
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (options.auth) {
     const token = getToken();
     if (!token) throw new ApiError(401, "Not signed in");
@@ -89,6 +102,22 @@ export function register(credentials: Credentials) {
 
 export function login(credentials: Credentials) {
   return request<{ token: string; userId: string }>("/auth/login", { method: "POST", body: credentials });
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return request<{ token: string }>("/auth/change-password", { method: "POST", body: { currentPassword, newPassword }, auth: true });
+}
+
+export function logoutEverywhere() {
+  return request<{ ok: true }>("/auth/logout-everywhere", { method: "POST", auth: true });
+}
+
+export function forgotPassword(email: string) {
+  return request<{ message: string }>("/auth/forgot-password", { method: "POST", body: { email } });
+}
+
+export function resetPassword(token: string, newPassword: string) {
+  return request<{ message: string }>("/auth/reset-password", { method: "POST", body: { token, newPassword } });
 }
 
 export interface PushPayload {

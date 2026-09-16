@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getServerUpdateStatus, triggerServerUpdate, type UpdateStatus } from "../api";
+import { changePassword, getServerUpdateStatus, isTokenPersisted, logoutEverywhere, setToken, triggerServerUpdate, type UpdateStatus } from "../api";
 import { useStore } from "../store";
 import { useTheme, type ThemeMode } from "../theme";
 import { BackupsScreen } from "./BackupsScreen";
@@ -23,6 +23,15 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
   const [triggering, setTriggering] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showPreviousLog, setShowPreviousLog] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordDone, setChangePasswordDone] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
+  const [logoutEverywhereError, setLogoutEverywhereError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -54,6 +63,38 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
       .catch(() => {});
     return stopPolling;
   }, [pollStatus, stopPolling]);
+
+  async function submitChangePassword() {
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError("New password and confirmation don't match.");
+      return;
+    }
+    setChangePasswordError(null);
+    setChangingPassword(true);
+    try {
+      const persisted = isTokenPersisted();
+      const { token } = await changePassword(currentPassword, newPassword);
+      setToken(token, persisted);
+      setChangePasswordDone(true);
+    } catch (err) {
+      setChangePasswordError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  async function doLogoutEverywhere() {
+    if (!confirm("This signs out every device and browser currently signed into your account, including this one. Continue?")) return;
+    setLoggingOutEverywhere(true);
+    setLogoutEverywhereError(null);
+    try {
+      await logoutEverywhere();
+      onSignOut();
+    } catch (err) {
+      setLogoutEverywhereError(err instanceof Error ? err.message : "Something went wrong");
+      setLoggingOutEverywhere(false);
+    }
+  }
 
   async function updateServer() {
     if (!confirm("Pull the latest code and redeploy the server and web client?")) return;
@@ -149,6 +190,48 @@ export function SettingsScreen({ onSignOut }: { onSignOut: () => void }) {
         </button>
         <button className="secondary-button" onClick={() => setShowRecentlyDeleted(true)}>
           Recently Deleted
+        </button>
+      </section>
+
+      <section>
+        <div className="row-title">Account</div>
+        {!showChangePassword ? (
+          <button className="secondary-button" onClick={() => setShowChangePassword(true)}>
+            Change Password
+          </button>
+        ) : changePasswordDone ? (
+          <p className="hint">
+            Password changed. You're still signed in here — every other device or browser you were signed into now
+            needs to sign in again.
+          </p>
+        ) : (
+          <>
+            <input
+              type="password"
+              placeholder="Current password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
+            <input type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            {changePasswordError && <p className="error">{changePasswordError}</p>}
+            <button
+              className="secondary-button"
+              onClick={submitChangePassword}
+              disabled={changingPassword || !currentPassword || newPassword.length < 8 || !confirmPassword}
+            >
+              {changingPassword ? "Changing…" : "Change Password"}
+            </button>
+          </>
+        )}
+        {logoutEverywhereError && <p className="error">{logoutEverywhereError}</p>}
+        <button className="danger-button" onClick={doLogoutEverywhere} disabled={loggingOutEverywhere}>
+          {loggingOutEverywhere ? "Logging out…" : "Log Out Everywhere"}
         </button>
       </section>
 

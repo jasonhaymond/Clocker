@@ -285,6 +285,12 @@ hr {
   text-decoration: underline;
   padding: 0;
 }
+.link.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+  display: block;
+  margin-top: 10px;
+}
 
 /* Auth */
 .auth-card {

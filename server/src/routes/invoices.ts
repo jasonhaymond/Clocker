@@ -4,21 +4,12 @@ import PDFDocument from "pdfkit";
 import { z } from "zod";
 import { requireAuth } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { publicBaseUrl } from "../lib/publicUrl.js";
 
 // Invoices are the one part of this app meant to be viewed by someone who doesn't have a
 // Clocker account at all (a client) — see docs/data-model.md's Invoice model comment and
 // docs/architecture.md for the full reasoning. Two authenticated routes create/list them;
 // two public routes (keyed by an unguessable shareToken, not a login) serve the result.
-
-// The server's own externally-reachable base URL, for building an absolute shareable
-// link — can't be inferred from the request alone in every deployment shape (behind a
-// reverse proxy, etc.), so it's configured explicitly. Falls back to the request's own
-// origin for local dev, where PUBLIC_URL is typically left unset.
-function publicBaseUrl(request: { protocol: string; hostname: string; headers: Record<string, unknown> }): string {
-  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
-  const host = (request.headers["host"] as string | undefined) ?? request.hostname;
-  return `${request.protocol}://${host}`;
-}
 
 function toIso(date: Date | null): string | null {
   return date ? date.toISOString() : null;

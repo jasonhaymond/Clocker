@@ -14,7 +14,7 @@ import {
   IoTime,
   IoTimeOutline,
 } from "react-icons/io5";
-import { clearToken, getCaptcha, getToken, login, register, setToken } from "./api";
+import { clearToken, forgotPassword, getCaptcha, getToken, login, register, resetPassword, setToken } from "./api";
 import { StoreProvider, useStore } from "./store";
 import { ClockScreen } from "./screens/ClockScreen";
 import { JobsScreen } from "./screens/JobsScreen";
@@ -24,8 +24,120 @@ import { ExportScreen } from "./screens/ExportScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { HelpScreen } from "./screens/HelpScreen";
 
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await forgotPassword(email);
+      setMessage(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="auth-card">
+      <h1 className="brand-title">
+        <img src="/logo-mark.png" alt="" className="brand-logo" />
+        Clocker
+      </h1>
+      {message ? (
+        <p className="hint">{message}</p>
+      ) : (
+        <form onSubmit={submit}>
+          <p className="hint">Enter your account email — if it's registered, we'll send a link to set a new password.</p>
+          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          {error && <p className="error">{error}</p>}
+          <button type="submit" disabled={busy || !email}>
+            Send Reset Link
+          </button>
+        </form>
+      )}
+      <button className="link" onClick={onBack}>
+        Back to sign in
+      </button>
+    </div>
+  );
+}
+
+function ResetPasswordForm({ token }: { token: string }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("New password and confirmation don't match.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await resetPassword(token, newPassword);
+      setMessage(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="auth-card">
+      <h1 className="brand-title">
+        <img src="/logo-mark.png" alt="" className="brand-logo" />
+        Clocker
+      </h1>
+      {message ? (
+        <>
+          <p className="hint">{message}</p>
+          <a className="link" href="/">
+            Go to sign in
+          </a>
+        </>
+      ) : (
+        <form onSubmit={submit}>
+          <p className="hint">Choose a new password for your account.</p>
+          <input
+            type="password"
+            placeholder="New password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Confirm new password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          {error && <p className="error">{error}</p>}
+          <button type="submit" disabled={busy || newPassword.length < 8 || !confirmPassword}>
+            Reset Password
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgotPassword">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -59,6 +171,10 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (mode === "forgotPassword") {
+    return <ForgotPasswordForm onBack={() => setMode("login")} />;
   }
 
   return (
@@ -104,6 +220,11 @@ function AuthForm({ onSignedIn }: { onSignedIn: () => void }) {
       <button className="link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
         {mode === "login" ? "Need an account? Register" : "Have an account? Sign in"}
       </button>
+      {mode === "login" && (
+        <button className="link muted" onClick={() => setMode("forgotPassword")}>
+          Forgot password?
+        </button>
+      )}
     </div>
   );
 }
@@ -295,6 +416,16 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
 
 export function App() {
   const [signedIn, setSignedIn] = useState(() => getToken() !== null);
+
+  // Reachable by clicking the link in a password-reset email, regardless of whether
+  // this browser happens to already be signed in — the whole point of this flow is
+  // recovering an account you may be locked out of. Checked ahead of the signed-in
+  // branch below rather than folded into AuthForm, since AuthForm only ever renders
+  // when signed out.
+  const resetToken = new URLSearchParams(window.location.search).get("token");
+  if (window.location.pathname === "/reset-password" && resetToken) {
+    return <ResetPasswordForm token={resetToken} />;
+  }
 
   if (!signedIn) {
     return <AuthForm onSignedIn={() => setSignedIn(true)} />;

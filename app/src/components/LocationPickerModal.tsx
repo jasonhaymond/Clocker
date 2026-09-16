@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import * as Location from "expo-location";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, type MapPressEvent, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getCurrentLocation } from "../lib/locationTracking";
@@ -27,9 +28,11 @@ const MAPS_UNAVAILABLE =
   Platform.OS === "android" && !Constants.expoConfig?.android?.config?.googleMaps?.apiKey;
 
 // A full-screen map for dropping a pin anywhere (not just where you're standing — see
-// JobDetailModal's "Use My Current Location" button for that simpler path). Just picks a
-// point; the radius is chosen separately by JobDetailModal after this closes, same as it
-// is for the current-location path, so both end at the same place.
+// JobDetailModal's "Use My Current Location" button for that simpler path), plus a
+// text-address search that resolves to coordinates without needing to find the spot on
+// the map by hand. Just picks a point; the radius is chosen separately by JobDetailModal
+// after this closes, same as it is for the current-location path, so all three end at the
+// same place.
 export function LocationPickerModal({
   initialCoords,
   onConfirm,
@@ -46,10 +49,15 @@ export function LocationPickerModal({
     initialCoords ? { ...initialCoords, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA } : null,
   );
   const [coords, setCoords] = useState<Coords | null>(initialCoords);
+  const [addressQuery, setAddressQuery] = useState("");
+  const [addressSearching, setAddressSearching] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const mapRef = useRef<MapView>(null);
 
   // No initial coordinates (a job with no location yet) — center the map on wherever you
   // currently are, a reasonable starting point for most jobs, rather than an arbitrary
-  // default like (0, 0).
+  // default like (0, 0). Skipped when the map itself can't render — no point locating
+  // just to center a view nobody will see.
   useEffect(() => {
     if (region || MAPS_UNAVAILABLE) return;
     getCurrentLocation().then((current) => {
@@ -63,6 +71,49 @@ export function LocationPickerModal({
     setCoords(e.nativeEvent.coordinate);
   }
 
+  // Uses the device's own geocoder (Android: the OS's built-in Geocoder class; iOS: Apple's
+  // equivalent) — independent of the Google Maps API key MAPS_UNAVAILABLE checks above, so
+  // this still works as a real way to set a location even on a build with no Maps key
+  // configured, just without a map to visually confirm the pin on afterward. Android's
+  // Geocoder oddly requires location permission for this even though it's a plain address
+  // lookup, not asking where the device itself is — requested here, same pattern as
+  // getCurrentLocation(), rather than letting geocodeAsync throw an opaque error.
+  async function searchAddress() {
+    const query = addressQuery.trim();
+    if (!query) return;
+    setAddressSearching(true);
+    setAddressError(null);
+    try {
+      const existing = await Location.getForegroundPermissionsAsync();
+      if (existing.status !== "granted") {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        if (requested.status !== "granted") {
+          setAddressError("Address search needs location permission — grant it in your phone's Settings, or drop a pin directly instead.");
+          return;
+        }
+      }
+      const results = await Location.geocodeAsync(query);
+      if (results.length === 0) {
+        setAddressError("No matches for that address. Try being more specific, or drop a pin directly.");
+        return;
+      }
+      const { latitude, longitude } = results[0];
+      const found = { latitude, longitude };
+      setCoords(found);
+      // Imperative animateToRegion rather than a controlled `region` prop — a controlled
+      // region would fight the user's own free panning/zooming on every render instead of
+      // just re-centering once, here, when a search actually resolves.
+      if (!MAPS_UNAVAILABLE) {
+        setRegion({ ...found, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA });
+        mapRef.current?.animateToRegion({ ...found, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA }, 400);
+      }
+    } catch {
+      setAddressError("Couldn't search for an address right now — check your connection and try again.");
+    } finally {
+      setAddressSearching(false);
+    }
+  }
+
   return (
     <Modal visible animationType="slide" onRequestClose={onCancel}>
       <View style={styles.container}>
@@ -71,20 +122,43 @@ export function LocationPickerModal({
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Choose Location</Text>
-          <TouchableOpacity onPress={() => coords && onConfirm(coords)} disabled={!coords || MAPS_UNAVAILABLE}>
-            <Text style={[styles.confirmText, (!coords || MAPS_UNAVAILABLE) && styles.confirmTextDisabled]}>Done</Text>
+          <TouchableOpacity onPress={() => coords && onConfirm(coords)} disabled={!coords}>
+            <Text style={[styles.confirmText, !coords && styles.confirmTextDisabled]}>Done</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for an address"
+            placeholderTextColor={colors.textMuted2}
+            value={addressQuery}
+            onChangeText={setAddressQuery}
+            onSubmitEditing={searchAddress}
+            returnKeyType="search"
+          />
+          <TouchableOpacity style={styles.searchButton} onPress={searchAddress} disabled={addressSearching || !addressQuery.trim()}>
+            {addressSearching ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.searchButtonText}>Search</Text>}
+          </TouchableOpacity>
+        </View>
+        {addressError && <Text style={styles.addressError}>{addressError}</Text>}
+
         {MAPS_UNAVAILABLE ? (
           <View style={styles.unavailable}>
             <Text style={styles.unavailableTitle}>Map picker unavailable</Text>
             <Text style={styles.unavailableBody}>
-              This build isn't configured with a Google Maps key, so the map can't be shown. Use "Use My Current
-              Location" instead, or contact whoever manages this deployment.
+              This build isn't configured with a Google Maps key, so the map itself can't be shown. Search for an
+              address above to set an exact location anyway, use "Use My Current Location" instead, or contact
+              whoever manages this deployment.
             </Text>
+            {coords && (
+              <Text style={styles.unavailableCoords}>
+                Selected: {coords.latitude.toFixed(5)}, {coords.longitude.toFixed(5)}
+              </Text>
+            )}
           </View>
         ) : region ? (
-          <MapView style={styles.map} initialRegion={region} onPress={handlePress}>
+          <MapView ref={mapRef} style={styles.map} initialRegion={region} onPress={handlePress}>
             {coords && <Marker coordinate={coords} draggable onDragEnd={(e) => setCoords(e.nativeEvent.coordinate)} />}
           </MapView>
         ) : (
@@ -114,11 +188,26 @@ function createStyles(colors: ThemeColors) {
     cancelText: { color: colors.textSecondary, fontSize: 15 },
     confirmText: { color: colors.primary, fontSize: 15, fontWeight: "700" },
     confirmTextDisabled: { color: colors.textMuted },
+    searchRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingTop: 10 },
+    searchInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: 10,
+      padding: 10,
+      fontSize: 14,
+      color: colors.text,
+      backgroundColor: colors.card,
+    },
+    searchButton: { backgroundColor: colors.primaryFill, borderRadius: 10, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
+    searchButtonText: { color: colors.onPrimary, fontWeight: "600", fontSize: 14 },
+    addressError: { color: colors.danger, fontSize: 12, paddingHorizontal: 16, paddingTop: 6 },
     map: { flex: 1 },
     loading: { flex: 1, alignItems: "center", justifyContent: "center" },
     unavailable: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 8 },
     unavailableTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
     unavailableBody: { fontSize: 14, color: colors.textSecondary, textAlign: "center", lineHeight: 20 },
+    unavailableCoords: { fontSize: 13, color: colors.text, fontWeight: "600", marginTop: 8 },
     hint: { textAlign: "center", color: colors.textMuted2, fontSize: 12, padding: 10 },
   });
 }

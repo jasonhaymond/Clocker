@@ -59,6 +59,13 @@ The first time you open Clocker, you'll see a sign-in screen.
 - **Remember me** — leave this switched on (the default) so you stay signed in. Turn it
   off only on a shared or public device, where you want to be signed out automatically
   after a day.
+- **Forgot password?** Tap it, enter your email, and — if whoever runs this server has set
+  that up — you'll get an email with a link to set a new password. If nothing arrives
+  after a few minutes, ask them; some Clocker servers don't have this turned on, in which
+  case they can reset your password for you directly.
+- **Registration closed?** If you try to register and see "Registration is currently
+  closed on this server," whoever runs it has limited who can sign up — ask them for an
+  account instead.
 
 Your Clocker account is separate on each *server* — if you sign in through the phone app
 and the website but they're pointed at different Clocker servers, you'll need to register
@@ -201,10 +208,14 @@ every time, a job can be set up to notice when you arrive at or leave its locati
 
 Open a job (**Jobs** tab → tap the job → **Location**), and:
 
-1. **Set the job's location**, either by standing there and tapping **Use My Current
-   Location**, or by tapping **Choose on Map** and dropping a pin anywhere. Pick how wide
-   an area should count (100m/250m/500m/1000m) — wider is more forgiving of GPS drift,
-   narrower avoids false triggers from a job site close to somewhere else you spend time.
+1. **Set the job's location** — three ways: stand there and tap **Use My Current
+   Location**; tap **Choose on Map** and drop a pin anywhere, dragging it to fine-tune;
+   or, from inside **Choose on Map**, type an address into the search box at the top and
+   tap **Search** to jump straight there (useful for a job site you haven't visited yet,
+   or one you'd rather not stand at just to set it up). Whichever way you use, pick how
+   wide an area should count afterward (100m/250m/500m/1000m) — wider is more forgiving
+   of GPS drift, narrower avoids false triggers from a job site close to somewhere else
+   you spend time.
 2. Turn on **Location awareness**. This *prompts* you — arrive or leave, and Clocker asks
    "Clock in?"/"Clock out?" the next time you open the app (with a notification too, so
    you notice even before you open it). Nothing happens until you answer.
@@ -405,6 +416,12 @@ Open the menu (☰) and choose **Settings**.
 - **Require fingerprint to open** *(Android, if your phone supports it)* — locks the app
   behind your fingerprint. You'll need it again on a fresh launch, or after the app's been
   in the background a little while (a quick app-switch doesn't ask again).
+- **Account** — **Change Password** (asks for your current password first); this device
+  stays signed in, but any other device or browser you were signed into needs to sign in
+  again afterward. **Log Out Everywhere** signs out every device and browser currently
+  signed into your account, including this one — use it if you think a device you've lost
+  access to (a stolen phone, a shared computer you forgot to sign out of) still has a
+  working session.
 - **Sign Out** — signs you out of this device. Your data stays safely on the server;
   signing back in brings it all back.
 

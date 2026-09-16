@@ -23,3 +23,10 @@ export async function setToken(token: string | null, persist = true): Promise<vo
     await AsyncStorage.removeItem(TOKEN_KEY);
   }
 }
+
+// Whether the current session was signed in with "remember me" on (token written to
+// AsyncStorage) vs. off (in-memory only). Used when replacing the token after a password
+// change, so the fresh one gets stored the same way the original sign-in chose.
+export async function isTokenPersisted(): Promise<boolean> {
+  return (await AsyncStorage.getItem(TOKEN_KEY)) !== null;
+}

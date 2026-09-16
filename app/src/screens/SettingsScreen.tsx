@@ -13,6 +13,7 @@ import { useTheme, type ThemeColors, type ThemeMode } from "../theme/ThemeContex
 import { applyUpdate, checkForUpdate, currentRuntimeInfo } from "../updates/updates";
 import { updateState, type UpdateState } from "../updates/updateState";
 import { BackupsScreen } from "./BackupsScreen";
+import { ChangePasswordScreen } from "./ChangePasswordScreen";
 import { ImportScreen } from "./ImportScreen";
 import { RecentlyDeletedScreen } from "./RecentlyDeletedScreen";
 
@@ -44,7 +45,7 @@ function updateStatusText(state: UpdateState): string {
 }
 
 export function SettingsScreen({ onClose }: { onClose: () => void }) {
-  const { signOut } = useAuth();
+  const { signOut, logoutEverywhere } = useAuth();
   const { mode, setMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -60,6 +61,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [showBackups, setShowBackups] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showRecentlyDeleted, setShowRecentlyDeleted] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
+  const [logoutEverywhereError, setLogoutEverywhereError] = useState<string | null>(null);
   const [appLockAvailable, setAppLockAvailable] = useState(false);
   const [appLockEnabled, setAppLockEnabledState] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,6 +129,31 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     } finally {
       setTriggeringServerUpdate(false);
     }
+  }
+
+  async function doLogoutEverywhere() {
+    setLoggingOutEverywhere(true);
+    setLogoutEverywhereError(null);
+    try {
+      await logoutEverywhere();
+    } catch (e: any) {
+      setLogoutEverywhereError(e?.message ?? "Something went wrong");
+      setLoggingOutEverywhere(false);
+    }
+    // No `finally` for the busy flag on success — logoutEverywhere() signs this device
+    // out too, so RootNavigator unmounts this screen before there's anywhere left to
+    // reset the state on.
+  }
+
+  function confirmLogoutEverywhere() {
+    Alert.alert(
+      "Log out everywhere",
+      "This signs out every device and browser currently signed into your account, including this one. You'll need to sign in again here too.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log Out Everywhere", style: "destructive", onPress: doLogoutEverywhere },
+      ],
+    );
   }
 
   function confirmUpdateServer() {
@@ -267,6 +296,21 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.label}>Account</Text>
+          <TouchableOpacity style={[styles.syncButton, styles.accountButton]} onPress={() => setShowChangePassword(true)}>
+            <Text style={styles.syncButtonText}>Change Password</Text>
+          </TouchableOpacity>
+          {logoutEverywhereError && <Text style={styles.error}>{logoutEverywhereError}</Text>}
+          <TouchableOpacity
+            style={[styles.syncButton, styles.accountButton, styles.dangerButton]}
+            onPress={confirmLogoutEverywhere}
+            disabled={loggingOutEverywhere}
+          >
+            {loggingOutEverywhere ? <ActivityIndicator color="#fff" /> : <Text style={styles.syncButtonText}>Log Out Everywhere</Text>}
+          </TouchableOpacity>
+        </View>
+
         {appLockAvailable && (
           <View style={styles.card}>
             <View style={styles.lockRow}>
@@ -289,6 +333,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         {showBackups && <BackupsScreen onClose={() => setShowBackups(false)} />}
         {showImport && <ImportScreen onClose={() => setShowImport(false)} />}
         {showRecentlyDeleted && <RecentlyDeletedScreen onClose={() => setShowRecentlyDeleted(false)} />}
+        {showChangePassword && <ChangePasswordScreen onClose={() => setShowChangePassword(false)} />}
       </ScrollView>
     </Modal>
   );
@@ -317,6 +362,8 @@ function createStyles(colors: ThemeColors) {
     updateButton: { backgroundColor: colors.successFill, borderRadius: 10, padding: 11, alignItems: "center" },
     checkButton: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary },
     checkButtonText: { color: colors.primary, fontWeight: "600", fontSize: 14 },
+    accountButton: { marginBottom: 8 },
+    dangerButton: { backgroundColor: colors.danger, marginBottom: 0 },
     signOutButton: { padding: 11, alignItems: "center" },
     signOutText: { color: colors.danger, fontWeight: "600", fontSize: 14 },
     logToggle: { color: colors.primary, fontSize: 13, marginTop: 10, textAlign: "center" },

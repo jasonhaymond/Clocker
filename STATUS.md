@@ -799,6 +799,103 @@ to `com.haymondtechnologies.clocker` + the signing fingerprint from `eas credent
 `ANDROID_GOOGLE_MAPS_API_KEY` in `app/.env`), including the crash caveat from the
 amendment above. `2.0.10`, docs-only.
 
+**Amended again (2026-09-15, later session):** the user asked to "finish this app out so
+it's deployable by multiple people and secure," close every gap related to that, and
+separately add address-entry as a third way to set a job's location. Before implementing,
+used `AskUserQuestion` to pin down three genuinely open design decisions rather than
+guessing: (1) token revocation via change-password **plus** a separate "Log Out
+Everywhere" button — both approved; (2) whether real SMTP-based forgot-password was in
+scope now, given nothing in this app has ever sent server-initiated email before — user
+said yes, build it; (3) an opt-in registration-gating env var — approved. `2.1.0` (minor —
+real new capability, matching this project's versioning policy).
+
+**Server-side (the security-critical half):**
+- `User` gained `tokenVersion` (bumped on password change/logout-everywhere, checked
+  against every JWT's embedded value in `requireAuth` — the only revocation mechanism
+  available for an otherwise-stateless token) and `passwordResetTokenHash`/
+  `passwordResetExpiresAt` (a single in-flight reset request per user, storing a sha256
+  hash of the token, never the raw value — same principle as `passwordHash`). New
+  migration, applied against the dev Postgres.
+- Four new `server/src/routes/auth.ts` routes: `POST /auth/change-password` (requires the
+  current password, returns a fresh token so the device that just changed it isn't logged
+  out by its own action), `POST /auth/logout-everywhere` (bumps `tokenVersion` with no new
+  token — deliberately logs out the calling device too), `POST /auth/forgot-password`
+  (always the same generic response regardless of whether the email exists, to avoid
+  enumeration — the one exception being a `503` when SMTP isn't configured at all on this
+  server, which is safe to disclose since it's a blanket deployment fact, not
+  email-specific), `POST /auth/reset-password` (single-use, 1-hour token, also bumps
+  `tokenVersion`).
+- New `server/src/lib/email.ts` (`nodemailer`, new dependency) — `isConfigured()` gate so
+  a server that hasn't set up `SMTP_*` doesn't crash, it just reports the feature
+  unavailable. New `server/src/lib/publicUrl.ts`, extracted from `invoices.ts` (which now
+  imports it) since the reset-link email needed the exact same "this server's own
+  externally-reachable URL" logic.
+- Registration gating: `REGISTRATION_ENABLED=false` checked before even validating the
+  request body in `/auth/register`, so a closed server doesn't reveal anything about a
+  given email/CAPTCHA combination either.
+- `docker-compose.prod.yml`/`.external-proxy.yml` and `.env.prod.example` updated to pass
+  through the new optional env vars (blank by default, nothing breaks for an existing
+  deployment that doesn't set them).
+
+**Caught and fixed two real bugs along the way, neither the feature being built at the
+time:**
+- **A body-less authenticated POST failed outright** — `logout-everywhere` is the first
+  one this server has ever had (every earlier POST always sent a real JSON body), and
+  Fastify rejects `Content-Type: application/json` paired with a genuinely empty body
+  (`FST_ERR_CTP_EMPTY_JSON_BODY`). Found via a live Playwright run that showed a "Bad
+  Request" toast where a clean logout was expected — not something typecheck could ever
+  have caught, since the request was structurally valid TypeScript, just something the
+  server's body parser rejects at the HTTP layer. Fixed by having both clients' shared
+  `request()` helper only set that header when actually sending a body. This also
+  quietly firms up `/update`/`/backup/run`'s already-existing body-less POSTs — those
+  go through `scripts/host-agent.mjs`'s own raw `node:http` server, a separate process
+  that was never affected by this bug in the first place, but the fix is correct
+  regardless of which server receives it.
+- **Android's `geocodeAsync` requires location permission**, discovered by actually
+  reading `expo-location`'s Android source (`LocationModule.kt`) rather than assuming —
+  a plain address-to-coordinates lookup throws `LocationUnauthorizedException` without
+  it, even though it isn't asking where the device itself is. Fixed by requesting
+  permission inline before geocoding, same pattern `getCurrentLocation()` already uses,
+  instead of surfacing Android's opaque exception as a generic "something went wrong."
+
+**Client-side:**
+- `AuthContext`/`app/src/sync/api.ts` (mobile) and `web/src/api.ts` (web) both gained
+  `changePassword`/`logoutEverywhere`/`forgotPassword`/`resetPassword`. New
+  `app/src/screens/ChangePasswordScreen.tsx`; `SettingsScreen.tsx` on both clients gained
+  an "Account" card (Change Password + Log Out Everywhere). `LoginScreen.tsx` (mobile) and
+  `AuthForm` (web) both gained a "Forgot password?" flow. Web additionally needed a real
+  `/reset-password?token=...` landing page (`ResetPasswordForm` in `App.tsx`) — reachable
+  with no router (web has none) via a plain `window.location.pathname`/`URLSearchParams`
+  check ahead of the signed-in branch, since resetting a password has to work whether or
+  not this browser happens to already be signed in. `web/Caddyfile`'s existing SPA
+  fallback (`try_files {path} /index.html`) already made this reachable with no server
+  changes.
+- `app/src/components/LocationPickerModal.tsx` gained an address-search bar. Real finding
+  while researching it: Android's geocoder is the OS's own `Geocoder` class, completely
+  independent of the Google Maps API key — so address search still works as a genuine
+  fallback even on a build with `MAPS_UNAVAILABLE` (§4), just without a map to visually
+  confirm the result on afterward. Restructured accordingly: the map-unavailable branch
+  now shows the found coordinates and lets "Done" proceed, rather than blocking the whole
+  modal on having a working map.
+
+**Verification — the most thorough of this session, matching the security-critical
+surface area:** a full live end-to-end pass against the real dev server + dev Postgres +
+a real throwaway local SMTP catcher (`rnwood/smtp4dev` via Docker, not mocked) covering
+register → change-password → old token rejected/new token works →
+logout-everywhere → same token now also rejected → forgot-password (real vs.
+nonexistent email get identical responses) → **a real email actually delivered** →
+token extracted from its real body → reset-password → single-use enforced → login with
+the new password → old password rejected. Registration gating and the SMTP-not-configured
+503 both verified directly. Repeated as a full Playwright browser pass against the web
+client specifically (register → change password → sign out → sign in with new password →
+log out everywhere with the confirm dialog → forgot password → open the real emailed
+link → reset → sign in with the reset password), screenshots taken and inspected at each
+step, light-mode/mobile-width. Full four-workspace typecheck, `shared`'s 31-test suite,
+and `server`'s build all clean throughout. **Not verified**: the address-search feature
+(typecheck only, no device/emulator access, same standing caveat as every other
+native-module feature this session) and the web reset-password page at a desktop
+viewport width (verified at mobile width only, though the change is layout-trivial).
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -825,12 +922,13 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.0.10` as of this session
+full stop. All five (four packages, one version) are at `2.1.0` as of this session
 (`2.0.0` was major, per the user's explicit instruction — this batch was substantial
 enough, and the user asked for it directly, rather than following the usual "new
 capability = minor" default used for every bump before it; `2.0.1`-`2.0.10` right after it
-were same-day
-patches fixing deploy tooling and the EAS project link, see §4); the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
+were same-day patches fixing deploy tooling and the EAS project link, see §4; `2.1.0` is
+the next real minor, back to the normal policy — the multi-user security batch above);
+the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked
 in from `web/package.json` via
@@ -1592,13 +1690,12 @@ Verified present in the repo (code + docs, not just described in memory):
   foreground service
   actually starting, the notification surviving the app being backgrounded/swiped from
   recents, and correct behavior when clocked into more than one job at once.
-- **JWT refresh isn't implemented** — a "remember me" token (default) never expires, with
-  no revocation short of rotating `JWT_SECRET` (logs out every device). Accepted as fine
-  for personal/single-user use; flagged as a real gap in
-  `docs/deployment.md#security-gaps-to-close-before-this-is-public`.
-  (CORS restriction and a bot-filtering CAPTCHA/rate-limiting on `/auth/login`/
-  `/auth/register`, previously listed here as gaps, have both since shipped — see §3. The
-  refresh-token gap above is the only item left in that doc section.)
+- ~~JWT refresh isn't implemented~~ — **resolved 2026-09-15, `2.1.0`**: a "remember me"
+  token still never expires by design (unchanged), but it's no longer true that there's
+  "no revocation short of rotating `JWT_SECRET`" — `tokenVersion` (§3) makes
+  `POST /auth/change-password`/`POST /auth/logout-everywhere` a real, per-user revocation
+  mechanism now. `docs/deployment.md#security-gaps-to-close-before-this-is-public` is
+  fully closed as of this session; nothing currently left in that doc section.
 - **The "Update Server" button has now actually been tried against the real `nextcloud`
   host (2026-09-12) and failed with a 405** clicking it from the web client. Diagnosed
   (no SSH access this session to confirm directly): the user's `nextcloud` deployment uses
