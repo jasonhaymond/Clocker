@@ -1,6 +1,34 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { wipeLocalDatabase } from "../db/database";
+import { takePendingLocationPrompts } from "../lib/locationTracking";
+import { cancelAllStaleShiftReminders } from "../lib/staleShiftReminder";
 import * as api from "../sync/api";
 import { getToken, isTokenPersisted, setToken } from "./tokenStore";
+
+// Sign-in/sign-up/sign-out (and logoutEverywhere, which ends in the same signed-out state
+// as sign-out) are the only places an *account switch* can happen on this device — as
+// opposed to changePassword, which stays on the same account. Clearing every
+// account-specific thing this device holds locally there is what keeps two accounts
+// sharing one device fully independent, matching the server's own per-user data isolation
+// (every table there is already scoped by userId; this is the client-side half of the
+// same guarantee):
+//   - the local SQLite mirror (jobs/shifts/etc.) — without this, a second account signing
+//     in would briefly see the first account's cached data, and any of the first
+//     account's *unsynced* outbox entries would get pushed to the server under the new
+//     account's token on the next sync.
+//   - scheduled "forgot to clock out" notifications, keyed by a shift id that's about to
+//     stop existing on this device.
+//   - a queued location-arrival/departure prompt, keyed by a job id likewise about to
+//     stop existing.
+// Best effort throughout: a cleanup failure shouldn't block the actual sign-in/out it's
+// attached to.
+async function wipeLocalDataForAccountSwitch(): Promise<void> {
+  try {
+    await Promise.all([wipeLocalDatabase(), cancelAllStaleShiftReminders(), takePendingLocationPrompts()]);
+  } catch (err) {
+    console.warn("Failed to clear local data on account switch", err);
+  }
+}
 
 interface SignInOptions {
   captchaId: string;
@@ -37,17 +65,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isSignedIn,
       signIn: async (email, password, { captchaId, captchaAnswer, rememberMe }) => {
         const { token } = await api.login({ email, password, captchaId, captchaAnswer, rememberMe });
+        await wipeLocalDataForAccountSwitch();
         await setToken(token, rememberMe);
         setIsSignedIn(true);
       },
       signUp: async (email, password, { captchaId, captchaAnswer, rememberMe }) => {
         const { token } = await api.register({ email, password, captchaId, captchaAnswer, rememberMe });
+        await wipeLocalDataForAccountSwitch();
         await setToken(token, rememberMe);
         setIsSignedIn(true);
       },
       signOut: async () => {
         await setToken(null);
         setIsSignedIn(false);
+        await wipeLocalDataForAccountSwitch();
       },
       // Bumps the server's tokenVersion, invalidating every token this user has ever
       // been issued — including the one this device is about to replace with the fresh
@@ -65,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await api.logoutEverywhere();
         await setToken(null);
         setIsSignedIn(false);
+        await wipeLocalDataForAccountSwitch();
       },
     }),
     [isReady, isSignedIn],

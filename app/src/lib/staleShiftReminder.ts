@@ -77,3 +77,13 @@ export async function cancelStaleShiftReminder(shiftId: string): Promise<void> {
   await writeNotificationIds(ids);
   await notifee.cancelTriggerNotification(notificationId).catch(() => {});
 }
+
+// Called on sign-out/sign-in (see AuthContext.tsx) — every id here refers to a shift that
+// belongs to whichever account is leaving this device, so a scheduled "Still clocked in?"
+// notification naming that account's job would otherwise still fire later under whatever
+// account happens to be signed in when it does.
+export async function cancelAllStaleShiftReminders(): Promise<void> {
+  const ids = await readNotificationIds();
+  await Promise.all(Object.values(ids).map((notificationId) => notifee.cancelTriggerNotification(notificationId).catch(() => {})));
+  await AsyncStorage.removeItem(NOTIFICATION_IDS_KEY);
+}

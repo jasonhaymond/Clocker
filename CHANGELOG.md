@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 starts now (2026-09-11) — earlier history isn't backfilled entry-by-entry; see `git log`
 and `STATUS.md`'s "Recent history highlights" for what shipped before this file existed.
 
+## [2.1.2] - 2026-09-16
+
+### Fixed
+
+- **Signing out on mobile didn't clear the local database.** The server has always
+  correctly scoped every table by the owning user (verified by re-auditing every read
+  and write path in `sync.ts`/`invoices.ts`), but on the phone app, a second account
+  signing in on a device that still held a first account's local SQLite mirror would
+  briefly see that account's cached jobs/shifts — and, more seriously, any of the first
+  account's *unsynced* outbox entries would get pushed to the server under the new
+  account's token on the very next sync, since the local outbox has no concept of which
+  account it belongs to. Sign-out, sign-in, sign-up, and "log out everywhere" now all
+  clear everything account-specific this device holds: the full local SQLite mirror,
+  scheduled "forgot to clock out" notifications, and any queued location-arrival prompt —
+  verified for real against a genuine SQLite database built from the app's actual
+  migrations, not just typechecked. Device-level *preferences* (theme, app lock,
+  quick-action target) are deliberately left alone, same as before — those describe the
+  device, not the account. `web/` was never affected (no local database to leak from).
+
 ## [2.1.1] - 2026-09-15
 
 ### Added

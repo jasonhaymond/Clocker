@@ -974,3 +974,29 @@ export async function setSyncCursor(value: string): Promise<void> {
     [value],
   );
 }
+
+// Clears every synced table plus the outbox and sync cursor — everything account-specific
+// this device holds locally. Called on both sign-out and sign-in/sign-up (see
+// app/src/auth/AuthContext.tsx): without this, a second account signing in on the same
+// device would briefly see the previous account's cached jobs/shifts, and worse, any of
+// the previous account's *unsynced* outbox entries would get pushed to the server under
+// the new account's token on the next sync — a real cross-account data leak, not just a
+// stale-UI cosmetic issue. Schema itself (tables, PRAGMA user_version) is left alone, only
+// rows are cleared, so this doesn't re-trigger migrations on the next getDb() call.
+export async function wipeLocalDatabase(): Promise<void> {
+  const db = await getDb();
+  await db.execAsync(`
+    BEGIN;
+    DELETE FROM pending_changes;
+    DELETE FROM sync_state;
+    DELETE FROM breaks;
+    DELETE FROM job_managers;
+    DELETE FROM shifts;
+    DELETE FROM rate_versions;
+    DELETE FROM rate_tiers;
+    DELETE FROM managers;
+    DELETE FROM jobs;
+    COMMIT;
+  `);
+  dbEvents.emit();
+}

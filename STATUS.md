@@ -941,6 +941,55 @@ purposeful "why, not what" comment style — verbose in absolute terms, but not 
 excessive relative to that existing convention, so left alone rather than trimmed for its
 own sake. `2.1.1`, docs/tooling-only.
 
+**Amended again (2026-09-16, later session):** the user asked to make each user account
+completely independent — jobs, shifts, invoices, all settings, nothing shared between
+accounts at all. Investigated before touching anything, since this could have meant "audit
+for a bug" or "this is already true, just confirm it."
+
+Server-side, it already was true, thoroughly: re-read every read/write path in
+`server/src/routes/sync.ts` and `invoices.ts` line by line. Every table traces to exactly
+one `User` (some directly via `userId`, some transitively — `RateVersion` → `RateTier` →
+`Job.userId`). Every pull query filters by it. Every push upsert (`upsertOwnedJob`,
+`upsertOwnedRateTier`, etc.) looks up the referenced parent scoped to the requesting
+user's id *before* writing anything, and silently drops the row if that lookup fails —
+so a client genuinely cannot attach a new `Shift` to a `jobId` it doesn't own, or
+overwrite a row it doesn't own via a guessed/duplicate id. The only intentionally public
+surface (`GET /invoices/:shareToken`) is scoped to exactly one invoice via an unguessable
+token, the same trust model as a payment link, not a cross-account leak.
+
+The real gap was client-side, on mobile only (`web/` has no local database to leak
+from): **signing out never cleared the local SQLite mirror.** A second account signing in
+on a device that still held a first account's local data would briefly see that
+account's cached jobs/shifts — and, worse, any of the first account's *unsynced* outbox
+(`pending_changes`) entries would get pushed to the server under the new account's token
+on the very next sync, since the outbox has no concept of which account it belongs to,
+only what changed. Traced further: the same staleness applied to two AsyncStorage-based
+device-local queues keyed by job/shift ids — scheduled "forgot to clock out" trigger
+notifications (`staleShiftReminder.ts`) and a queued location-arrival prompt
+(`locationTracking.ts`'s `PendingLocationPrompt`) — both would reference an id that no
+longer exists on this device after an account switch.
+
+Fixed with a new `wipeLocalDatabase()` in `app/src/db/database.ts` (clears all 9 local
+tables — jobs/shifts/breaks/rate_tiers/rate_versions/managers/job_managers/
+pending_changes/sync_state — schema and `PRAGMA user_version` left untouched, and emits
+`dbEvents` so already-mounted effects like the Android quick-action shortcut and
+geofence registration refresh immediately rather than only on the next unrelated
+mutation), a new `cancelAllStaleShiftReminders()`, and reusing the already-exported
+`takePendingLocationPrompts()` for its side effect of clearing that queue. All three
+wired into `AuthContext.tsx`'s `signIn`/`signUp`/`signOut`/`logoutEverywhere` — every
+place an account switch (or a switch to signed-out) can happen. Device-level
+*preferences* (theme, biometric app lock, quick-action target) deliberately untouched —
+those describe the device, not the account, same as `appLock.ts` already documents.
+
+Verified for real, not just typechecked (mobile can't be run from here at all): built an
+actual SQLite database via `node:sqlite` from every one of `app/src/db/schema.ts`'s real
+migrations in order, inserted a row into all 9 tables, ran the *exact* wipe SQL, and
+confirmed every table empty afterward with `PRAGMA user_version` unchanged. New
+"Account isolation: nothing is shared between users" section in `docs/architecture.md`
+documents both halves (server enforcement, which already existed; client cleanup, which
+didn't) as one coherent guarantee; a new `docs/user-guide.md` FAQ entry covers the
+end-user-visible version ("what if two people share one phone"). `2.1.2`.
+
 A personal timeclock/hours-tracking app (multiple jobs, clock in/out, breaks, history,
 pay calculation, CSV/email export). Two clients, one API:
 
@@ -967,13 +1016,14 @@ independently and had drifted out of sync, e.g. app at `1.6.0`/web at `1.7.0`/sh
 "backend service versioned separately." **Per explicit instruction later the same day,
 that split is gone**: `server/package.json` is now unified into the exact same "project
 version" as `app`/`web`/`shared` — backend and client-facing versions must always match,
-full stop. All five (four packages, one version) are at `2.1.1` as of this session
+full stop. All five (four packages, one version) are at `2.1.2` as of this session
 (`2.0.0` was major, per the user's explicit instruction — this batch was substantial
 enough, and the user asked for it directly, rather than following the usual "new
 capability = minor" default used for every bump before it; `2.0.1`-`2.0.10` right after it
 were same-day patches fixing deploy tooling and the EAS project link, see §4; `2.1.0` is
 the next real minor, back to the normal policy — the multi-user security batch above;
-`2.1.1` right after it was a same-day patch, the deploy-tooling/docs audit below);
+`2.1.1`/`2.1.2` right after it were same-day patches, the deploy-tooling/docs audit and
+the account-isolation fix, both below);
 the number is shown in Settings on both clients (mobile: `Application.nativeApplicationVersion`/
 `app/app.config.js` — was `app.json` until 2026-09-14, converted to read
 `ANDROID_GOOGLE_MAPS_API_KEY` from the environment, see §3; web: `__APP_VERSION__`, baked

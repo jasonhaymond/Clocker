@@ -488,6 +488,12 @@ sees and can edit all the same data, with no way to tell whose entry is whose. S
 accounts (and, if your employer supports it, separate jobs) are a better fit if you need
 to track more than one person's hours.
 
+**What if two people share one phone, but use separate accounts?** Completely fine —
+signing out fully clears everything account-specific from that phone first (jobs, shifts,
+invoices, scheduled reminders, all of it), so the next person signing in starts from a
+clean slate with no trace of the previous account's data, the same as if they'd installed
+the app fresh. Accounts are never mixed, on any device.
+
 **I accidentally deleted a shift — can I get it back?**
 Not from within the app — deleting a shift is permanent. If your Clocker server has
 backups configured (see above), whoever manages it may be able to restore an earlier

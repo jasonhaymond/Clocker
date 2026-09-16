@@ -197,6 +197,38 @@ job has more than one. That's judged worth it because the alternative — a numb
 silently redefines history when you change it — is the kind of bug a personal finance/pay
 app can't afford to have.
 
+## Account isolation: nothing is shared between users
+
+Every entity a user can create — `Job`, `Shift`, `RateTier`/`RateVersion`, `Break`,
+`Manager`, `JobManager`, `Invoice` — traces back to exactly one `User` via `userId` (some
+directly, some transitively through a parent: a `RateVersion` belongs to a `RateTier`
+which belongs to a `Job` which has the `userId`). Two enforcement layers, both real:
+
+- **Server**: every read in `server/src/routes/sync.ts`/`invoices.ts` filters by the
+  requesting user's id, directly or through the parent chain (e.g. `rateVersion.findMany({
+  where: { tier: { job: { userId } } } })`). Every write does the same *before* mutating
+  anything — `sync.ts`'s `upsertOwned*` helpers look up the referenced parent scoped to
+  `userId` first and silently drop the incoming row if it doesn't resolve, so a client
+  can't attach a new `Shift` to a `jobId` it doesn't own, or overwrite a row it doesn't
+  own via a guessed/duplicate client-generated id. The one deliberate exception is
+  `GET /invoices/:shareToken`/`.../pdf` (public, no `userId` involved at all) — by design,
+  see [`data-model.md`](./data-model.md#invoices): the credential there is the unguessable
+  `shareToken` itself, the same trust model as a payment-link URL, and it only ever
+  resolves the one invoice that token names.
+- **Client (mobile only — `web/` has no local database to leak from)**: signing out,
+  signing in, signing up, or "log out everywhere" (`app/src/auth/AuthContext.tsx`) all
+  clear every account-specific thing the device holds — the local SQLite mirror
+  (`wipeLocalDatabase()` in `app/src/db/database.ts`), scheduled "forgot to clock out"
+  notifications, and any queued location-arrival prompt. Found and fixed as a real gap
+  (2026-09-16): before this, a second account signing in on a device that had a first
+  account's local data would briefly see that account's cached jobs/shifts, and — more
+  seriously — any of the first account's *unsynced* outbox entries (`pending_changes`)
+  would get pushed to the server under the new account's token on the very next sync,
+  since the outbox has no concept of which account it belongs to, only what changed.
+  Device-local *preferences* (theme, biometric app lock, quick-action target) are
+  deliberately left alone across an account switch — those describe the device, not the
+  account, the same reasoning `appLock.ts` already documents for itself.
+
 ## Why a custom Fastify server instead of a BaaS
 
 This was a deliberate choice (over Supabase/Firebase) to keep the whole stack — client,
